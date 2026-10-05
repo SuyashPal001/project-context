@@ -10,6 +10,7 @@ import { fetchPresignedUrl } from './mediaCache.js'
 import { resolveAvatarReferences } from './avatarReferences.js'
 import { persistCost } from '../cost.js'
 import { markCheckFailed } from './oneVideoPerTurn.js'
+import { CheckUnavailableError, gatewayAsk, runNarrowClipChecks, sampleFrames, type NarrowClipResult, type ProductScale } from './tvcChecks.js'
 
 // Checks a finished talking-head clip before it is used: is it still the same
 // person, and did they say the approved line? 2026-10-03: a clip started from
@@ -19,6 +20,7 @@ const execFile = promisify(execFileCb)
 const INFERENCE_GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const MODEL = 'gemini-3.6-flash'
 const TIMEOUT_MS = 90_000
+const NARROW_TIMEOUT_MS = 600_000
 // gemini-3.6-flash thinks before answering and the thinking counts against
 // max_tokens: at 400 it stopped mid-JSON (MAX_TOKENS, 2026-10-05) and every
 // check came back "unreadable verdict". 4000 leaves room for both.
@@ -90,8 +92,8 @@ export function parseVerdict(raw: string): ClipVerdict | null {
 // presenter = the clip was judged as a shot with a person in it. A re-check
 // that flips noPerson on drops the face and outfit comparison, so it counts as
 // a dropped input like the others; noPerson true -> false is stricter and allowed.
-type CheckInputs = { expectedLine: boolean; product: boolean; reference: boolean; noSpeech?: boolean; presenter?: boolean }
-const CHECK_KEYS = ['expectedLine', 'product', 'reference', 'noSpeech', 'presenter'] as const
+type CheckInputs = { expectedLine: boolean; product: boolean; reference: boolean; noSpeech?: boolean; presenter?: boolean; productVisible?: boolean; extras?: boolean; lead?: boolean; action?: boolean }
+const CHECK_KEYS = ['expectedLine', 'product', 'reference', 'noSpeech', 'presenter', 'productVisible', 'extras', 'lead', 'action'] as const
 const checkedWith = new Map<string, CheckInputs>()
 export function droppedCheckInputs(key: string, now: CheckInputs): string[] {
   const before = checkedWith.get(key)
@@ -104,12 +106,16 @@ export function droppedCheckInputs(key: string, now: CheckInputs): string[] {
       reference: now.reference || !!before?.reference,
       noSpeech: !!now.noSpeech || !!before?.noSpeech,
       presenter: !!now.presenter || !!before?.presenter,
+      productVisible: !!now.productVisible || !!before?.productVisible,
+      extras: !!now.extras || !!before?.extras,
+      lead: !!now.lead || !!before?.lead,
+      action: !!now.action || !!before?.action,
     })
   }
   return dropped
 }
 
-async function fetchBase64(fileId: string, idToken: string, signal: AbortSignal): Promise<{ data: string; mime: string }> {
+export async function fetchBase64(fileId: string, idToken: string, signal: AbortSignal): Promise<{ data: string; mime: string }> {
   const url = new URL(await fetchPresignedUrl(fileId, idToken, signal))
   url.searchParams.delete('x-amz-checksum-mode')
   const res = await fetch(url.toString(), { signal })
@@ -151,6 +157,12 @@ export function judgeVerdict(
   return { passed: samePerson && lineMatches && productMatches && noGlitch && soundMatches && speechOk, samePerson, lineMatches, productMatches, speechOk, soundMatches, reason }
 }
 
+/** The TVC flow's narrow checks run only when the plan passes their inputs;
+ *  talking-head and UGC calls never pass them and behave exactly as before. */
+export function narrowWanted(i: { productMustBeVisible?: boolean; productScale?: string; expectExtras?: boolean; leadFileId?: string; action?: string }): boolean {
+  return !!(i.productMustBeVisible || i.productScale || i.expectExtras || i.leadFileId || i.action)
+}
+
 export const checkClip = createTool({
   id: 'check-clip',
   description: 'Free check of a finished clip (or a still image, before it is animated) before it is used: compares a frame with the presenter\'s reference images (same person?) and the clip\'s speech with the approved line (said it?). Call it after every clip; if passed is false, regenerate that clip once, and if it fails again, stop and tell Olmo why instead of using it.',
@@ -163,6 +175,14 @@ export const checkClip = createTool({
     soundReferenceClipFileId: z.string().optional().describe("The ad's first spoken clip, when this is a later spoken clip: its voice and room sound (echo, background) must match, so the joined ad sounds like one recording"),
     expectNoSpeech: z.boolean().optional().describe('true for a shot that must be silent (no one speaks); the clip fails if words are heard'),
     noPerson: z.boolean().optional().describe('true when nobody is in the shot (product or scenery only); judges the scene instead of a presenter'),
+    productMustBeVisible: z.boolean().optional().describe('TVC: the plan says the product is in this shot; the clip fails if it is missing in any sampled frame'),
+    productScale: z.enum(['close', 'medium', 'wide']).optional().describe('TVC: how big the product is in the shot; wide judges only colour and label'),
+    productExpectedState: z.string().optional().describe('TVC: a normal state of the product in this shot, e.g. "the bottle has no cap after the pop"'),
+    expectExtras: z.boolean().optional().describe('TVC: this place needs background people; an empty background fails'),
+    leadFileId: z.string().optional().describe('TVC: the lead actor\'s image; a background person who looks like the lead fails the clip'),
+    action: z.string().optional().describe('TVC: the shot\'s action; the clip fails if it never happens'),
+    endState: z.string().optional().describe('TVC: what must be true at the end, e.g. "the bottle has no cap"'),
+    shotDurationSeconds: z.number().positive().optional().describe('TVC: the shot\'s planned length; returns trimStartSeconds centred on the action'),
   }),
   outputSchema: z.object({
     passed: z.boolean().optional(),
@@ -175,9 +195,18 @@ export const checkClip = createTool({
     reason: z.string().optional(),
     refused: z.boolean().optional(),
     refusalReason: z.string().optional(),
+    productVisible: z.boolean().optional(),
+    extrasPresent: z.boolean().optional(),
+    leadClone: z.boolean().optional(),
+    glitchFree: z.boolean().optional(),
+    actionHappened: z.boolean().optional(),
+    motionReversed: z.boolean().optional(),
+    actionTime: z.number().nullable().optional(),
+    endStateTrue: z.boolean().optional(),
+    trimStartSeconds: z.number().optional(),
   }),
   execute: async (inputData, execContext) => {
-    const { clipFileId, masterStillFileId, referenceFileIds, expectedLine: givenLine, productFileId, soundReferenceClipFileId, expectNoSpeech, noPerson } = inputData as { clipFileId: string; masterStillFileId: string; referenceFileIds?: string[]; expectedLine?: string; productFileId?: string; soundReferenceClipFileId?: string; expectNoSpeech?: boolean; noPerson?: boolean }
+    const { clipFileId, masterStillFileId, referenceFileIds, expectedLine: givenLine, productFileId, soundReferenceClipFileId, expectNoSpeech, noPerson, productMustBeVisible, productScale, productExpectedState, expectExtras, leadFileId, action, endState, shotDurationSeconds } = inputData as { clipFileId: string; masterStillFileId: string; referenceFileIds?: string[]; expectedLine?: string; productFileId?: string; soundReferenceClipFileId?: string; expectNoSpeech?: boolean; noPerson?: boolean; productMustBeVisible?: boolean; productScale?: string; productExpectedState?: string; expectExtras?: boolean; leadFileId?: string; action?: string; endState?: string; shotDurationSeconds?: number }
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     if (!idToken) return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE' }
@@ -185,13 +214,14 @@ export const checkClip = createTool({
     // A continued clip holds every line so far; check all of them, not just the new one.
     const lines = givenLine ? spokenSoFar(conversationId, clipFileId) : undefined
     const expectedLine = givenLine ? (lines?.join(' ') ?? givenLine) : undefined
-    const dropped = droppedCheckInputs(`${conversationId}:${clipFileId}`, { expectedLine: !!expectedLine, product: !!productFileId, reference: !!referenceFileIds?.length, noSpeech: !!expectNoSpeech, presenter: !noPerson })
+    const narrow = narrowWanted({ productMustBeVisible, productScale, expectExtras, leadFileId, action })
+    const dropped = droppedCheckInputs(`${conversationId}:${clipFileId}`, { expectedLine: !!expectedLine, product: !!productFileId, reference: !!referenceFileIds?.length, noSpeech: !!expectNoSpeech, presenter: !noPerson, productVisible: !!productMustBeVisible, extras: !!expectExtras, lead: !!leadFileId, action: !!action })
     if (dropped.length) {
       return { refused: true, refusalReason: `CHECK_INPUTS_DROPPED: this clip was checked before with ${dropped.join(', ')}; check it again with the same inputs (never fewer) — a check without them proves nothing` }
     }
 
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+    const timer = setTimeout(() => controller.abort(), narrow ? NARROW_TIMEOUT_MS : TIMEOUT_MS)
     const workDir = mkdtempSync(join(tmpdir(), 'check-clip-'))
     try {
       const clip = await fetchBase64(clipFileId, idToken, controller.signal)
@@ -201,12 +231,14 @@ export const checkClip = createTool({
       const frames: Array<{ data: string; mime: string }> = []
       let audio: string | null = null
       let refAudio: string | null = null
+      let clipPath: string | null = null
+      let duration = 4
       if (isStill) frames.push({ data: clip.data, mime: clip.mime })
       else {
-      const clipPath = join(workDir, 'clip.mp4')
+      clipPath = join(workDir, 'clip.mp4')
       writeFileSync(clipPath, Buffer.from(clip.data, 'base64'))
       const { stdout } = await execFile('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', clipPath], { timeout: 30_000 })
-      const duration = Number(stdout.trim()) || 4
+      duration = Number(stdout.trim()) || 4
       // Three frames: just after the start (Omni's glitches — a second bottle,
       // a hand swap — show in the first second), the middle, and near the end,
       // where drift shows up.
@@ -268,13 +300,38 @@ export const checkClip = createTool({
       const verdict = parseVerdict(result.choices?.[0]?.message?.content ?? '')
       if (!verdict) return { refused: true, refusalReason: 'CHECK_FAILED: unreadable verdict' }
       const judged = judgeVerdict(verdict, { expectedLine, audioChecked: !!audio, expectNoSpeech: !!expectNoSpeech, noPerson: !!noPerson, soundChecked: !!refAudio })
-      if (!judged.passed) {
+      let narrowResult: NarrowClipResult | null = null
+      if (narrow && clipPath) {
+        try {
+          const productImg = productFileId ? await fetchBase64(productFileId, idToken, controller.signal) : undefined
+          const leadImg = leadFileId ? await fetchBase64(leadFileId, idToken, controller.signal) : undefined
+          narrowResult = await runNarrowClipChecks(gatewayAsk(tenantId), (times) => sampleFrames(clipPath!, times, workDir), {
+            duration, product: productImg, productScale: productScale as ProductScale | undefined, productExpectedState, productMustBeVisible,
+            expectExtras, lead: leadImg, action, endState, shotDurationSeconds,
+          })
+        } catch (err) {
+          // sampleFrames can throw a plain ffmpeg/execFile error, not just
+          // CheckUnavailableError — either way the narrow check did not run,
+          // so this clip is refused as unchecked, never a pass and never an
+          // uncaught crash.
+          const msg = err instanceof CheckUnavailableError ? err.message : `check unavailable: ${(err as Error)?.message ?? 'unknown'}`
+          return { refused: true, refusalReason: `CHECK_UNAVAILABLE: ${msg} — this clip is unchecked; do not use it as checked` }
+        }
+      }
+      const passed = judged.passed && (narrowResult ? narrowResult.passed : true)
+      const reason = !judged.passed ? judged.reason : narrowResult && !narrowResult.passed ? narrowResult.reasons.join(' ') : judged.reason
+      if (!passed) {
         markCheckFailed(execContext?.requestContext, (execContext as unknown as { agent?: { messages?: unknown } })?.agent?.messages)
       }
       return {
-        passed: judged.passed, samePerson: judged.samePerson, lineMatches: judged.lineMatches,
+        passed, samePerson: judged.samePerson, lineMatches: judged.lineMatches,
         productMatches: judged.productMatches, glitch: verdict.glitch, soundMatches: judged.soundMatches,
-        heard: verdict.heard, reason: judged.reason,
+        heard: verdict.heard, reason,
+        ...(narrowResult ? {
+          glitchFree: narrowResult.glitchFree, productVisible: narrowResult.productVisible, extrasPresent: narrowResult.extrasPresent,
+          leadClone: narrowResult.leadClone, actionHappened: narrowResult.actionHappened, motionReversed: narrowResult.motionReversed, actionTime: narrowResult.actionTime,
+          endStateTrue: narrowResult.endStateTrue, trimStartSeconds: narrowResult.trimStartSeconds,
+        } : {}),
       }
     } catch (err) {
       console.error('[checkClip] failed:', (err as Error).message)

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { droppedCheckInputs, lineMatchScore, parseVerdict, buildCheckQuestion, judgeVerdict } from './checkClip.js'
+import { droppedCheckInputs, lineMatchScore, parseVerdict, buildCheckQuestion, judgeVerdict, narrowWanted, droppedCheckInputs as dropped2 } from './checkClip.js'
 
 describe('lineMatchScore', () => {
   it('passes the exact line and small transcription differences', () => {
@@ -138,5 +138,19 @@ describe('sound check (from main) threaded through judgeVerdict', () => {
   it('asks for same_voice and same_room only with a sound reference', () => {
     expect(buildCheckQuestion({ product: false, audio: true, noPerson: false, sound: true })).toMatch(/"same_voice": true\|false, "same_room"/)
     expect(buildCheckQuestion({ product: false, audio: true, noPerson: false })).not.toMatch(/same_voice/)
+  })
+})
+
+describe('narrow checks are opt-in (Review Focus 1)', () => {
+  it('a legacy call makes no narrow checks', () => {
+    expect(narrowWanted({})).toBe(false)
+    expect(narrowWanted({ productScale: 'close' })).toBe(true)
+    expect(narrowWanted({ action: 'cap pops off' })).toBe(true)
+    expect(narrowWanted({ leadFileId: 'av1' })).toBe(true)
+  })
+  it('the re-check guard refuses dropping a narrow input', () => {
+    expect(dropped2('conv:clipN', { expectedLine: false, product: true, reference: false, productVisible: true, extras: true, lead: true, action: true })).toEqual([])
+    expect(dropped2('conv:clipN', { expectedLine: false, product: true, reference: false, productVisible: false, extras: true, lead: true, action: true })).toEqual(['productVisible'])
+    expect(dropped2('conv:clipN', { expectedLine: false, product: true, reference: false, productVisible: true, extras: true, lead: false, action: false })).toEqual(['lead', 'action'])
   })
 })
