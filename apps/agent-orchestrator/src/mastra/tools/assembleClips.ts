@@ -422,9 +422,9 @@ export const assembleClips = createTool({
       // runs) when preserveAudio or audioFileId is set — real, harmless
       // encoder padding, not desync. A flat 0.1s tolerance false-refused a
       // valid 4-clip preserveAudio join (measured diff 0.107s) on this
-      // task's own real-ffmpeg test. 0.1s base + 0.03s/clip stays two
-      // orders of magnitude below the 3s+ drift this check exists to
-      // catch, even at the 12-clip max.
+      // task's own real-ffmpeg test. 0.1s base + 0.03s/clip stays under a
+      // 7x margin below the 3s+ drift this check exists to catch, even at
+      // the 12-clip max (tolerance 0.46s vs a 3s drift).
       const expected = probes.reduce((s, p) => s + p.duration, 0)
       const tolerance = 0.1 + 0.03 * localPaths.length
       if (!transitions?.length && targetDurationSeconds === undefined && Number.isFinite(expected) && expected > 0) {
