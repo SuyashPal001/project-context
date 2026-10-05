@@ -397,6 +397,14 @@ async function callVertexVeoModel(req: VideoGenerationRequest): Promise<VideoGen
 // can't get it sees an error, not a Veo result it never asked for.
 // ---------------------------------------------------------------------------
 
+// Omni refuses some prompts outright (2026-10-05: "high-school girl … spin").
+// The same prompt fails the same way on the API-key path, so this is never a
+// reason to fall back or to count a backend failure: it is a plain refusal
+// the agent can act on by rephrasing.
+export function isContentBlocked(message: string): boolean {
+  return /content_blocked|Responsible AI/i.test(message)
+}
+
 type VideoBackend = 'gemini-omni' | 'vertex-veo'
 
 export class VideoBackendUnavailableError extends Error {}
@@ -433,6 +441,7 @@ export async function generateVideo(req: VideoGenerationRequest): Promise<VideoG
       vertexVideoBreaker.onSuccess()
       return result
     } catch (err) {
+      if (isContentBlocked((err as Error).message)) return { refused: true, reason: 'CONTENT_BLOCKED' }
       vertexVideoBreaker.onFailure()
       throw new VideoBackendUnavailableError(`Vertex Omni continuation failed: ${(err as Error).message}`)
     }
@@ -458,6 +467,7 @@ export async function generateVideo(req: VideoGenerationRequest): Promise<VideoG
         vertexVideoBreaker.onSuccess()
         return result
       } catch (err) {
+        if (isContentBlocked((err as Error).message)) return { refused: true, reason: 'CONTENT_BLOCKED' }
         vertexVideoBreaker.onFailure()
         vertexFailureReason = (err as Error).message
         console.warn('[video] Vertex Omni failed, trying Gemini API key fallback:', vertexFailureReason)
@@ -476,6 +486,7 @@ export async function generateVideo(req: VideoGenerationRequest): Promise<VideoG
       geminiVideoBreaker.onSuccess()
       return result
     } catch (err) {
+      if (isContentBlocked((err as Error).message)) return { refused: true, reason: 'CONTENT_BLOCKED' }
       geminiVideoBreaker.onFailure()
       throw new VideoBackendUnavailableError(`Vertex Omni unavailable (${vertexFailureReason}); Gemini API key fallback also failed: ${(err as Error).message}`)
     }

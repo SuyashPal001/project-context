@@ -15,7 +15,7 @@ vi.mock('google-auth-library', () => ({
   }),
 }))
 
-import { classifyInteractionsVideoResponse, continuationBody, generateVideo } from './video'
+import { classifyInteractionsVideoResponse, continuationBody, generateVideo, isContentBlocked } from './video'
 import { geminiVideoBreaker, vertexVideoBreaker } from './router.js'
 
 describe('classifyInteractionsVideoResponse', () => {
@@ -337,6 +337,23 @@ describe('generateVideo — Gemini Omni with Vertex Omni fallback, no cross-vend
       .resolves.not.toBeUndefined()
   })
 
+  it('a Vertex content block is a plain CONTENT_BLOCKED refusal with no fallback call', async () => {
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ error: { message: 'The input could not be submitted. This input contains content that violates Google\'s Responsible AI practices.', code: 'content_blocked' } }), { status: 400 }))
+    global.fetch = fetchSpy as unknown as typeof fetch
+    const result = await generateVideo(req)
+    expect(result).toEqual({ refused: true, reason: 'CONTENT_BLOCKED' })
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(vertexVideoBreaker.onFailure).not.toHaveBeenCalled()
+  })
+
+})
+
+describe('isContentBlocked', () => {
+  it('matches Omni\'s content_blocked and Responsible AI messages only', () => {
+    expect(isContentBlocked('Vertex Omni interactions failed: 400 {"error":{"code":"content_blocked"}}')).toBe(true)
+    expect(isContentBlocked('violates Google\'s Responsible AI practices')).toBe(true)
+    expect(isContentBlocked('Vertex Omni interactions failed: 500 boom')).toBe(false)
+  })
 })
 
 describe('continuationBody', () => {

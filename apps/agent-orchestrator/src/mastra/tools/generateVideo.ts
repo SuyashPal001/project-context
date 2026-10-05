@@ -44,6 +44,7 @@ export const videoItemSchema = z.object({
   aspectRatio: z.enum(['16:9', '9:16']),
   durationSeconds: z.number().int().min(3).max(10),
   startImageFileId: z.string().optional().describe('Required for animate_frame — an existing files row to use as the literal first frame'),
+  productFileId: z.string().optional().describe('animate_frame only: the product photo. The video is then anchored on [start still, product photo] so the product keeps its material, shape and label (Omni drifted glass to plastic from a start still alone, 2026-10-05)'),
   referenceFileIds: z.array(z.string()).min(1).max(3).optional().describe('Required for composite_references — identity-anchor images the model builds a new scene around'),
   continueFrom: z.string().optional().describe('Required for continue — the interactionId a previous generate_video returned. The model continues THAT video (same person, voice, room and light) for durationSeconds more and may speak a new approved line; the result is the whole video so far, not just the new part.'),
   approvedDialogue: z.string().optional().describe('The exact spoken line the user approved, if the prompt includes quoted dialogue — required to match a quoted line in prompt byte-for-byte'),
@@ -61,7 +62,12 @@ export const videoItemSchema = z.object({
 ).refine(
   (v) => (v.mode === 'continue') === (v.continueFrom !== undefined),
   { message: 'continueFrom is required for continue and only for continue' },
+).refine(
+  (v) => v.productFileId === undefined || v.mode === 'animate_frame',
+  { message: 'productFileId is only for animate_frame' },
 )
+
+export const PRODUCT_ANCHOR_PREFIX = 'The first image is the exact opening frame and scene. The second image is the exact product; it stays unchanged and visible — same material, shape, closure and label — the whole time. '
 
 export type VideoItemInput = z.infer<typeof videoItemSchema>
 
@@ -99,7 +105,7 @@ export async function generateVideoItem(
   execContext: MediaExecContext | undefined,
   itemIndex: number,
 ) {
-    const { mode, prompt: rawPrompt, aspectRatio, durationSeconds: requestedSeconds, startImageFileId, referenceFileIds, approvedDialogue, identityAnchor, continueFrom } =
+    const { mode, prompt: rawPrompt, aspectRatio, durationSeconds: requestedSeconds, startImageFileId, productFileId, referenceFileIds, approvedDialogue, identityAnchor, continueFrom } =
       inputData
     // A spoken part gets the time its line needs, not the time left over in
     // the ad: too little cut the sentence off, too much (8s for a 5s line,
@@ -197,6 +203,15 @@ export async function generateVideoItem(
           return { refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE', jobId }
         }
       }
+      if (mode === 'animate_frame' && productFileId && imageUri) {
+        try {
+          referenceImageUris = [imageUri, await fetchPresignedUrl(productFileId, idToken)]
+          imageUri = undefined
+        } catch (err) {
+          console.error(`[session:${sessionId}] generateVideo: failed to resolve product image ${productFileId}:`, (err as Error).message)
+          return { refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE', jobId }
+        }
+      }
     }
 
     // Charge BEFORE the vendor call — docs/media-generation/README.md's
@@ -238,7 +253,8 @@ export async function generateVideoItem(
       }
     }
 
-    const task = mode === 'text_to_video' ? 'text_to_video' : mode === 'composite_references' ? 'reference_to_video' : 'image_to_video'
+    const task = mode === 'text_to_video' ? 'text_to_video' : (mode === 'composite_references' || referenceImageUris?.length) ? 'reference_to_video' : 'image_to_video'
+    const sentPrompt = referenceImageUris?.length && mode === 'animate_frame' ? PRODUCT_ANCHOR_PREFIX + prompt : prompt
     let genResult: { videoBase64?: string; mimeType?: string; interactionId?: string; refused?: boolean; reason?: string }
     try {
       const res = await fetch(`${GATEWAY_URL}/v1/video/generations`, {
@@ -256,7 +272,7 @@ export async function generateVideoItem(
         // to 'image/jpeg' when imageMimeType is absent. Fixing this for real
         // requires either the presigned-url route or storageService to
         // surface the stored file's content type.
-        body: JSON.stringify({ model: GATEWAY_MODEL_ID, prompt, task, aspectRatio, durationSeconds, imageUri, referenceImageUris, ...(mode === 'continue' ? { previousInteractionId: continueFrom } : {}) }),
+        body: JSON.stringify({ model: GATEWAY_MODEL_ID, prompt: sentPrompt, task, aspectRatio, durationSeconds, imageUri, referenceImageUris, ...(mode === 'continue' ? { previousInteractionId: continueFrom } : {}) }),
         // Must stay strictly larger than the gateway's own upstream timeout
         // (240s in apps/inference-gateway/src/video.ts) — otherwise this
         // clock, which starts first since the gateway call is nested inside
@@ -274,7 +290,8 @@ export async function generateVideoItem(
 
     if (genResult.refused) {
       if (charged) await refundVideoCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
-      return { refused: true, refusalReason: genResult.reason ?? 'unknown', jobId }
+      const reason = genResult.reason === 'CONTENT_BLOCKED' ? "CONTENT_BLOCKED: rephrase the shot (no ages or minors' activities)" : (genResult.reason ?? 'unknown')
+      return { refused: true, refusalReason: reason, jobId }
     }
 
     if (typeof genResult.videoBase64 !== 'string') {

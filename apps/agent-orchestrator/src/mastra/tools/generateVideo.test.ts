@@ -23,7 +23,7 @@ vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 const { resolveAvatarReferences } = vi.hoisted(() => ({ resolveAvatarReferences: vi.fn() }))
 vi.mock('./avatarReferences.js', () => ({ resolveAvatarReferences }))
 
-import { generateVideo, generateVideoItem, spokenSeconds, spokenSecondsFloor } from './generateVideo.js'
+import { generateVideo, generateVideoItem, spokenSeconds, spokenSecondsFloor, videoItemSchema, PRODUCT_ANCHOR_PREFIX } from './generateVideo.js'
 import { uploadGeneratedFile } from '../../persistence.js'
 import { stableToolCallId } from '../../credits.js'
 
@@ -443,6 +443,39 @@ describe('generateVideo tool', () => {
     expect(spendCredits).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'refund' }))
   })
 
+  it('anchors a product shot: start still first, product photo second, reference_to_video', async () => {
+    const fetchSpy = vi.fn(async (url: string) => {
+      const m = String(url).match(/files\/([^/]+)\/presigned-url/)
+      if (m) return new Response(JSON.stringify({ presignedUrl: `https://s3.example.com/${m[1]}.jpg` }), { status: 200 })
+      return new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })
+    })
+    global.fetch = fetchSpy as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.mp4', type: 'video/mp4', size: 3 })
+
+    await generateVideo.execute!(
+      { mode: 'animate_frame', prompt: 'she drinks. No one speaks.', aspectRatio: '16:9', durationSeconds: 3, startImageFileId: 'still1', productFileId: 'prod1' } as never,
+      baseCtx(),
+    )
+
+    const genCall = fetchSpy.mock.calls.find(([url]) => String(url).includes('/v1/video/generations')) as unknown as [string, RequestInit]
+    const body = JSON.parse(genCall[1].body as string)
+    expect(body.task).toBe('reference_to_video')
+    expect(body.imageUri).toBeUndefined()
+    expect(body.referenceImageUris).toEqual(['https://s3.example.com/still1.jpg', 'https://s3.example.com/prod1.jpg'])
+    expect(body.prompt.startsWith(PRODUCT_ANCHOR_PREFIX)).toBe(true)
+  })
+
+  it('rejects productFileId outside animate_frame', () => {
+    expect(videoItemSchema.safeParse({ mode: 'text_to_video', prompt: 'x', aspectRatio: '16:9', durationSeconds: 3, productFileId: 'p' }).success).toBe(false)
+  })
+
+  it('turns a gateway CONTENT_BLOCKED refusal into a plain reason and refunds', async () => {
+    getPool.mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-100000', expires_at: null }] }) })
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ refused: true, reason: 'CONTENT_BLOCKED' }), { status: 200 })) as unknown as typeof fetch
+    const r = await generateVideo.execute!({ mode: 'text_to_video', prompt: 'x', aspectRatio: '16:9', durationSeconds: 3 } as never, baseCtx())
+    expect(r).toMatchObject({ refused: true, refusalReason: expect.stringMatching(/^CONTENT_BLOCKED: rephrase the shot/) })
+    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ kind: 'refund' }))
+  })
 })
 
 describe('spokenSecondsFloor', () => {
