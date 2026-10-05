@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { RequestContext } from '@mastra/core/request-context'
-import { inputSchema } from './compositeEndCard.js'
+import { inputSchema, endCardGraph } from './compositeEndCard.js'
 
 describe('compositeEndCard inputSchema', () => {
   it('requires videoFileId, productPhotoFileId, and aspectRatio', () => {
@@ -8,6 +8,18 @@ describe('compositeEndCard inputSchema', () => {
     expect(ok.success).toBe(true)
     const missing = inputSchema.safeParse({ videoFileId: 'v1', productPhotoFileId: 'p1' })
     expect(missing.success).toBe(false)
+  })
+})
+
+describe('endCardGraph hold', () => {
+  it('holds the last frame and lays the card over the hold for an ad that ends on speech', () => {
+    const g = endCardGraph(1080, 1920, 19.95, 1.5)
+    expect(g.startsWith('[0:v]tpad=stop_mode=clone:stop_duration=1.5[base];')).toBe(true)
+    expect(g).toContain("[base][card]overlay=0:0:enable='gte(t,19.95)'[outv]")
+  })
+  it('keeps the old graph with no hold', () => {
+    expect(endCardGraph(1080, 1920, 5)).not.toContain('tpad')
+    expect(endCardGraph(1080, 1920, 5)).toContain('[0:v][card]overlay')
   })
 })
 
