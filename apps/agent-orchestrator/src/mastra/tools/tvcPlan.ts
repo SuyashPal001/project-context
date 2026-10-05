@@ -4,11 +4,26 @@ import { z } from 'zod'
 // is not the only thing holding them (spec 2026-10-05-tvc-ad-design.md §4-5).
 export const WORDS_PER_SECOND = 2.7
 export const WORD_CAPS: Record<number, number> = { 6: 8, 15: 22, 20: 30 }
-// assemble_clips joins at most 8 clips, and every shot is one clip.
-export const MAX_SHOTS = 8
+// assemble_clips joins at most 12 clips, and every shot is one clip.
+export const MAX_SHOTS = 12
 const SHOT_MIN = 1.2, SHOT_MAX = 2.5, PACK_MIN = 2, PACK_MAX = 4
 const BRAND_BY = 2.0, PRODUCT_BY = 3.0, VO_TAIL = 2.0, MAX_LINES = 2, MAX_LOCATIONS = 2
 const EPS = 0.05
+
+export const productTypeSchema = z.object({
+  material: z.enum(['glass', 'plastic', 'metal', 'paper', 'other']),
+  closure: z.string().min(1).describe('e.g. "crown cap", "screw cap", "pump"'),
+  openedBy: z.string().min(1).describe('e.g. "bottle opener", "twist", "pull tab"'),
+})
+export type ProductType = z.infer<typeof productTypeSchema>
+// Actions that change an object's state; each needs an endState the clip check verifies.
+export const HARD_ACTION_RE = /\b(open|opens|opened|opening|pop|pops|popped|popping|pour|pours|poured|pouring|bite|bites|biting|apply|applies|applying|peel|peels|peeled|peeling|unwrap|unwraps|unwrapped|unwrapping|cut|cuts|cutting)\b/i
+const CONCRETE_VERB_RE = /\b(dance|dances|dancing|spin|spins|spinning|twirl|twirls|jump|jumps|laugh|laughs|run|runs|walk|walks|raise|raises|hold|holds|drink|drinks|sip|sips|smile|smiles|wave|waves|turn|turns|clap|claps|hug|hugs|throw|throws|lift|lifts)\b/i
+const SIZE_ORDER = ['wide', 'medium', 'close_up', 'extreme_close_up'] as const
+// A turn written loosely ("does one twirl") reversed mid-way in v5; a turn
+// must say one direction and complete, and C7's reversal question checks it.
+export const TURN_RE = /\b(spin|spins|spinning|twirl|twirls|twirling|pirouette|pirouettes|rotate|rotates|rotating|turns? around)\b/i
+export const turnIsComplete = (action: string): boolean => /one direction/i.test(action) && /(360|all the way around|full turn)/i.test(action)
 
 const shotSchema = z.object({
   n: z.number().int().min(1).describe('Shot number, 1 to N in order'),
@@ -24,6 +39,10 @@ const shotSchema = z.object({
   text: z.string().optional().describe('On-screen text, 3 words or fewer'),
   stillFileId: z.string().optional(),
   clipFileId: z.string().optional(),
+  endState: z.string().optional().describe('Required when the action changes an object (open, pop, pour, bite, apply, peel, unwrap, cut): what is true after it, e.g. "the bottle has no cap". The clip check verifies it'),
+  continuesFrom: z.number().int().min(1).optional().describe('The previous shot\'s number when this shot continues the same action at the same place; its start frame is that clip\'s last frame, and it is trimmed from 0'),
+  angle: z.enum(['eye', 'low', 'high', 'top', 'side', 'pov']).optional().describe('Camera angle. The same angle with the same or a neighbouring size as the shot before is a jump cut'),
+  flashCut: z.boolean().optional().describe('A deliberate flash cut, allowed down to 0.3s'),
 })
 
 export const tvcPlanSchema = z.object({
@@ -38,6 +57,11 @@ export const tvcPlanSchema = z.object({
     productPhotoFileId: z.string().min(1),
     actorAvatarId: z.string().optional(),
     voiceId: z.string().optional().describe('The announcer voice for the voiceover, as Olmo passed it ("Voice ID: <id>")'),
+    reference: z.object({
+      productType: productTypeSchema.optional(),
+      cutTimes: z.array(z.number().positive()).optional(),
+    }).optional().describe('When recreating a reference ad: its product type and its real cut times (detect_cuts)'),
+    product: productTypeSchema.optional().describe('This product\'s type; must match the reference\'s when one is given'),
   }),
   look: z.string().min(1),
   locations: z.array(z.string().min(1)),
@@ -69,6 +93,18 @@ export function shotStarts(plan: TvcPlan): number[] {
 
 export const legalHoldSeconds = (text: string): number => Math.max(4, countWords(text) / 5 + 3)
 
+const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x))
+export function minShotSeconds(plan: TvcPlan, shot: TvcShot): number {
+  if (shot.flashCut) return 0.3
+  return plan.brief.reference?.cutTimes?.length ? 0.6 : SHOT_MIN
+}
+/** P1: the 0.4s warm-up plus a margin, or the line's length; a continuing shot is trimmed from 0. */
+export function generateSecondsFor(shot: TvcShot): number {
+  const base = shot.continuesFrom ? Math.ceil(shot.durationSeconds + 0.3) : Math.ceil(shot.durationSeconds + 0.4 + 0.3)
+  const line = shot.audio === 'line' && shot.line ? Math.ceil(countWords(shot.line) / WORDS_PER_SECOND + 1) : 0
+  return clamp(Math.max(base, line), 3, 10)
+}
+
 const VISUALISATION = 'Creative visualisation'
 
 export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: string[]; plan: TvcPlan } {
@@ -96,8 +132,8 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
   shots.forEach((s) => {
     if (s.type === 'packshot') {
       if (s.durationSeconds < PACK_MIN - EPS || s.durationSeconds > PACK_MAX + EPS) errors.push(`the packshot is ${s.durationSeconds}s; it must be 2–4s`)
-    } else if (s.durationSeconds < SHOT_MIN - EPS || s.durationSeconds > SHOT_MAX + EPS) {
-      errors.push(`shot ${s.n} is ${s.durationSeconds}s; shots must be 1.2–2.5s`)
+    } else if (s.durationSeconds < minShotSeconds(plan, s) - EPS || s.durationSeconds > SHOT_MAX + EPS) {
+      errors.push(`shot ${s.n} is ${s.durationSeconds}s; shots must be ${minShotSeconds(plan, s)}–2.5s`)
     }
   })
 
@@ -146,10 +182,32 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
     })
   })
 
-  // 9. Shot sizes change.
+  // 9. Shot sizes change; the same size needs a different angle; the same
+  //    angle with a neighbouring size is a jump cut (v4's two-shot opener).
   for (let i = 1; i < shots.length; i++) {
-    if (shots[i].size === shots[i - 1].size) errors.push(`shots ${shots[i - 1].n} and ${shots[i].n} are the same size (${shots[i].size}); change one`)
+    const a = shots[i - 1], b = shots[i]
+    if (b.continuesFrom) continue
+    const sameAngle = !!a.angle && a.angle === b.angle
+    if (a.size === b.size && (!a.angle || !b.angle || sameAngle)) {
+      errors.push(`shots ${a.n} and ${b.n} are the same size (${b.size}); change one, or give them different angles`)
+    } else if (sameAngle && Math.abs(SIZE_ORDER.indexOf(a.size) - SIZE_ORDER.indexOf(b.size)) === 1) {
+      errors.push(`shots ${a.n} and ${b.n} are near-identical framings (same ${b.angle} angle, ${a.size} then ${b.size}): a jump cut. Change the angle, or keep the action in one shot`)
+    }
   }
+  // P2: continuity only with the shot right before, at the same place.
+  shots.forEach((s, i) => {
+    if (s.continuesFrom === undefined) return
+    if (s.continuesFrom !== s.n - 1) { errors.push(`shot ${s.n} continues from shot ${s.continuesFrom}; it can only continue the shot right before it`); return }
+    if (shots[i - 1] && shots[i - 1].location !== s.location) errors.push(`shot ${s.n} continues shot ${s.continuesFrom} but is at a different place`)
+  })
+  // P10: a turn is one direction and complete.
+  shots.forEach((s) => {
+    if (TURN_RE.test(s.action) && !turnIsComplete(s.action)) errors.push(`shot ${s.n} has a turn ("${s.action}"); write it as one direction and complete, e.g. "spins all the way around in one direction, 360°"`)
+  })
+  // P7: a state-changing action needs an end state.
+  shots.forEach((s) => {
+    if (HARD_ACTION_RE.test(s.action) && !s.endState?.trim()) errors.push(`shot ${s.n} changes an object ("${s.action}"); add endState (what is true after it)`)
+  })
 
   // 10. Packshot last, once.
   if (shots[shots.length - 1].type !== 'packshot') errors.push('the last shot must be the packshot')
@@ -182,6 +240,10 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
     if (l.startSeconds + hold > length + EPS) warnings.push(`the legal line "${l.text}" needs ${hold}s on screen but only has ${r1(length - l.startSeconds)}s`)
   })
 
+  // P10: the payoff (the shot before the packshot) must be a checkable move.
+  const payoff = packIdx > 0 ? shots[packIdx - 1] : undefined
+  if (payoff && !CONCRETE_VERB_RE.test(payoff.action)) warnings.push(`shot ${payoff.n} is the payoff; write a concrete, physical move the check can verify (e.g. "she dances and spins all the way around in one direction, 360°"), not only a mood`)
+
   return { errors, warnings, plan }
 }
 
@@ -203,7 +265,13 @@ export function sliceTvcPlan(plan: TvcPlan, slice: string): unknown {
     return {
       look: plan.look, locations: plan.locations,
       brief: { aspectRatio: plan.brief.aspectRatio, productPhotoFileId: plan.brief.productPhotoFileId, actorAvatarId: plan.brief.actorAvatarId },
-      shots: plan.shots.filter((s) => s.n >= a && s.n <= b).map(withStart),
+      shots: plan.shots.filter((s) => s.n >= a && s.n <= b).map((s) => ({
+        ...withStart(s),
+        generateSeconds: generateSecondsFor(s),
+        startFromPreviousLastFrame: s.continuesFrom !== undefined,
+        trimStartSeconds: s.continuesFrom !== undefined ? 0 : 0.4,
+        trimToEnd: plan.shots.some((o) => o.continuesFrom === s.n),
+      })),
     }
   }
   throw new Error('UNKNOWN_SLICE')

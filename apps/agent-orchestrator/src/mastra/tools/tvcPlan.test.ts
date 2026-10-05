@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { countWords, legalHoldSeconds, recordOnPlan, shotStarts, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, type TvcPlan } from './tvcPlan.js'
+import { generateSecondsFor, minShotSeconds, HARD_ACTION_RE } from './tvcPlan.js'
 
 // A valid 15s ambassador spot: 7 shots summing to 15s, packshot last.
 function goodPlan(): TvcPlan {
@@ -131,9 +132,8 @@ describe('validateTvcPlan — blocking checks', () => {
   it('12: on-screen text is at most 3 words, except the packshot', () => {
     expect(errorsFor((p) => { p.shots[2].text = 'with SPF thirty now' })).toMatch(/shot 3 .*3 words/)
   })
-  it('at most 8 shots (assemble_clips joins at most 8 clips)', () => {
-    expect(validateTvcPlan(plan20(8)).errors).toEqual([])
-    expect(validateTvcPlan(plan20(9)).errors.join(' | ')).toMatch(/9 shots; at most 8/)
+  it('at most 12 shots (assemble_clips joins at most 12 clips)', () => {
+    expect(validateTvcPlan(plan20(13)).errors.join(' | ')).toMatch(/13 shots; at most 12/)
   })
   it('voiceover blocks never overlap each other', () => {
     expect(errorsFor((p) => { p.voiceover = [{ text: 'New Hya lip duo.', startSeconds: 2 }, { text: 'With SPF thirty.', startSeconds: 2.5 }] })).toMatch(/voiceover blocks 1 and 2 overlap/)
@@ -199,5 +199,81 @@ describe('tvcCreditSteps', () => {
       { kind: 'image', count: 7 }, { kind: 'video', count: 7 }, { kind: 'narration', count: 1 },
       { kind: 'music', count: 1 }, { kind: 'edit', count: 12 },
     ])
+  })
+})
+
+describe('quality rules (P1, P2, P7–P10)', () => {
+  it('P1: generation length covers the shot plus the 0.4s warm-up and margin; line shots get their line', () => {
+    const p = goodPlan()
+    expect(generateSecondsFor({ ...p.shots[1], durationSeconds: 1.2 })).toBe(3)
+    expect(generateSecondsFor({ ...p.shots[1], durationSeconds: 2.5 })).toBe(4)
+    expect(generateSecondsFor({ ...p.shots[6], durationSeconds: 3.1 })).toBe(4)
+    expect(generateSecondsFor({ ...p.shots[6], durationSeconds: 4 })).toBe(5)
+    expect(generateSecondsFor({ ...p.shots[0], line: 'one two three four five six seven eight nine ten eleven twelve' })).toBe(6)
+  })
+  it('P2: continuesFrom must be the previous shot at the same place; the slice chains it and trims from 0', () => {
+    const p = goodPlan()
+    p.shots[4].continuesFrom = 3
+    expect(validateTvcPlan(p).errors.join(' | ')).toMatch(/shot 5 continues from shot 3; it can only continue the shot right before it/)
+    const q = goodPlan()
+    q.shots[4].continuesFrom = 4
+    q.shots[4].location = 1
+    expect(validateTvcPlan(q).errors.join(' | ')).toMatch(/shot 5 continues shot 4 but is at a different place/)
+    const ok = goodPlan()
+    ok.shots[4].continuesFrom = 4
+    expect(validateTvcPlan(ok).errors).toEqual([])
+    const slice = sliceTvcPlan(ok, 'shots 4-5') as { shots: Array<{ n: number; startFromPreviousLastFrame: boolean; trimStartSeconds: number; trimToEnd: boolean }> }
+    expect(slice.shots[1]).toMatchObject({ n: 5, startFromPreviousLastFrame: true, trimStartSeconds: 0 })
+    expect(slice.shots[0]).toMatchObject({ n: 4, trimToEnd: true })
+  })
+  it('P7: a state-changing action needs an endState', () => {
+    const p = goodPlan()
+    p.shots[2].action = 'the cap pops off on the opener'
+    expect(validateTvcPlan(p).errors.join(' | ')).toMatch(/shot 3 changes an object \("the cap pops off on the opener"\); add endState/)
+    p.shots[2].endState = 'the bottle has no cap'
+    expect(validateTvcPlan(p).errors).toEqual([])
+    expect(HARD_ACTION_RE.test('she pours the tea')).toBe(true)
+    expect(HARD_ACTION_RE.test('she smiles')).toBe(false)
+  })
+  it('P8/P9: same angle and neighbouring sizes is a jump cut; same size needs a different angle', () => {
+    const p = goodPlan()
+    p.shots[0].angle = 'eye'; p.shots[1].angle = 'eye'
+    p.shots[2].size = 'close_up'; p.shots[2].angle = 'side'
+    p.shots[3].size = 'close_up'; p.shots[3].angle = 'side'
+    expect(validateTvcPlan(p).errors.join(' | ')).toMatch(/shots 3 and 4 are the same size \(close_up\)/)
+    const q = goodPlan()
+    q.shots[2].angle = 'eye'; q.shots[3].angle = 'eye'
+    q.shots[3].size = 'close_up'
+    q.shots[2].size = 'extreme_close_up'
+    expect(validateTvcPlan(q).errors.join(' | ')).toMatch(/shots 3 and 4 are near-identical framings/)
+    const r = goodPlan()
+    r.shots[2].size = 'medium'; r.shots[2].angle = 'low'
+    r.shots[3].size = 'medium'; r.shots[3].angle = 'eye'
+    expect(validateTvcPlan(r).errors.join(' | ')).not.toMatch(/shots 3 and 4/)
+  })
+  it('P9: minimum shot length — 1.2s, 0.6s with a reference, 0.3s for a flash cut', () => {
+    const p = goodPlan()
+    expect(minShotSeconds(p, p.shots[1])).toBe(1.2)
+    p.brief.reference = { cutTimes: [2, 4] }
+    expect(minShotSeconds(p, p.shots[1])).toBe(0.6)
+    p.shots[1].flashCut = true
+    expect(minShotSeconds(p, p.shots[1])).toBe(0.3)
+  })
+  it('P10: a payoff without a concrete physical action gets a warning', () => {
+    const p = goodPlan()
+    p.shots[5].action = 'she feels joyful and free'
+    expect(validateTvcPlan(p).warnings.join(' | ')).toMatch(/shot 6 is the payoff/)
+    p.shots[5].action = 'she dances and spins all the way around in one direction, 360°'
+    expect(validateTvcPlan(p).warnings.join(' | ')).not.toMatch(/payoff/)
+  })
+  it('P10: a turn must be written as one direction and complete (v5\'s spin reversed mid-way)', () => {
+    const p = goodPlan()
+    p.shots[5].action = 'she dances and twirls'
+    expect(validateTvcPlan(p).errors.join(' | ')).toMatch(/shot 6 has a turn \("she dances and twirls"\); write it as one direction and complete/)
+    p.shots[5].action = 'she spins all the way around in one direction, 360°'
+    expect(validateTvcPlan(p).errors.join(' | ')).not.toMatch(/has a turn/)
+  })
+  it('a plan saved before these fields still validates (Review Focus 3)', () => {
+    expect(validateTvcPlan(goodPlan()).errors).toEqual([])
   })
 })
