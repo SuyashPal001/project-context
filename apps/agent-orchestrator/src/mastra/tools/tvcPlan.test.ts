@@ -319,3 +319,25 @@ describe('places, extras and the shot prompt (P3, P4)', () => {
     expect(slice.shots[0].prompt).toMatch(/Background: students/)
   })
 })
+
+describe('reference fidelity (P5, P6)', () => {
+  it('P5: blocks a product whose type differs from the reference\'s', () => {
+    const p = goodPlan()
+    p.brief.reference = { productType: { material: 'glass', closure: 'crown cap', openedBy: 'bottle opener' } }
+    p.brief.product = { material: 'plastic', closure: 'screw cap', openedBy: 'twist' }
+    expect(validateTvcPlan(p).errors.join(' | ')).toMatch(/REFERENCE_PRODUCT_MISMATCH: the reference uses a glass crown cap product opened with a bottle opener; this product is a plastic screw cap product opened with a twist/)
+    p.brief.product = { material: 'glass', closure: 'Crown cap', openedBy: 'bottle opener' }
+    expect(validateTvcPlan(p).errors.join(' | ')).not.toMatch(/REFERENCE_PRODUCT_MISMATCH/)
+    delete p.brief.product
+    expect(validateTvcPlan(p).errors.join(' | ')).toMatch(/REFERENCE_PRODUCT_MISMATCH: the reference uses a glass crown cap product/)
+  })
+  it('P6: shot boundaries must sit within 0.15s of the reference cuts', () => {
+    const p = goodPlan()
+    p.brief.reference = { cutTimes: [2, 4, 6, 7.5, 9.5, 12] }
+    expect(validateTvcPlan(p).errors.join(' | ')).not.toMatch(/reference/)
+    p.brief.reference = { cutTimes: [2, 4.4, 6, 7.5, 9.5, 12] }
+    expect(validateTvcPlan(p).errors.join(' | ')).toMatch(/the cut after shot 2 is at 4s; the reference cuts at 4.4s/)
+    p.brief.reference = { cutTimes: [2, 4] }
+    expect(validateTvcPlan(p).errors.join(' | ')).toMatch(/the reference has 2 cuts in 15s; this plan has 6/)
+  })
+})

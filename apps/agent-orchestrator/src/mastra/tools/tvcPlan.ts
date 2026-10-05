@@ -267,6 +267,28 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
     if (s.text && s.type !== 'packshot' && countWords(s.text) > 3) errors.push(`the text in shot ${s.n} must be 3 words or fewer`)
   })
 
+  // P5: a recreation copies the reference's product TYPE; only the brand changes.
+  const refType = brief.reference?.productType
+  if (refType) {
+    const norm = (t: ProductType) => `${t.material}|${t.closure.trim().toLowerCase()}|${t.openedBy.trim().toLowerCase()}`
+    const describe = (t: ProductType) => `a ${t.material} ${t.closure.trim().toLowerCase()} product opened with a ${t.openedBy.trim().toLowerCase()}`
+    if (!brief.product || norm(brief.product) !== norm(refType)) {
+      errors.push(`REFERENCE_PRODUCT_MISMATCH: the reference uses ${describe(refType)}; this product is ${brief.product ? describe(brief.product) : 'not described (set brief.product)'}. Copy the reference's product type and change only the brand`)
+    }
+  }
+  // P6: when recreating, shot boundaries follow the reference's real cuts.
+  const refCuts = (brief.reference?.cutTimes ?? []).filter((t) => t < length - EPS).sort((x, y) => x - y)
+  if (refCuts.length) {
+    const boundaries = starts.slice(1)
+    if (boundaries.length !== refCuts.length) {
+      errors.push(`the reference has ${refCuts.length} cuts in ${length}s; this plan has ${boundaries.length}`)
+    } else {
+      boundaries.forEach((b, i) => {
+        if (Math.abs(b - refCuts[i]) > 0.15 + EPS) errors.push(`the cut after shot ${i + 1} is at ${b}s; the reference cuts at ${refCuts[i]}s`)
+      })
+    }
+  }
+
   // Warnings and the India market pack.
   if (brief.market === 'india') {
     shots.forEach((s, i) => {
