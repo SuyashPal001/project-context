@@ -13,10 +13,11 @@ describe('spokenSoFar', () => {
 })
 
 describe('cleanSpokenStart', () => {
-  it('drops leading dots so the model does not invent a lead-in word', () => {
+  it('drops leading dots and ends trailing dots with a full stop', () => {
     expect(cleanSpokenStart('...it actually tastes like a wafer.')).toBe('it actually tastes like a wafer.')
     expect(cleanSpokenStart('… it tastes good')).toBe('it tastes good')
-    expect(cleanSpokenStart('Okay so, and honestly...')).toBe('Okay so, and honestly...')
+    expect(cleanSpokenStart('Okay so, and honestly...')).toBe('Okay so, and honestly.')
+    expect(cleanSpokenStart('Wait... it works.')).toBe('Wait... it works.')
   })
 })
 

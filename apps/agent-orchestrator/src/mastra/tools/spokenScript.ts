@@ -26,9 +26,10 @@ export function spokenSoFar(conversationId: string, fileId: string): string[] | 
   return byFile.get(`${conversationId}:${fileId}`)
 }
 
-/** A line written as the middle of a sentence ("...it actually tastes") makes
- * Omni invent a lead-in word ("No, it actually tastes", 2026-10-05 wafer run).
- * Leading dots are dropped from the spoken line. */
+/** A line written as part of a sentence split across scenes makes Omni fill
+ * the gap (2026-10-05 wafer run): "...it actually tastes" came out as
+ * "No, it actually tastes", and "and honestly..." trailed into a 1.1s silent
+ * smile. Leading dots are dropped and trailing dots become a full stop. */
 export function cleanSpokenStart(line: string): string {
-  return line.replace(/^\s*(?:\.{2,}|…)\s*/, '')
+  return line.replace(/^\s*(?:\.{2,}|…)\s*/, '').replace(/\s*(?:\.{2,}|…)\s*$/, '.')
 }
