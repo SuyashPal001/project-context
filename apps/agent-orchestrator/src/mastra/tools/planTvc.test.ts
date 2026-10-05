@@ -168,6 +168,11 @@ describe('record refuses unchecked stills (spec 3.3)', () => {
     expect(errors).toEqual([])
     expect((await runPlanTvc({ action: 'record', planFileId: planFileId!, records: [{ shot: 2, stillFileId: 's2' }] }, deps)).refusalReason).toMatch(/^CONTINUING_SHOT_HAS_NO_STILL/)
   })
+  it('a still on a nonexistent shot gets NO_SUCH_SHOT, not STILL_NOT_CHECKED', async () => {
+    const { deps } = fakeDeps()
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    expect((await runPlanTvc({ action: 'record', planFileId: planFileId!, records: [{ shot: 9, stillFileId: 'bad' }] }, deps)).refusalReason).toBe('NO_SUCH_SHOT')
+  })
 })
 
 describe('runPlanTvc lock', () => {

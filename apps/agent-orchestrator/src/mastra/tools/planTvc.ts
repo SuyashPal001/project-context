@@ -130,7 +130,8 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
   for (const r of records) {
     if (!r.stillFileId) continue
     const shot = doc.plan.shots.find((s) => s.n === r.shot)
-    if (shot?.continuesFrom !== undefined) return { refused: true, refusalReason: `CONTINUING_SHOT_HAS_NO_STILL: shot ${r.shot} starts from shot ${shot.continuesFrom}'s last frame; record its clip only` }
+    if (!shot) return { refused: true, refusalReason: 'NO_SUCH_SHOT' }
+    if (shot.continuesFrom !== undefined) return { refused: true, refusalReason: `CONTINUING_SHOT_HAS_NO_STILL: shot ${r.shot} starts from shot ${shot.continuesFrom}'s last frame; record its clip only` }
     if (!r.keptByUser && !deps.stillChecked(r.stillFileId)) return { refused: true, refusalReason: `STILL_NOT_CHECKED: run check_still on shot ${r.shot}'s still first (or record it with keptByUser when the user chose to keep it)` }
   }
   let next: TvcPlan = doc.plan
