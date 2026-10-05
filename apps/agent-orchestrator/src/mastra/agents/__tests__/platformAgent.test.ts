@@ -99,6 +99,7 @@ describe('platformAgent instructions — Official skill pointers', () => {
     expect(text).toContain('## Official skills')
     expect(text).toMatch(/load the UGC avatar creator skill/i)
     expect(text).toMatch(/load the Talking head skill/i)
+    expect(text).toMatch(/load the TVC ad skill/i)
   })
 
   it('asks which kind of avatar on a plain request even with no avatar skill turned on', async () => {
@@ -327,6 +328,21 @@ describe('picked library avatars keep their category\'s look', () => {
     expect(text).toMatch(/If more than one avatar skill .* is turned on and the user has not said which kind of avatar they want/)
     expect(text).toMatch(/What kind of avatar do you want\?/)
     expect(text).toMatch(/follow only the chosen skill/)
+  })
+})
+
+describe('TVC ad routing', () => {
+  it('offers a TV commercial in the ad-type question and routes TVC avatars to the TVC ad', async () => {
+    const requestContext = new RequestContext()
+    requestContext.set('agentSystemPrompt', 'Base override text.')
+    const instructions = await platformAgent.getInstructions({ requestContext })
+    // FLOW_SKILLS_TEXT is defined at the top of this test file (the skill bodies Olmo loads).
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_SKILLS_TEXT
+    expect(text).toMatch(/"TV commercial — polished shots, voiceover and a product ending"/)
+    expect(text).toMatch(/"Avatar category: TVC"[^]*route it to the TVC ad skill/)
+    // The shipped rules stay (additive change).
+    expect(text).toMatch(/"Talking-head — one person talks to camera/)
+    expect(text).toMatch(/"Avatar category: TVC"[^]*never the phone-selfie UGC look/)
   })
 })
 
