@@ -29,6 +29,43 @@ describe('OFFICIAL_SKILLS', () => {
     expect(director).toMatch(/at most 12 overlays/);
   });
 
+  it('tvc-ad follows the final-review rulings', () => {
+    const tvc = OFFICIAL_SKILLS.find((s) => s.slug === 'tvc-ad')!;
+    const card = readFileSync(tvc.file, 'utf8');
+    const director = readFileSync(tvc.director!.file, 'utf8');
+    // Lengths and voice.
+    expect(card).toMatch(/6 and 20 are also possible/);
+    expect(card).not.toMatch(/30 are also possible/);
+    expect(card).toMatch(/list_casting_assets with kind "voice"/);
+    expect(card).toMatch(/"Voice ID: <id>" in the "step: plan" delegation/);
+    expect(card).toMatch(/the avatar's file id/);
+    expect(director).toMatch(/"Voice ID: <id>", write that id exactly into brief\.voiceId/);
+    expect(director).toMatch(/voiceId exactly brief\.voiceId and targetSeconds = the block's words divided by 2\.7/);
+    // One moment per delegation, keep = next moment, redo = redo shot; Auto mode.
+    expect(card).toMatch(/Delegate one moment at a time/);
+    expect(card).toMatch(/Keeping it means delegating the next moment \(Director has already saved it\); a redo is "step: redo shot <n>"/);
+    expect(card).toMatch(/Auto mode: In Auto mode[^]*"auto: continue"/);
+    expect(director).toMatch(/Make ONE moment per delegation/);
+    expect(director).toMatch(/Auto mode \(supersedes[^]*"auto: continue"/);
+    // A failed check is still trimmed and recorded; line shots re-checked after the trim.
+    expect(director).toMatch(/Still trim and record that clip, then stop/);
+    expect(director).toMatch(/check_clip the TRIMMED clip with expectedLine/);
+    // The rules the check enforces, stills batches and references, one record call.
+    expect(director).toMatch(/at most 8 shots/);
+    expect(director).toMatch(/generate_images in batches of at most 4 shots/);
+    expect(director).toMatch(/including product_macro, superpower and packshot stills and every shot of a mood ad/);
+    expect(director).toMatch(/in one record call with records/);
+    // Minor fixes.
+    expect(director).toMatch(/noPerson true when no face is visible/);
+    expect(director).not.toMatch(/"No one speaks\."/);
+    expect(director).toMatch(/no voiceover blocks, skip generate_narration and mix_voiceover/);
+    expect(director).toMatch(/reuse them; if not, generate_narration/);
+    expect(director).toMatch(/songFileId, reuse it; if not, generate_song/);
+    expect(director).toMatch(/position bottom, size small/);
+    expect(director).toMatch(/position center, size large/);
+    expect(director).toMatch(/position top, size medium/);
+  });
+
   it('each entry file exists and is non-empty', () => {
     for (const entry of OFFICIAL_SKILLS) {
       expect(existsSync(entry.file)).toBe(true);
