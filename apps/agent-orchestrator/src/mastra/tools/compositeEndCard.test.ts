@@ -32,15 +32,19 @@ describe('end card column (O1)', () => {
 })
 
 describe('endCardGraph avoidFaces override (O1)', () => {
-  it('uses the card override scale and position when given', () => {
+  it('uses the card override scale and position when given, with no bg/blur layer (F2)', () => {
     const g = endCardGraph(1080, 1920, 5, 0, { scale: '360:1536', x: cardOverlayX('right') })
-    expect(g).toContain('[fgsrc]scale=360:1536:force_original_aspect_ratio=decrease[fg]')
-    expect(g).toContain('[bg][fg]overlay=W-w-W*0.04:(H-h)/2')
+    expect(g).toContain('[1:v]scale=360:1536:force_original_aspect_ratio=decrease,format=rgba')
+    expect(g).toContain("overlay=W-w-W*0.04:(H-h)/2:enable='gte(t,5)'[outv]")
+    expect(g).not.toContain('[bg]')
+    expect(g).not.toContain('boxblur')
+    expect(g).not.toContain('split')
   })
-  it('keeps the default centered 86%-width box when no override is given', () => {
+  it('keeps the default centered 86%-width box (with the bg/blur layer) when no override is given', () => {
     const g = endCardGraph(1080, 1920, 5)
     expect(g).toContain('[fgsrc]scale=928:1920[fg]')
     expect(g).toContain('[bg][fg]overlay=(W-w)/2:(H-h)/2')
+    expect(g).toContain('boxblur')
   })
 })
 

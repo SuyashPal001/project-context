@@ -44,13 +44,23 @@ export function endCardGraph(width: number, height: number, dissolveStart: numbe
   // holdSeconds > 0: the clip's last frame holds that long and the card comes
   // in over the hold, so it never covers a presenter's last words.
   const base = holdSeconds > 0 ? `[0:v]tpad=stop_mode=clone:stop_duration=${holdSeconds}[base];` : ''
-  const fgScale = card ? `scale=${card.scale}:force_original_aspect_ratio=decrease` : `scale=${fit}:${height}`
-  const overlayX = card ? card.x : '(W-w)/2'
+  const baseLabel = holdSeconds > 0 ? '[base]' : '[0:v]'
+  // F2: when a face override is in effect (avoidFaces found a face and chose
+  // a side column or shrink), the full-frame blurred [bg] layer is dropped —
+  // it is opaque and fills the whole frame, so even a shrunk, side-column
+  // [fg] sitting on top of it still hides the face underneath. The override
+  // lays the scaled [fg] straight over the base video instead (the pre-merge
+  // shape). With no override, the default centred 86% card with [bg] is
+  // unchanged.
+  if (card) {
+    return base + `[1:v]scale=${card.scale}:force_original_aspect_ratio=decrease,format=rgba,fade=t=in:st=${dissolveStart}:d=${DISSOLVE_DURATION_SECONDS}:alpha=1[card];` +
+      `${baseLabel}[card]overlay=${card.x}:(H-h)/2:enable='gte(t,${dissolveStart})'[outv]`
+  }
   return base + `[1:v]split[bgsrc][fgsrc];` +
     `[bgsrc]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=40:2,eq=brightness=-0.12[bg];` +
-    `[fgsrc]${fgScale}[fg];` +
-    `[bg][fg]overlay=${overlayX}:(H-h)/2,format=rgba,fade=t=in:st=${dissolveStart}:d=${DISSOLVE_DURATION_SECONDS}:alpha=1[card];` +
-    `${holdSeconds > 0 ? '[base]' : '[0:v]'}[card]overlay=0:0:enable='gte(t,${dissolveStart})'[outv]`
+    `[fgsrc]scale=${fit}:${height}[fg];` +
+    `[bg][fg]overlay=(W-w)/2:(H-h)/2,format=rgba,fade=t=in:st=${dissolveStart}:d=${DISSOLVE_DURATION_SECONDS}:alpha=1[card];` +
+    `${baseLabel}[card]overlay=0:0:enable='gte(t,${dissolveStart})'[outv]`
 }
 
 // Deviation from the spec, stated explicitly per the writing-plans
