@@ -26,7 +26,7 @@ vi.mock('node:fs', async (importOriginal) => {
 })
 import * as fs from 'node:fs'
 
-import { inputSchema, escapeAssText, formatAssTimestamp, buildAss, overlayText } from './overlayText.js'
+import { inputSchema, escapeAssText, formatAssTimestamp, buildAss, overlayText, applyFacePlacement } from './overlayText.js'
 
 function ctx(values: Record<string, string>) {
   const requestContext = new RequestContext()
@@ -143,5 +143,20 @@ describe('overlayText execute', () => {
     expect(result).toMatchObject({ fileId: 'out1', fileType: 'video/mp4', creditsUsedMicro: '1000' })
     const args = execFile.mock.calls[0][1] as string[]
     expect(args[args.indexOf('-vf') + 1]).toMatch(/^subtitles=.*overlay\.ass$/)
+  })
+})
+
+describe('avoidFaces placement (O1)', () => {
+  it('moves an overlay off a face and shrinks when no band is free', () => {
+    const out = applyFacePlacement(
+      [{ text: 'bubbli', startSeconds: 12, endSeconds: 14.8, position: 'center', size: 'large' }, { text: 'hi', startSeconds: 0, endSeconds: 1, position: 'top' }],
+      [[{ x0: 0.4, y0: 0.4, x1: 0.6, y1: 0.6 }], [{ x0: 0, y0: 0, x1: 1, y1: 1 }]],
+    )
+    expect(out[0]).toMatchObject({ position: 'top', size: 'large' })
+    expect(out[1]).toMatchObject({ position: 'top', size: 'small' })
+  })
+  it('keeps the requested placement when face detection gave nothing (Review Focus 5)', () => {
+    const out = applyFacePlacement([{ text: 'x', startSeconds: 0, endSeconds: 1, position: 'bottom' }], [null])
+    expect(out[0].position).toBe('bottom')
   })
 })

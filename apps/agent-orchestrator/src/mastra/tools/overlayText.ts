@@ -11,6 +11,7 @@ import { fetchPresignedUrl, downloadToSessionCache } from './mediaCache.js'
 import { refundOverlayTextCharge } from './overlayTextCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
+import { chooseTextPosition, faceBoxes, gatewayAsk, sampleFrames, type Box } from './tvcChecks.js'
 
 const execFile = promisify(execFileCb)
 
@@ -57,6 +58,16 @@ export function formatAssTimestamp(seconds: number): string {
   return `${h}:${pad(m)}:${pad(s)}.${pad(cs)}`
 }
 
+/** O1: per overlay, the faces found in its window (null = detection failed → keep the request). */
+export function applyFacePlacement(overlays: TextOverlay[], facesPerOverlay: Array<Box[] | null>): TextOverlay[] {
+  return overlays.map((o, i) => {
+    const faces = facesPerOverlay[i]
+    if (!faces) return o
+    const { position, shrink } = chooseTextPosition(faces, o.position)
+    return { ...o, position, ...(shrink ? { size: 'small' as const } : {}) }
+  })
+}
+
 export function buildAss(overlays: TextOverlay[]): string {
   const styles = (Object.keys(ALIGNMENTS) as (keyof typeof ALIGNMENTS)[])
     .flatMap((pos) => (Object.keys(FONT_SIZES) as (keyof typeof FONT_SIZES)[]).map((size) =>
@@ -91,6 +102,7 @@ const outputSchema = z.object({
   insufficientCredits: z.boolean().optional(),
   creditsUsedMicro: z.string().optional(),
   jobId: z.string().optional(),
+  positions: z.array(z.string()).optional(),
 })
 
 export const inputSchema = z.object({
@@ -103,6 +115,7 @@ export const inputSchema = z.object({
     size: z.enum(['small', 'medium', 'large']).optional().describe('Defaults to medium.'),
   }).refine((o) => o.endSeconds > o.startSeconds, { message: 'endSeconds must be greater than startSeconds' }))
     .min(1).max(12),
+  avoidFaces: z.boolean().optional().describe('Keep the text off faces: finds faces in each overlay\'s time window and moves it to a clear band (TVC tagline and end card)'),
 })
 
 export const overlayText = createTool({
@@ -113,7 +126,7 @@ export const overlayText = createTool({
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'clip_assembly', subject: OVERLAY_SUBJECT }, ctx),
   execute: async (inputData, execContext) => {
-    const { videoFileId, overlays } = inputData as z.infer<typeof inputSchema>
+    const { videoFileId, overlays, avoidFaces } = inputData as z.infer<typeof inputSchema>
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined
@@ -138,6 +151,25 @@ export const overlayText = createTool({
     } catch (err) {
       console.error(`[session:${sessionId}] overlayText: failed to download source:`, (err as Error).message)
       return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE', jobId }
+    }
+
+    let placed = overlays
+    if (avoidFaces) {
+      const faceDir = mkdtempSync(join(tmpdir(), 'overlay-faces-'))
+      try {
+        const ask = gatewayAsk(tenantId)
+        const faces = await Promise.all(overlays.map(async (o) => {
+          try {
+            const [frame] = await sampleFrames(videoPath, [Math.round(((o.startSeconds + o.endSeconds) / 2) * 100) / 100], faceDir)
+            return await faceBoxes(ask, frame)
+          } catch {
+            return null
+          }
+        }))
+        placed = applyFacePlacement(overlays, faces)
+      } finally {
+        rmSync(faceDir, { recursive: true, force: true })
+      }
     }
 
     const attempt = 0
@@ -179,7 +211,7 @@ export const overlayText = createTool({
     const outputPath = join(workDir, 'overlaid.mp4')
     try {
       const assPath = join(workDir, 'overlay.ass')
-      writeFileSync(assPath, buildAss(overlays))
+      writeFileSync(assPath, buildAss(placed))
       const escapedAssPath = assPath.replace(/\\/g, '\\\\').replace(/:/g, '\\:')
       await execFile('ffmpeg', [
         '-y', '-i', videoPath,
@@ -234,6 +266,7 @@ export const overlayText = createTool({
       fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size,
       ...(charged ? { creditsUsedMicro: amountMicro.toString() } : {}),
       jobId,
+      positions: placed.map((o) => o.position),
     }
   },
 })

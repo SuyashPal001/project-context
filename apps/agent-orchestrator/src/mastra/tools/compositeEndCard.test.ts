@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { RequestContext } from '@mastra/core/request-context'
-import { inputSchema, endCardGraph } from './compositeEndCard.js'
+import { inputSchema, endCardGraph, cardOverlayX } from './compositeEndCard.js'
 
 describe('compositeEndCard inputSchema', () => {
   it('requires videoFileId, productPhotoFileId, and aspectRatio', () => {
@@ -20,6 +20,27 @@ describe('endCardGraph hold', () => {
   it('keeps the old graph with no hold', () => {
     expect(endCardGraph(1080, 1920, 5)).not.toContain('tpad')
     expect(endCardGraph(1080, 1920, 5)).toContain('[0:v][card]overlay')
+  })
+})
+
+describe('end card column (O1)', () => {
+  it('centre, or a side third clear of the face', () => {
+    expect(cardOverlayX('center')).toBe('(W-w)/2')
+    expect(cardOverlayX('left')).toBe('W*0.04')
+    expect(cardOverlayX('right')).toBe('W-w-W*0.04')
+  })
+})
+
+describe('endCardGraph avoidFaces override (O1)', () => {
+  it('uses the card override scale and position when given', () => {
+    const g = endCardGraph(1080, 1920, 5, 0, { scale: '360:1536', x: cardOverlayX('right') })
+    expect(g).toContain('[fgsrc]scale=360:1536:force_original_aspect_ratio=decrease[fg]')
+    expect(g).toContain('[bg][fg]overlay=W-w-W*0.04:(H-h)/2')
+  })
+  it('keeps the default centered 86%-width box when no override is given', () => {
+    const g = endCardGraph(1080, 1920, 5)
+    expect(g).toContain('[fgsrc]scale=928:1920[fg]')
+    expect(g).toContain('[bg][fg]overlay=(W-w)/2:(H-h)/2')
   })
 })
 
@@ -45,6 +66,10 @@ vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>()
   return { ...actual, readFileSync: vi.fn(actual.readFileSync) }
 })
+const { sampleFrames, faceBoxes, gatewayAsk, chooseCardColumn } = vi.hoisted(() => ({
+  sampleFrames: vi.fn(), faceBoxes: vi.fn(), gatewayAsk: vi.fn(), chooseCardColumn: vi.fn(),
+}))
+vi.mock('./tvcChecks.js', () => ({ sampleFrames, faceBoxes, gatewayAsk, chooseCardColumn }))
 
 describe('compositeEndCard execute — ffmpeg invocation', () => {
   it('places -loop/-framerate/-t before the photo\'s -i flag, not after', async () => {
@@ -98,5 +123,64 @@ describe('compositeEndCard execute — ffmpeg invocation', () => {
     expect(loopIndex).toBeLessThan(photoIndex)
     expect(framerateIndex).toBeLessThan(photoIndex)
     expect(tIndex).toBeLessThan(photoIndex)
+  })
+})
+
+describe('compositeEndCard avoidFaces (O1)', () => {
+  async function run(avoidFaces: boolean) {
+    const { compositeEndCard } = await import('./compositeEndCard.js')
+    const { uploadGeneratedFile } = await import('../../persistence.js')
+    const fs = await import('node:fs')
+
+    vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from('fake-mp4'))
+    isUnlimited.mockResolvedValue(false)
+    resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 1_000 } })
+    shouldRequireApproval.mockResolvedValue(false)
+    fetchPresignedUrl.mockImplementation(async (fileId: string) => `https://cdn.example/${fileId}`)
+    downloadToSessionCache.mockImplementation(async (_scope: string, fileId: string) => ({
+      filePath: `/tmp/${fileId}.mp4`, buf: Buffer.from('x'), mimeType: 'video/mp4',
+    }))
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({
+      fileId: 'carded1', name: 'carded.mp4', type: 'video/mp4', size: 8,
+    })
+    execFile.mockImplementation((cmd: string, _args: string[], _opts: unknown, cb: (err: Error | null, res: { stdout: string; stderr: string }) => void) => {
+      if (cmd === 'ffprobe') {
+        cb(null, { stdout: JSON.stringify({ streams: [{ width: 1080, height: 1920 }], format: { duration: '10.0' } }), stderr: '' })
+        return
+      }
+      cb(null, { stdout: '', stderr: '' })
+    })
+
+    const requestContext = new RequestContext()
+    for (const [k, v] of Object.entries({ tenantId: 't1', agentId: 'a1', conversationId: 'c1', idToken: 'tok' })) requestContext.set(k, v)
+
+    await compositeEndCard.execute!(
+      { videoFileId: 'v1', productPhotoFileId: 'p1', aspectRatio: '9:16', avoidFaces } as never,
+      { requestContext, agent: { toolCallId: 'call-1' } } as never,
+    )
+    const ffmpegCalls = execFile.mock.calls.filter(call => call[0] === 'ffmpeg')
+    const args = ffmpegCalls[ffmpegCalls.length - 1][1] as string[]
+    return args[args.indexOf('-filter_complex') + 1]
+  }
+
+  it('shrinks and moves the card into the clear third when a face is found', async () => {
+    sampleFrames.mockResolvedValueOnce([{ data: 'xx', mime: 'image/jpeg' }])
+    faceBoxes.mockResolvedValueOnce([{ x0: 0.4, y0: 0.1, x1: 0.6, y1: 0.4 }])
+    gatewayAsk.mockReturnValueOnce(async () => ({}))
+    chooseCardColumn.mockReturnValueOnce('left')
+
+    const filterComplex = await run(true)
+    expect(filterComplex).toContain('scale=360:1536:force_original_aspect_ratio=decrease')
+    expect(filterComplex).toContain('overlay=W*0.04:(H-h)/2')
+  })
+
+  it('keeps the default centered card when face detection throws (Review Focus 5)', async () => {
+    chooseCardColumn.mockClear()
+    sampleFrames.mockImplementationOnce(() => { throw new Error('ffmpeg sampling failed') })
+
+    const filterComplex = await run(true)
+    expect(filterComplex).toContain('scale=928:1920[fg]')
+    expect(filterComplex).toContain('overlay=(W-w)/2:(H-h)/2')
+    expect(chooseCardColumn).not.toHaveBeenCalled()
   })
 })

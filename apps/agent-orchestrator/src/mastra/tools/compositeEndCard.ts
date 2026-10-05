@@ -11,6 +11,7 @@ import { fetchPresignedUrl, downloadToSessionCache } from './mediaCache.js'
 import { refundCompositeEndCardCharge } from './compositeEndCardCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
+import { chooseCardColumn, faceBoxes, gatewayAsk, sampleFrames } from './tvcChecks.js'
 
 const execFile = promisify(execFileCb)
 
@@ -25,18 +26,30 @@ const MAX_SOURCE_BYTES = 200 * 1024 * 1024
 const DISSOLVE_WINDOW_SECONDS = 1.5
 const DISSOLVE_DURATION_SECONDS = 0.4
 
+/** O1: the column an end card's fitted box sits in, and its ffmpeg overlay x
+ * expression — a side third stays clear of a face detected in the other two
+ * thirds (see chooseCardColumn in tvcChecks.ts). */
+export function cardOverlayX(column: 'center' | 'left' | 'right'): string {
+  return column === 'left' ? 'W*0.04' : column === 'right' ? 'W-w-W*0.04' : '(W-w)/2'
+}
+
 /** A full-frame card: the photo blurred and dimmed to fill the frame behind
  * the photo itself, fitted to 86% of the width. Scaling the photo alone left
- * a white-backed product shot pasted as a box over the scene (2026-10-05). */
-export function endCardGraph(width: number, height: number, dissolveStart: number, holdSeconds = 0): string {
+ * a white-backed product shot pasted as a box over the scene (2026-10-05).
+ * `card`, when given (O1, avoidFaces with a face detected), overrides the
+ * fitted box's size and horizontal position so it sits in a side third away
+ * from the face instead of the default centered 86%-width box. */
+export function endCardGraph(width: number, height: number, dissolveStart: number, holdSeconds = 0, card?: { scale: string; x: string }): string {
   const fit = Math.round(width * 0.86 / 2) * 2
   // holdSeconds > 0: the clip's last frame holds that long and the card comes
   // in over the hold, so it never covers a presenter's last words.
   const base = holdSeconds > 0 ? `[0:v]tpad=stop_mode=clone:stop_duration=${holdSeconds}[base];` : ''
+  const fgScale = card ? `scale=${card.scale}:force_original_aspect_ratio=decrease` : `scale=${fit}:${height}`
+  const overlayX = card ? card.x : '(W-w)/2'
   return base + `[1:v]split[bgsrc][fgsrc];` +
     `[bgsrc]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=40:2,eq=brightness=-0.12[bg];` +
-    `[fgsrc]scale=${fit}:${height}:force_original_aspect_ratio=decrease[fg];` +
-    `[bg][fg]overlay=(W-w)/2:(H-h)/2,format=rgba,fade=t=in:st=${dissolveStart}:d=${DISSOLVE_DURATION_SECONDS}:alpha=1[card];` +
+    `[fgsrc]${fgScale}[fg];` +
+    `[bg][fg]overlay=${overlayX}:(H-h)/2,format=rgba,fade=t=in:st=${dissolveStart}:d=${DISSOLVE_DURATION_SECONDS}:alpha=1[card];` +
     `${holdSeconds > 0 ? '[base]' : '[0:v]'}[card]overlay=0:0:enable='gte(t,${dissolveStart})'[outv]`
 }
 
@@ -75,6 +88,7 @@ export const inputSchema = z.object({
   productPhotoFileId: z.string().describe('The real, unedited product photo — never an AI-rendered one, to avoid wordmark garbling.'),
   aspectRatio: z.enum(['16:9', '9:16']),
   holdSeconds: z.number().min(0).max(3).optional().describe('For an ad that ends on speech (UGC, talking-head): seconds added after the video ends, its last frame held, with the card dissolving in as the video ends, so the card never covers the last words. Omit for the animated ad\'s beat 4.'),
+  avoidFaces: z.boolean().optional().describe('When a person is on the last frame, shrink the card to a third and put it beside them, never over a face'),
 })
 
 export const compositeEndCard = createTool({
@@ -85,7 +99,7 @@ export const compositeEndCard = createTool({
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'clip_assembly', subject: COMPOSITE_SUBJECT }, ctx),
   execute: async (inputData, execContext) => {
-    const { videoFileId, productPhotoFileId, aspectRatio, holdSeconds = 0 } = inputData as z.infer<typeof inputSchema>
+    const { videoFileId, productPhotoFileId, aspectRatio, holdSeconds = 0, avoidFaces } = inputData as z.infer<typeof inputSchema>
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined
@@ -191,7 +205,26 @@ export const compositeEndCard = createTool({
       const videoWidth = probedW || nominalW
       const videoHeight = probedH || nominalH
 
-      const filterComplex = endCardGraph(videoWidth, videoHeight, dissolveStart, holdSeconds)
+      // O1: a face on the last frame keeps the card from covering it — shrink
+      // to a third and move it into whichever side third is clear. Any
+      // failure here (gateway, sampling, parse) keeps the default centered
+      // 86%-width card; it must never fail the composite.
+      let cardOverride: { scale: string; x: string } | undefined
+      if (avoidFaces) {
+        try {
+          const [frame] = await sampleFrames(videoPath, [Math.min(clipDurationSeconds - 0.05, dissolveStart + 0.2)], workDir)
+          const faces = await faceBoxes(gatewayAsk(tenantId), frame)
+          if (faces.length) {
+            const column = chooseCardColumn(faces)
+            const cardScale = `${Math.round(videoWidth / 3)}:${Math.round(videoHeight * 0.8)}`
+            cardOverride = { scale: cardScale, x: cardOverlayX(column) }
+          }
+        } catch (err) {
+          console.warn(`[session:${sessionId}] compositeEndCard: face check failed, keeping the centred card:`, (err as Error).message)
+        }
+      }
+
+      const filterComplex = endCardGraph(videoWidth, videoHeight, dissolveStart, holdSeconds, cardOverride)
 
       // A plain image input (-i photoPath with no -loop) is a single frame
       // at PTS 0 with no real duration — fade's st=/d= timestamps and
