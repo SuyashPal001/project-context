@@ -8,7 +8,8 @@ import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { useRouter, useParams } from "next/navigation";
 import { ThinkingIndicator } from "./ThinkingIndicator";
-import { AwaitingApprovalContext, extractResultFiles } from "./ToolCallCard";
+import { AwaitingApprovalContext, extractResultFiles, withoutRepeatedTraceFiles } from "./ToolCallCard";
+import { InlineAttachmentCard } from "./InlineAttachmentCard";
 import { MessageItem, messageHasDisplayedContent } from "./MessageItem";
 import { findPendingClarification, findPendingGenerationConfirm, findPendingUpload } from "./pendingRequests";
 import { ClarificationCard } from "./ClarificationCard";
@@ -131,6 +132,15 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
         ...(pendingGenerationConfirm ? [{ kind: 'generationConfirm' as const, message: pendingGenerationConfirm.message }] : []),
         ...(pendingUpload ? [{ kind: 'upload' as const, message: pendingUpload.message }] : []),
     ];
+    // The question overlay covers the chat, so the pictures the question is
+    // about (a storyboard to approve) sat hidden behind it (2026-10-05: "where
+    // is story board i dont see any of it"). The files this turn made or showed
+    // are shown inside the overlay, above the question.
+    const overlayFiles = pendingClarification
+        ? Array.from(new Map(withoutRepeatedTraceFiles(isStreaming ? (completedToolCalls ?? []) : (pendingClarification.message.completedTrace?.toolCalls ?? []))
+            .flatMap(tc => extractResultFiles(tc.toolName, tc.result))
+            .map(f => [f.fileId, f] as const)).values()).slice(-12)
+        : [];
     const activeOverlay = overlayCandidates.length > 0
         ? overlayCandidates.reduce((a, b) => (messages.indexOf(a.message) <= messages.indexOf(b.message) ? a : b)).kind
         : null;
@@ -462,7 +472,18 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
             // Anchored toward the bottom of the panel (near where ChatInput sits just
             // below this wrapper) rather than dead-center, so it reads as the next
             // step in the conversation instead of a modal dropped in empty space.
-            <div className="absolute inset-0 z-40 flex items-end justify-center pb-6 bg-background/90 backdrop-blur-sm px-4">
+            <div className="absolute inset-0 z-40 flex flex-col items-center justify-end pb-6 bg-background/90 backdrop-blur-sm px-4">
+                {overlayFiles.length > 0 && (
+                    <div className="w-full max-w-3xl flex flex-wrap justify-center gap-2 max-h-[45%] overflow-y-auto" data-testid="clarification-files">
+                        {overlayFiles.map(f => (
+                            <InlineAttachmentCard
+                                key={f.fileId}
+                                file={{ id: f.fileId, fileId: f.fileId, name: f.name, type: f.fileType, size: f.size }}
+                                url={freshUrls[f.fileId] ?? null}
+                            />
+                        ))}
+                    </div>
+                )}
                 <ClarificationCard
                     key={pendingClarification.request.id}
                     request={pendingClarification.request}

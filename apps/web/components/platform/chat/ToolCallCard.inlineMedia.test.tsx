@@ -34,6 +34,19 @@ describe('extractResultFiles', () => {
     expect(extractResultFiles('generate_image', { refused: true, refusalReason: 'SAFETY' })).toEqual([]);
   });
 
+  it('reads the images a delegate made and showed, once each', () => {
+    const files = extractResultFiles('agent-director', {
+      text: 'Here is the storyboard',
+      subAgentToolResults: [
+        { toolName: 'skill', result: '## rules' },
+        { toolName: 'generate_image', result: { fileId: 'b1', name: 'Beat 1.png', fileType: 'image/png' } },
+        { toolName: 'generate_images', result: { results: [{ fileId: 'b2', name: 'Beat 2.png', fileType: 'image/png' }] } },
+        { toolName: 'show_files', result: { files: [{ fileId: 'b1', name: 'Beat 1.png', fileType: 'image/png' }] } },
+      ],
+    });
+    expect(files.map(f => f.fileId)).toEqual(['b1', 'b2']);
+  });
+
   it('returns empty for a non-media, non-show_files tool', () => {
     expect(extractResultFiles('web_search', { fileId: 'f1' })).toEqual([]);
   });

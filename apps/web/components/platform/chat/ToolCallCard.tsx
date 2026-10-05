@@ -50,6 +50,21 @@ export function extractResultFiles(
   result: Record<string, unknown> | undefined,
 ): Array<{ fileId: string; name: string; fileType: string; size?: number }> {
   if (!result) return [];
+  // A delegate's own generate_image/show_files calls never reach the browser as
+  // separate tool calls: their results ride inside the delegate's result as
+  // subAgentToolResults. Without reading them here, a storyboard the Director
+  // made and showed stayed invisible until the turn ended, and a turn that
+  // stops on a question never ends (2026-10-05 animated ad: "where is story
+  // board i dont see any of it").
+  if (isDirectorDelegateTool(toolName) || isProducerDelegateTool(toolName)) {
+    const inner = Array.isArray(result.subAgentToolResults) ? result.subAgentToolResults as Array<Record<string, unknown>> : [];
+    const byId = new Map<string, { fileId: string; name: string; fileType: string; size?: number }>();
+    for (const entry of inner) {
+      if (typeof entry.toolName !== 'string' || !entry.result || typeof entry.result !== 'object') continue;
+      for (const f of extractResultFiles(entry.toolName, entry.result as Record<string, unknown>)) if (!byId.has(f.fileId)) byId.set(f.fileId, f);
+    }
+    return [...byId.values()];
+  }
   if (!isMediaGenTool(toolName) && toolName !== 'show_files') return [];
 
   const toEntry = (entry: Record<string, unknown>): { fileId: string; name: string; fileType: string; size?: number } | null => {
@@ -509,6 +524,15 @@ export function withoutRepeatedTraceFiles<T extends { toolName: string; result?:
       files.forEach(f => seen.add(f.fileId));
       if (fresh.length === 0) continue;
       out.push({ ...item, result: { ...item.result, files: fresh } });
+      continue;
+    }
+    // A delegate's result repeats every file its own calls made, and those were
+    // already relayed one by one as they finished: keep only the new ones.
+    if ((isDirectorDelegateTool(item.toolName) || isProducerDelegateTool(item.toolName)) && files.length > 0) {
+      const entries = (item.result!.subAgentToolResults as Array<Record<string, unknown>>)
+        .filter(e => typeof e.toolName === 'string' && extractResultFiles(e.toolName, e.result as Record<string, unknown> | undefined).some(f => !seen.has(f.fileId)));
+      files.forEach(f => seen.add(f.fileId));
+      out.push({ ...item, result: { ...item.result, subAgentToolResults: entries } });
       continue;
     }
     files.forEach(f => seen.add(f.fileId));
