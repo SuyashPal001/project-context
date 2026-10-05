@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { joinFades, keepSegments, parseSilences } from './tightenPauses.js'
+import { joinFades, keepSegments, silenceThreshold, parseSilences } from './tightenPauses.js'
 
 describe('tighten_pauses segments', () => {
   // The Naina run (2026-10-05): 0.6s silent start, a 1.3s pause before the
@@ -15,8 +15,8 @@ describe('tighten_pauses segments', () => {
     const keep = keepSegments(silences, 18.005)
     expect(keep).toHaveLength(2)
     expect(keep[0][0]).toBeCloseTo(0.4925, 3)
-    expect(keep[0][1]).toBeCloseTo(14.2242, 3)
-    expect(keep[1][0]).toBeCloseTo(15.2501, 3)
+    expect(keep[0][1]).toBeCloseTo(14.1942, 3)
+    expect(keep[1][0]).toBeCloseTo(15.2801, 3)
     expect(keep[1][1]).toBeCloseTo(16.8789, 3)
   })
 
@@ -30,5 +30,13 @@ describe('joinFades', () => {
     expect(joinFades(0, 1, 5)).toBe('')
     expect(joinFades(0, 2, 5)).toBe(',afade=t=out:st=4.980:d=0.020')
     expect(joinFades(1, 2, 3)).toBe(',afade=t=in:d=0.020')
+  })
+})
+
+describe('silenceThreshold', () => {
+  it('sits 5dB under the clip mean, clamped', () => {
+    expect(silenceThreshold('[Parsed_volumedetect_0] mean_volume: -24.7 dB\nmax_volume: -5.6 dB')).toBe(-30)
+    expect(silenceThreshold('mean_volume: -60.0 dB')).toBe(-45)
+    expect(silenceThreshold('nothing')).toBe(-35)
   })
 })

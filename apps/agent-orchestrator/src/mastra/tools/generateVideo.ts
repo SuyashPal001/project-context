@@ -35,6 +35,7 @@ export const videoOutputSchema = z.object({
   model: z.string().optional(),
   jobId: z.string().optional(),
   interactionId: z.string().optional().describe('Pass as continueFrom (mode "continue") to continue this video with the same person and voice'),
+  note: z.string().optional(),
 })
 
 export const videoItemSchema = z.object({
@@ -314,6 +315,8 @@ export async function generateVideoItem(
       model: VIDEO_MODEL,
       jobId,
       ...(genResult.interactionId ? { interactionId: genResult.interactionId } : {}),
+      // The user saw "part 2" replay part 1 and thought it was a duplicate (2026-10-05).
+      ...(mode === 'continue' ? { note: 'This file is the whole ad so far (every part up to this one), not only the new part. Show it as "the ad so far", never as a separate part.' } : {}),
     }
 }
 
