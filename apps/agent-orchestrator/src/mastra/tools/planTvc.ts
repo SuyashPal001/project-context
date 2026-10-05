@@ -5,6 +5,7 @@ import { uploadFileWithKey } from '../../persistence.js'
 import { fetchPresignedUrl } from './mediaCache.js'
 import { computeCreditPlan, priceFromRates, readBalanceForTenant } from './checkCreditPlan.js'
 import { recordOnPlan, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, type TvcPlan } from './tvcPlan.js'
+import { stillPassedCheck } from './checkStill.js'
 
 // The TVC ad's plan lives in ONE file whose id never changes: it is always
 // re-uploaded to the same storage key, and /files/:id/confirm keeps the
@@ -17,6 +18,7 @@ export interface PlanTvcDeps {
   save: (doc: SavedPlan) => Promise<string | null>
   price: (plan: TvcPlan) => Promise<{ fullCostCredits: number; shortfallCredits: number }>
   newKey: () => string
+  stillChecked: (stillFileId: string) => boolean
 }
 
 export const planTvcInputSchema = z.object({
@@ -31,9 +33,11 @@ export const planTvcInputSchema = z.object({
     shot: z.number().int().min(1),
     stillFileId: z.string().optional(),
     clipFileId: z.string().optional(),
+    keptByUser: z.boolean().optional().describe('The user chose to keep this still although its check failed'),
   })).optional().describe('record only: every still or clip a step made, in one call'),
   narrationFileIds: z.array(z.string()).optional().describe('record only: the finish\'s narration, one per voiceover block, in order'),
   songFileId: z.string().optional().describe('record only: the finish\'s music bed'),
+  keptByUser: z.boolean().optional().describe('record only, single-shot form: the user chose to keep this still although its check failed'),
 })
 export type PlanTvcInput = z.infer<typeof planTvcInputSchema>
 
@@ -118,11 +122,17 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     }
   }
   const records = [...(input.records ?? [])]
-  if (input.shot !== undefined) records.push({ shot: input.shot, stillFileId: input.stillFileId, clipFileId: input.clipFileId })
+  if (input.shot !== undefined) records.push({ shot: input.shot, stillFileId: input.stillFileId, clipFileId: input.clipFileId, keptByUser: input.keptByUser })
   else if (input.stillFileId || input.clipFileId) return { refused: true, refusalReason: 'SHOT_AND_FILE_REQUIRED' }
   if (records.some((r) => !r.stillFileId && !r.clipFileId)) return { refused: true, refusalReason: 'SHOT_AND_FILE_REQUIRED' }
   if (records.length === 0 && !input.narrationFileIds && !input.songFileId) return { refused: true, refusalReason: 'NOTHING_TO_RECORD' }
   if (input.narrationFileIds && input.narrationFileIds.length !== doc.plan.voiceover.length) return { refused: true, refusalReason: 'NARRATION_COUNT_MISMATCH' }
+  for (const r of records) {
+    if (!r.stillFileId) continue
+    const shot = doc.plan.shots.find((s) => s.n === r.shot)
+    if (shot?.continuesFrom !== undefined) return { refused: true, refusalReason: `CONTINUING_SHOT_HAS_NO_STILL: shot ${r.shot} starts from shot ${shot.continuesFrom}'s last frame; record its clip only` }
+    if (!r.keptByUser && !deps.stillChecked(r.stillFileId)) return { refused: true, refusalReason: `STILL_NOT_CHECKED: run check_still on shot ${r.shot}'s still first (or record it with keptByUser when the user chose to keep it)` }
+  }
   let next: TvcPlan = doc.plan
   try {
     for (const r of records) next = recordOnPlan(next, r.shot, { stillFileId: r.stillFileId, clipFileId: r.clipFileId })
@@ -171,6 +181,7 @@ export const planTvc = createTool({
         return { fullCostCredits: result.fullCostCredits, shortfallCredits: result.shortfallCredits }
       },
       newKey: () => `generated/${conversationId}/tvc-plan-${randomUUID()}.json`,
+      stillChecked: (id) => stillPassedCheck(conversationId, id),
     }
     try {
       return await runPlanTvc(inputData as PlanTvcInput, deps)

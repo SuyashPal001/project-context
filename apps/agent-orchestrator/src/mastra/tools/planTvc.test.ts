@@ -15,7 +15,7 @@ const plan = () => tvcPlanSchema.parse({
 
 const tick = () => new Promise((r) => setTimeout(r, 5))
 
-function fakeDeps(opts: { slow?: boolean } = {}) {
+function fakeDeps(opts: { slow?: boolean; checked?: string[] } = {}) {
   const store = new Map<string, SavedPlan>()
   const keyToId = new Map<string, string>()
   let n = 0
@@ -28,6 +28,7 @@ function fakeDeps(opts: { slow?: boolean } = {}) {
     },
     price: async () => ({ fullCostCredits: 42, shortfallCredits: 0 }),
     newKey: () => `generated/conv/tvc-plan-${n + 1}.json`,
+    stillChecked: (id) => (opts.checked ? opts.checked.includes(id) : true),
   }
   return { deps, store }
 }
@@ -145,6 +146,27 @@ describe('runPlanTvc re-check keeps or clears the saved narration and song', () 
     expect(tier.songFileId).toBeUndefined()
     expect(tier.narrationFileIds).toEqual(['n1'])
     expect((await (await setup())((q) => { q.brief.category = 'food' })).songFileId).toBeUndefined()
+  })
+})
+
+describe('record refuses unchecked stills (spec 3.3)', () => {
+  it('STILL_NOT_CHECKED unless check_still passed or the user kept it', async () => {
+    const { deps } = fakeDeps({ checked: ['ok1'] })
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    expect((await runPlanTvc({ action: 'record', planFileId: planFileId!, records: [{ shot: 1, stillFileId: 'bad1' }] }, deps)).refusalReason).toMatch(/^STILL_NOT_CHECKED/)
+    expect((await runPlanTvc({ action: 'record', planFileId: planFileId!, records: [{ shot: 1, stillFileId: 'ok1' }] }, deps)).refused).toBeUndefined()
+    expect((await runPlanTvc({ action: 'record', planFileId: planFileId!, records: [{ shot: 2, stillFileId: 'bad2', keptByUser: true }] }, deps)).refused).toBeUndefined()
+  })
+  it('a continuing shot takes no still', async () => {
+    const { deps } = fakeDeps()
+    const p = plan()
+    p.shots[1].continuesFrom = 1
+    p.shots[1].location = p.shots[0].location
+    p.shots[1].size = 'close_up'
+    p.shots[2].size = 'medium'
+    const { planFileId, errors } = await runPlanTvc({ action: 'check', plan: p }, deps)
+    expect(errors).toEqual([])
+    expect((await runPlanTvc({ action: 'record', planFileId: planFileId!, records: [{ shot: 2, stillFileId: 's2' }] }, deps)).refusalReason).toMatch(/^CONTINUING_SHOT_HAS_NO_STILL/)
   })
 })
 
