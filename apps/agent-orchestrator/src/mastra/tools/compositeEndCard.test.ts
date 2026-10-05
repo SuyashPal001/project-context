@@ -42,7 +42,7 @@ describe('endCardGraph avoidFaces override (O1)', () => {
   })
   it('keeps the default centered 86%-width box (with the bg/blur layer) when no override is given', () => {
     const g = endCardGraph(1080, 1920, 5)
-    expect(g).toContain('[fgsrc]scale=928:1920[fg]')
+    expect(g).toContain('[fgsrc]scale=928:1920:force_original_aspect_ratio=decrease[fg]')
     expect(g).toContain('[bg][fg]overlay=(W-w)/2:(H-h)/2')
     expect(g).toContain('boxblur')
   })
@@ -183,7 +183,7 @@ describe('compositeEndCard avoidFaces (O1)', () => {
     sampleFrames.mockImplementationOnce(() => { throw new Error('ffmpeg sampling failed') })
 
     const filterComplex = await run(true)
-    expect(filterComplex).toContain('scale=928:1920[fg]')
+    expect(filterComplex).toContain('scale=928:1920:force_original_aspect_ratio=decrease[fg]')
     expect(filterComplex).toContain('overlay=(W-w)/2:(H-h)/2')
     expect(chooseCardColumn).not.toHaveBeenCalled()
   })

@@ -58,7 +58,7 @@ export function endCardGraph(width: number, height: number, dissolveStart: numbe
   }
   return base + `[1:v]split[bgsrc][fgsrc];` +
     `[bgsrc]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=40:2,eq=brightness=-0.12[bg];` +
-    `[fgsrc]scale=${fit}:${height}[fg];` +
+    `[fgsrc]scale=${fit}:${height}:force_original_aspect_ratio=decrease[fg];` +
     `[bg][fg]overlay=(W-w)/2:(H-h)/2,format=rgba,fade=t=in:st=${dissolveStart}:d=${DISSOLVE_DURATION_SECONDS}:alpha=1[card];` +
     `${baseLabel}[card]overlay=0:0:enable='gte(t,${dissolveStart})'[outv]`
 }
