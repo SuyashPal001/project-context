@@ -66,3 +66,10 @@ NEGATIVE: no 3D render, no photorealism, no glossy digital painting, no harsh co
   - check_clip that clip with expectedLine. Its audio is the character's own voice: do not narrate or mux that beat.
   - Beats without a character line get the narrator's voice-over with mux_beat_audio as before, and their clip prompts say the mouth stays closed except for natural expressions.
   - Assembly uses the speaking clip as it is for those beats.
+- Product in hand, the same hand in every beat (the same fix as the talking-head ad): pick the hand once (e.g. "his right hand") and name it in every beat still's prompt and every clip's prompt where the product is held. Say the character keeps holding the one product in that same hand the whole time, with no second product and no switching hands. On 2026-10-05 the bar moved from his right hand in beat 3 to his left in beat 4, and beat 4's label came out mirrored.
+- Check every beat clip (applies to all 4 beats, not only a speaking one): right after the clips are rendered, call check_clip on each, with:
+  - clipFileId set to that clip;
+  - masterStillFileId set to that beat's approved still;
+  - productFileId set to the product photo when the product is in the beat;
+  - expectedLine only for a speaking beat.
+  It catches a different-looking character, a product that changed, swapped hands or doubled, and mirrored label text. A failed check is shown to the user with its reason (no automatic redo), the same as in the other ad flows.
