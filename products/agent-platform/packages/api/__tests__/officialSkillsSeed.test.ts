@@ -71,6 +71,12 @@ describe('OFFICIAL_SKILLS', () => {
     expect(director).toMatch(/generateSeconds/)
     expect(director).toMatch(/trimStartSeconds/)
     expect(director).toMatch(/productFileId/)
+    // F1: trimFixed wins over check_clip's trimStartSeconds for a continuing/trimToEnd shot.
+    expect(director).toMatch(/slice has trimFixed true, the slice's values win over check_clip's trimStartSeconds/)
+    expect(director).toMatch(/do not pass shotDurationSeconds to check_clip/)
+    // F3: productFileId only for a productAnchor shot, never for a continuing shot.
+    expect(director).toMatch(/Pass productFileId to generate_video only for a shot whose slice has productAnchor true/)
+    expect(director).toMatch(/Never pass it for a continuing shot/)
     expect(director).toMatch(/avoidFaces true/)
     expect(director).toMatch(/keptByUser/)
     expect(director).toMatch(/roomTone true/)

@@ -165,7 +165,7 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
   if (/[.!?](\s|$)/.test(inner)) errors.push('the message must be one sentence')
   if (countWords(brief.message) > 12) errors.push(`the message is ${countWords(brief.message)} words; keep it to 12 words or fewer`)
 
-  // assemble_clips joins at most 8 clips.
+  // assemble_clips joins at most 12 clips.
   if (shots.length > MAX_SHOTS) errors.push(`there are ${shots.length} shots; at most ${MAX_SHOTS}`)
 
   // 2. Durations.
@@ -241,6 +241,10 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
     if (s.continuesFrom === undefined) return
     if (s.continuesFrom !== s.n - 1) { errors.push(`shot ${s.n} continues from shot ${s.continuesFrom}; it can only continue the shot right before it`); return }
     if (shots[i - 1] && shots[i - 1].location !== s.location) errors.push(`shot ${s.n} continues shot ${s.continuesFrom} but is at a different place`)
+    // F1: chains (3 continues 2 continues 1) make the middle shot's trim
+    // impossible — it would need to both start at 0 (continuing) and end at
+    // the clip's own end (trimToEnd). Continue from one shot only.
+    if (shots[i - 1]?.continuesFrom !== undefined) errors.push(`shot ${s.n} continues shot ${s.continuesFrom}, which itself continues shot ${shots[i - 1].continuesFrom}; continue from one shot only, not a chain`)
   })
   // P10: a turn is one direction and complete.
   shots.forEach((s) => {
@@ -332,14 +336,30 @@ export function sliceTvcPlan(plan: TvcPlan, slice: string): unknown {
     return {
       look: plan.look, locations: plan.locations,
       brief: { aspectRatio: plan.brief.aspectRatio, productPhotoFileId: plan.brief.productPhotoFileId, actorAvatarId: plan.brief.actorAvatarId },
-      shots: plan.shots.filter((s) => s.n >= a && s.n <= b).map((s) => ({
-        ...withStart(s),
-        generateSeconds: generateSecondsFor(s),
-        startFromPreviousLastFrame: s.continuesFrom !== undefined,
-        trimStartSeconds: s.continuesFrom !== undefined ? 0 : 0.4,
-        trimToEnd: plan.shots.some((o) => o.continuesFrom === s.n),
-        prompt: shotPromptFor(plan, s.n),
-      })),
+      shots: plan.shots.filter((s) => s.n >= a && s.n <= b).map((s) => {
+        const isContinuing = s.continuesFrom !== undefined
+        const trimsToEnd = plan.shots.some((o) => o.continuesFrom === s.n)
+        const previousShot = isContinuing ? plan.shots.find((o) => o.n === s.continuesFrom) : undefined
+        // F3: the start still is only safe to anchor the product render on when
+        // the shot shows the product and is NOT continuing (a continuing shot's
+        // start frame must be the literal previous clip's last frame; anchoring
+        // would move that still into referenceImageUris instead).
+        const productAnchor = s.productVisible && !isContinuing
+        return {
+          ...withStart(s),
+          generateSeconds: generateSecondsFor(s),
+          startFromPreviousLastFrame: isContinuing,
+          trimStartSeconds: isContinuing ? 0 : 0.4,
+          trimToEnd: trimsToEnd,
+          // F1: when a slice sets these, its values win over check_clip's
+          // trimStartSeconds — a continuing shot must start at 0, and a
+          // trimToEnd shot must end at the clip's own end, never a centred trim.
+          ...(isContinuing ? { trimFixed: true, previousClipFileId: previousShot?.clipFileId } : {}),
+          ...(trimsToEnd ? { trimFixed: true, trimFromEnd: true } : {}),
+          productAnchor,
+          prompt: shotPromptFor(plan, s.n),
+        }
+      }),
     }
   }
   throw new Error('UNKNOWN_SLICE')

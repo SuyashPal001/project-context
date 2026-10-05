@@ -223,9 +223,22 @@ describe('quality rules (P1, P2, P7–P10)', () => {
     const ok = goodPlan()
     ok.shots[4].continuesFrom = 4
     expect(validateTvcPlan(ok).errors).toEqual([])
-    const slice = sliceTvcPlan(ok, 'shots 4-5') as { shots: Array<{ n: number; startFromPreviousLastFrame: boolean; trimStartSeconds: number; trimToEnd: boolean }> }
-    expect(slice.shots[1]).toMatchObject({ n: 5, startFromPreviousLastFrame: true, trimStartSeconds: 0 })
-    expect(slice.shots[0]).toMatchObject({ n: 4, trimToEnd: true })
+    const slice = sliceTvcPlan(ok, 'shots 4-5') as { shots: Array<{ n: number; startFromPreviousLastFrame: boolean; trimStartSeconds: number; trimToEnd: boolean; trimFixed?: boolean; trimFromEnd?: boolean; previousClipFileId?: string }> }
+    expect(slice.shots[1]).toMatchObject({ n: 5, startFromPreviousLastFrame: true, trimStartSeconds: 0, trimFixed: true })
+    expect(slice.shots[0]).toMatchObject({ n: 4, trimToEnd: true, trimFixed: true, trimFromEnd: true })
+  })
+  it('F1: a continuesFrom chain (3 continues 2 continues 1) is a plan error', () => {
+    const p = goodPlan()
+    p.shots[4].continuesFrom = 4
+    p.shots[5].continuesFrom = 5
+    expect(validateTvcPlan(p).errors.join(' | ')).toMatch(/shot 6 continues shot 5, which itself continues shot 4; continue from one shot only, not a chain/)
+  })
+  it('F1: the slice carries previousClipFileId for a continuing shot, from the recorded clip it continues', () => {
+    let ok = goodPlan()
+    ok.shots[4].continuesFrom = 4
+    ok = recordOnPlan(ok, 4, { clipFileId: 'clip-4' })
+    const slice = sliceTvcPlan(ok, 'shots 4-5') as { shots: Array<{ n: number; previousClipFileId?: string }> }
+    expect(slice.shots[1]).toMatchObject({ n: 5, previousClipFileId: 'clip-4' })
   })
   it('P7: a state-changing action needs an endState', () => {
     const p = goodPlan()
@@ -276,6 +289,22 @@ describe('quality rules (P1, P2, P7–P10)', () => {
   })
   it('a plan saved before these fields still validates (Review Focus 3)', () => {
     expect(validateTvcPlan(goodPlan()).errors).toEqual([])
+  })
+})
+
+describe('F3: productAnchor', () => {
+  it('is true for a product-visible shot that is not continuing, false for a continuing shot even if product-visible', () => {
+    let ok = goodPlan()
+    ok.shots[4].continuesFrom = 4
+    ok.shots[4].productVisible = true
+    const slice = sliceTvcPlan(ok, 'shots 4-5') as { shots: Array<{ n: number; productAnchor: boolean }> }
+    expect(slice.shots[0]).toMatchObject({ n: 4, productAnchor: true }) // shot 4: productVisible true, not continuing
+    expect(slice.shots[1]).toMatchObject({ n: 5, productAnchor: false }) // shot 5: continues shot 4
+  })
+  it('is false for a shot that does not show the product', () => {
+    const p = goodPlan()
+    const slice = sliceTvcPlan(p, 'shots 2-2') as { shots: Array<{ n: number; productAnchor: boolean }> }
+    expect(slice.shots[0]).toMatchObject({ n: 2, productAnchor: false }) // shot 2: productVisible false
   })
 })
 
