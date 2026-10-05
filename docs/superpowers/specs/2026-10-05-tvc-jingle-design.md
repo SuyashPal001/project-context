@@ -28,6 +28,20 @@ What we already know (tested 2026-10-05, files in `~/Desktop/jingle-test/`):
 
 ## 3. Design
 
+**Reuse first.** Mastra's own pieces are already what the tools use: `createTool`, and `requireApproval` for the approval card. Mastra Voice is speech in and out for agents, not music, so it does not apply. Most of the machinery already exists in the repo and is reused, not rebuilt:
+- **Gateway `music.ts`:** route, auth, breaker and the transient-500 retry. J1 adds a branch to it, not a new route.
+- **`generate_song`:** charge-first, approval, refund and upload. J3 extends this tool instead of adding a new one.
+- **`tightenPauses.parseSilences`:** the silencedetect parsing for J4.
+- **`mixVoiceover.loudnessProbeArgs`:** ebur128 loudness measurement for J6.
+- **`resolveRate(subject)`:** per-model credit rates, so only a seed row is new.
+
+The new code is small:
+- the Lyria 3 request and parse
+- the timed-lyrics parser and the cut
+- the level match
+- the plan fields
+- the skill lines
+
 ### J1 — Gateway route
 - `MUSIC_MODEL_ALLOWLIST` gains `lyria-3-clip-preview`.
 - Requests for it go to `https://aiplatform.googleapis.com/v1/projects/{p}/locations/global/publishers/google/models/lyria-3-clip-preview:generateContent` with:
@@ -45,7 +59,8 @@ What we already know (tested 2026-10-05, files in `~/Desktop/jingle-test/`):
 - `findLine(lines, wanted)` finds the line that best matches the sign-off text after normalising (lowercase, no punctuation; word overlap ≥ 0.8).
 - Test: real Lyria text from the 2026-10-05 runs, a Hindi line, a missing line.
 
-### J3 — `generate_jingle` tool (paid)
+### J3 — sung mode on `generate_song` (paid; no new tool)
+`generate_song` gains an optional `line`. When `line` is set, the call becomes a sung jingle on `lyria-3-clip-preview`. Without it, the call is byte-identical to today's lyria-002 instrumental. The rest of this section calls the sung mode "generate_jingle" for short.
 - **Inputs:**
   - `line`: the sung sign-off, e.g. "Bubbli, feel the magic"
   - `lyrics?`: extra lines sung before it
@@ -54,7 +69,7 @@ What we already know (tested 2026-10-05, files in `~/Desktop/jingle-test/`):
   - `title?`
 - **Flow:**
   - Charge first: rate `music_generation` / `lyria-3-clip-preview`, $0.04, through a new credit-rate seed row.
-  - Approval: the same `shouldRequireApproval` path as generate_song. Charge keys go through `stableToolCallId()`.
+  - Approval: generate_song's own `shouldRequireApproval` path, keyed on the model that will run. Charge keys go through `stableToolCallId()`.
   - Gateway call (J1).
   - Find the sign-off line in the timestamps (J2). If it is not found, the result is `JINGLE_LINE_NOT_SUNG: Lyria did not sing "<line>"; try once more or shorten the line`, and the charge is refunded.
   - Cut the sign-off (J4). Upload both the full clip and the cut.
@@ -94,7 +109,7 @@ What we already know (tested 2026-10-05, files in `~/Desktop/jingle-test/`):
 
 ### J7 — skill text (additive)
 New lines in `tvc-ad/director.md`, appended, never reworded:
-- When the brief has a jingle, make it with generate_jingle in the music step, and record the three values.
+- When the brief has a jingle, make it with generate_song with `line` set in the music step, and record the three values.
 - Pass the sign-off as a `kind: 'jingle'` block at the slice's `signoffStartSeconds`.
 - Pass `fadeOutAtSeconds` to mix_music_bed.
 - On `JINGLE_LINE_NOT_SUNG`, try once more (it was refunded), then ask the user.
@@ -130,4 +145,4 @@ New lines in `tvc-ad.md`:
 - Lyria 3.5: it is Gemini-API only.
 - Picking a jingle from several takes (one take per call; the user can ask again).
 - Voice cloning for the singer.
-- A jingle outside the TVC flow; a standalone skill can reuse `generate_jingle` later.
+- A jingle outside the TVC flow. Any skill can already call generate_song with `line` later.
