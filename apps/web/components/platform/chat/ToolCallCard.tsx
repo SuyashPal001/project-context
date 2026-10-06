@@ -719,7 +719,7 @@ export function ToolCallCard({ toolName, query, prompt, status, results, result,
 
       {hasResults && expanded && (
         <div className="flex gap-2.5 mt-1.5 pl-0.5">
-          <div className="w-3 shrink-0 border-l border-b border-border rounded-bl-md" style={{ marginTop: '-4px', height: '0.85em' }} />
+          <div className="w-3 shrink-0 border-l border-b border-foreground/25 rounded-bl-md" style={{ marginTop: '-4px', height: '0.85em' }} />
           <div className="space-y-[5px] flex-1 min-w-0">
             {results!.slice(0, 3).map((r, i) => (
               <div key={i} className="flex items-center gap-2 min-w-0">

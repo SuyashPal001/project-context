@@ -23,9 +23,9 @@ describe('a finished ad shows its result, not its working files', () => {
         };
         render(<MessageItem message={message} freshUrls={{}} creatingPlanId={null} planErrors={{}} onCreateInSystem={vi.fn()} />);
         expect(screen.getByText('Final Video.mp4')).toBeTruthy();
-        expect(screen.queryByText('Beat with Audio.mp4')).toBeNull();
+        expect(screen.queryByLabelText('Beat with Audio.mp4')).toBeNull();
         fireEvent.click(screen.getByText('3 working files'));
-        expect(screen.getByText('Beat with Audio.mp4')).toBeTruthy();
+        expect(screen.getByLabelText('Beat with Audio.mp4')).toBeTruthy();
     });
 });
 

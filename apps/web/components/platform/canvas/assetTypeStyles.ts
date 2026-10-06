@@ -53,7 +53,9 @@ export const TYPE_STYLES: Record<AssetType, { bg: string; icon: string }> = {
   docx: { bg: 'bg-gradient-to-br from-blue-500/20 via-sky-500/10 to-muted', icon: 'text-blue-400' },
   csv: { bg: 'bg-gradient-to-br from-teal-500/20 via-cyan-500/10 to-muted', icon: 'text-teal-400' },
   image: { bg: 'bg-gradient-to-br from-[#E69DB8]/20 via-[#E69DB8]/10 to-muted', icon: 'text-[#E69DB8]' },
-  video: { bg: 'bg-gradient-to-br from-amber-500/20 via-orange-500/10 to-muted', icon: 'text-amber-400' },
+  // Rose like image, with a peach lean so a clip still reads apart (the amber
+  // one did not match the theme, 2026-10-06).
+  video: { bg: 'bg-gradient-to-br from-[#E69DB8]/25 via-[#F2B8A0]/10 to-muted', icon: 'text-[#D9849F] dark:text-[#E69DB8]' },
   markdown: { bg: 'bg-gradient-to-br from-slate-500/20 via-slate-400/10 to-muted', icon: 'text-slate-400' },
   file: { bg: 'bg-gradient-to-br from-zinc-500/15 via-zinc-400/10 to-muted', icon: 'text-zinc-400' },
   prd: { bg: 'bg-gradient-to-br from-indigo-500/20 via-blue-500/10 to-muted', icon: 'text-indigo-400' },

@@ -20,6 +20,8 @@ import { MessageFeedback } from "./MessageFeedback";
 import { PlanCard } from "./PlanCard";
 import { ChatArtifactCard } from "../canvas/ChatArtifactCard";
 import { GeneratedAssetCard } from "./GeneratedAssetCard";
+import { assetTypeForFile } from "@/lib/assetType";
+import { TYPE_ICONS, TYPE_STYLES, typeBadge } from "@/components/platform/canvas/assetTypeStyles";
 import { CitationStrip } from "./CitationStrip";
 import { FollowUpChips } from "./FollowUpChips";
 import { SkillIcon } from "@/components/platform/skills/SkillIcon";
@@ -428,10 +430,9 @@ export function MessageItem({
                         "flex flex-wrap gap-2 mt-2",
                         isUser ? "justify-end" : "justify-start"
                     )}>
-                        {resultAttachments.map((file, index) => {
-                            const url = (file.fileId ? freshUrls[file.fileId] : null) || file.previewUrl || null;
-                            return <GeneratedAssetCard key={file.id ?? `att-${index}`} file={file} url={url} createdAt={message.createdAt} />;
-                        })}
+                        {resultAttachments.map((file, index) => (
+                            <ResultFileCard key={file.id ?? `att-${index}`} file={file} url={(file.fileId ? freshUrls[file.fileId] : null) || file.previewUrl || null} createdAt={message.createdAt} />
+                        ))}
                     </div>
                 )}
 
@@ -448,9 +449,9 @@ export function MessageItem({
                             <span>{workingAttachments.length} working file{workingAttachments.length === 1 ? '' : 's'}</span>
                         </button>
                         {showWorking && (
-                            <div className="flex flex-wrap gap-2 mt-1">
+                            <div className="flex flex-wrap gap-1.5 mt-1">
                                 {workingAttachments.map((file, index) => (
-                                    <WorkingFileCard key={file.id ?? `work-${index}`} file={file} createdAt={message.createdAt} />
+                                    <WorkingFileTile key={file.id ?? `work-${index}`} file={file} />
                                 ))}
                             </div>
                         )}
@@ -525,9 +526,35 @@ export function MessageItem({
     );
 }
 
-// A folded working file loads its own link only once the row is opened, through
-// the shared, rate-limited thumbnail loader.
-function WorkingFileCard({ file, createdAt }: { file: MessageAttachment; createdAt: string }) {
-    const url = useThumbnailUrl(file.fileId ?? '', !!file.fileId);
-    return <GeneratedAssetCard file={file} url={url ?? file.previewUrl ?? null} createdAt={createdAt} />;
+// The reply's own result loads its link through the shared thumbnail loader
+// when the thread's bulk refresh has not supplied one (a final video showed
+// only a placeholder after reload, 2026-10-06).
+function ResultFileCard({ file, url, createdAt }: { file: MessageAttachment; url: string | null; createdAt: string }) {
+    const loaded = useThumbnailUrl(file.fileId ?? '', !url && !!file.fileId);
+    return <GeneratedAssetCard file={file} url={url ?? loaded ?? null} createdAt={createdAt} />;
 }
+
+// A folded working file is a small tile in the order it was made: the stills
+// and clips that led to the result, not a second gallery of full cards. Its
+// link loads only once the row is opened. Click opens it on the canvas.
+function WorkingFileTile({ file }: { file: MessageAttachment }) {
+    const url = useThumbnailUrl(file.fileId ?? '', !!file.fileId) ?? file.previewUrl ?? null;
+    const type = assetTypeForFile(file.type, file.name);
+    const Icon = TYPE_ICONS[type];
+    const open = () => {
+        if (!file.fileId) return;
+        const w = window as unknown as { __openCanvas?: () => void; __canvasUpdate?: (action: string, data: unknown) => void };
+        w.__openCanvas?.();
+        w.__canvasUpdate?.('asset_open', { asset: { id: file.fileId, type, filename: file.name, mimeType: file.type, thumbnailUrl: url, size: file.size, createdAt: new Date().toISOString(), sourceMessageId: '', fileId: file.fileId } });
+    };
+    return (
+        <button type="button" onClick={open} title={file.name} aria-label={file.name}
+            className={cn("relative h-20 w-[45px] shrink-0 rounded-md overflow-hidden ring-1 ring-border/60 hover:ring-foreground/40 transition-shadow", TYPE_STYLES[type].bg)}>
+            {url && type === 'image' ? <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                : url && type === 'video' ? <video src={url} preload="metadata" muted className="absolute inset-0 h-full w-full object-cover" />
+                : <Icon className={cn("absolute inset-0 m-auto h-4 w-4", TYPE_STYLES[type].icon)} />}
+            {type !== 'image' && <span className="absolute bottom-0.5 left-0.5 rounded bg-black/70 px-1 text-[8px] font-semibold text-white">{typeBadge(type, file.name)}</span>}
+        </button>
+    );
+}
+
