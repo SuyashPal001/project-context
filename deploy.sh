@@ -100,7 +100,7 @@ echo "→ Swapping .next-live symlink to $DIST_NAME..."
 ln -sfn "$DIST_NAME" apps/web/.next-live
 
 echo "→ Reloading web-frontend..."
-pm2 reload web-frontend --update-env
+PORT=3000 HOSTNAME=127.0.0.1 pm2 reload web-frontend --update-env
 
 echo "→ Restarting API..."
 pm2 restart api --update-env
