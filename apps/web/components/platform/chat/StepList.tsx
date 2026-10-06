@@ -71,7 +71,9 @@ export function StepList({ steps, live = true }: { steps: LiveStep[]; live?: boo
                             </svg>
                         )}
                     </span>
-                    <span className={row.running && live ? 'font-medium text-foreground truncate' : 'text-muted-foreground truncate'}>{row.label}</span>
+                    {/* A running step shimmers like the header and "Thinking…": live work
+                        reads the same everywhere; finished rows are quiet. */}
+                    <span className={row.running && live ? 'shimmer-text text-shimmer-accent-80 truncate' : 'text-muted-foreground truncate'}>{row.label}</span>
                     {rowMeta(row) && <span className="text-xs text-muted-foreground tabular-nums shrink-0">{rowMeta(row)}</span>}
                 </li>
             ))}
