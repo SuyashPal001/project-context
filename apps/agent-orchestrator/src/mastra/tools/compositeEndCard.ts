@@ -11,7 +11,7 @@ import { fetchPresignedUrl, downloadToSessionCache } from './mediaCache.js'
 import { refundCompositeEndCardCharge } from './compositeEndCardCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
-import { chooseCardColumn, faceBoxes, gatewayAsk, sampleFrames } from './tvcChecks.js'
+import { chooseCardColumn, faceBoxes, sampleFrames } from './tvcChecks.js'
 
 const execFile = promisify(execFileCb)
 
@@ -223,7 +223,7 @@ export const compositeEndCard = createTool({
       if (avoidFaces) {
         try {
           const [frame] = await sampleFrames(videoPath, [Math.min(clipDurationSeconds - 0.05, dissolveStart + 0.2)], workDir)
-          const faces = await faceBoxes(gatewayAsk(tenantId), frame)
+          const faces = await faceBoxes(tenantId, frame)
           if (faces.length) {
             const column = chooseCardColumn(faces)
             const cardScale = `${Math.round(videoWidth / 3)}:${Math.round(videoHeight * 0.8)}`

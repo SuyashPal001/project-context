@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { uploadGeneratedFile } from '../../persistence.js'
 import { fetchPresignedUrl } from './mediaCache.js'
-import { persistCost } from '../cost.js'
+import { findFaces, largestBox, parseBox2dList, parseFractionBox, type HeadBox } from './findFaces.js'
 
 // A closer framing of an existing image is a crop, not a generation: from a
 // full-body still, a head-and-shoulders or waist-up view is the same pixels,
@@ -16,14 +16,12 @@ import { persistCost } from '../cost.js'
 // ffmpeg does the crop.
 
 const execFile = promisify(execFileCb)
-const INFERENCE_GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
-const VISION_MODEL = 'gemini-3.6-flash'
 const TIMEOUT_MS = 30_000
 const FFMPEG_TIMEOUT_MS = 30_000
 
 export type CropFraming = 'close-up' | 'half-body'
-/** Head bounding box as fractions of the image (0..1). */
-export type HeadBox = { x: number; y: number; w: number; h: number }
+/** Head bounding box as fractions of the image (0..1); owned by the shared face finder. */
+export type { HeadBox } from './findFaces.js'
 
 // Crop height in head-heights, and how much of a head-height sits above the head.
 const FRAMING: Record<CropFraming, { heads: number; above: number }> = {
@@ -75,52 +73,17 @@ export function computeCropRect(width: number, height: number, framing: CropFram
 /** Gemini's native detection format: box_2d = [ymin, xmin, ymax, xmax] on a
  *  0-1000 scale. gemini-3.6-flash answers this way even when asked for x/y/w/h
  *  (2026-10-03: every crop silently fell back to the top-centre guess, which
- *  cropped a seated presenter's cap instead of his face). */
-function parseBox2d(raw: string): HeadBox | null {
-  const m = /"box_2d"\s*:\s*\[\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\]/.exec(raw)
-  if (!m) return null
-  const [ymin, xmin, ymax, xmax] = m.slice(1).map(Number)
-  if ([ymin, xmin, ymax, xmax].some((n) => !Number.isFinite(n) || n < 0 || n > 1000) || ymax <= ymin || xmax <= xmin) return null
-  return { x: xmin / 1000, y: ymin / 1000, w: (xmax - xmin) / 1000, h: (ymax - ymin) / 1000 }
-}
-
-/** Parses {"x":..,"y":..,"w":..,"h":..} (fractions) — or Gemini's box_2d — out of the model's reply; null when unusable. */
+ *  cropped a seated presenter's cap instead of his face). Parses
+ *  {"x":..,"y":..,"w":..,"h":..} (fractions) — or Gemini's box_2d — out of
+ *  the model's reply; null when unusable. */
 export function parseHeadBox(raw: string): HeadBox | null {
-  const native = parseBox2d(raw)
-  if (native) return native
-  const start = raw.indexOf('{'), end = raw.lastIndexOf('}')
-  if (start < 0 || end <= start) return null
-  try {
-    const v = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>
-    const nums = ['x', 'y', 'w', 'h'].map((k) => Number(v[k]))
-    if (nums.some((n) => !Number.isFinite(n) || n < 0 || n > 1)) return null
-    const [x, y, w, h] = nums
-    if (w <= 0.01 || h <= 0.01 || x + w > 1.001 || y + h > 1.001) return null
-    return { x, y, w, h }
-  } catch {
-    return null
-  }
+  return parseBox2dList(raw)[0] ?? parseFractionBox(raw)
 }
 
 async function findHead(base64: string, mimeType: string, tenantId: string | undefined, signal: AbortSignal): Promise<HeadBox | null> {
+  // The shared finder (K2); the main person is the largest head.
   try {
-    const res = await fetch(`${INFERENCE_GATEWAY_URL}/v1/chat/completions`, {
-      method: 'POST', signal,
-      headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-      body: JSON.stringify({
-        model: VISION_MODEL, temperature: 0, max_tokens: 120,
-        messages: [{ role: 'user', content: [
-          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
-          { type: 'text', text: 'Find the main person\'s (or character\'s) head, from the top of the hair to the chin. Return ONLY JSON {"x":..,"y":..,"w":..,"h":..} with the head\'s bounding box as fractions of the image width and height (0 to 1, x and y are the top-left corner).' },
-        ] }],
-      }),
-    })
-    if (!res.ok) return null
-    const result = await res.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number } }
-    if (tenantId && result.usage) {
-      persistCost({ tenantId, agentId: 'crop-image', workflowId: 'media-understanding', model: VISION_MODEL, inputTokens: result.usage.prompt_tokens ?? 0, outputTokens: result.usage.completion_tokens ?? 0 })
-    }
-    return parseHeadBox(result.choices?.[0]?.message?.content ?? '')
+    return largestBox(await findFaces({ data: base64, mime: mimeType }, { tenantId, agentId: 'crop-image', signal }))
   } catch {
     return null
   }

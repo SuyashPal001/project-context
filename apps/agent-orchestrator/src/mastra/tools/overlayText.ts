@@ -11,7 +11,7 @@ import { fetchPresignedUrl, downloadToSessionCache } from './mediaCache.js'
 import { refundOverlayTextCharge } from './overlayTextCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
-import { chooseTextPosition, faceBoxes, gatewayAsk, sampleFrames, type Box } from './tvcChecks.js'
+import { chooseTextPosition, faceBoxes, sampleFrames, type Box } from './tvcChecks.js'
 
 const execFile = promisify(execFileCb)
 
@@ -190,11 +190,10 @@ export const overlayText = createTool({
       try {
         const faceDir = mkdtempSync(join(tmpdir(), 'overlay-faces-'))
         try {
-          const ask = gatewayAsk(tenantId)
           const faces = await Promise.all(overlays.map(async (o) => {
             try {
               const [frame] = await sampleFrames(videoPath, [Math.round(((o.startSeconds + o.endSeconds) / 2) * 100) / 100], faceDir)
-              return await faceBoxes(ask, frame)
+              return await faceBoxes(tenantId, frame)
             } catch (err) {
               console.warn(`[session:${sessionId}] overlayText: face check failed, keeping the requested placement:`, (err as Error).message)
               return null

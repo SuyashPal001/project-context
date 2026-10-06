@@ -222,8 +222,13 @@ describe('face-aware placement (O1)', () => {
     expect(chooseCardColumn([{ x0: 0.4, y0: 0.2, x1: 0.6, y1: 0.5 }])).toBe('right')
     expect(chooseCardColumn([{ x0: 0.4, y0: 0, x1: 1, y1: 1 }])).toBe('left')
   })
-  it('faceBoxes drops malformed boxes', async () => {
-    const ask = fakeAsk(() => ({ faces: [{ x0: 0.1, y0: 0.1, x1: 0.2, y1: 0.2 }, { x0: 'a' }] }))
-    expect(await faceBoxes(ask, img('F'))).toEqual([{ x0: 0.1, y0: 0.1, x1: 0.2, y1: 0.2 }])
+  it('faceBoxes returns every head from the shared finder, as corners', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: '[{"box_2d":[100,100,200,200]},{"box_2d":[0,500,500,750]},{"box_2d":[0,0,1200,10]}]' } }] }), { status: 200 })) as unknown as typeof fetch
+    expect(await faceBoxes('t1', img('F'), fetchImpl)).toEqual([{ x0: 0.1, y0: 0.1, x1: 0.2, y1: 0.2 }, { x0: 0.5, y0: 0, x1: 0.75, y1: 0.5 }])
+  })
+  it('faceBoxes retries once, then reports the check unavailable (callers keep the requested placement)', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 500 })) as unknown as typeof fetch
+    await expect(faceBoxes('t1', img('F'), fetchImpl)).rejects.toBeInstanceOf(CheckUnavailableError)
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 })

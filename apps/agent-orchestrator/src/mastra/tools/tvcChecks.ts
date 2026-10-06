@@ -3,6 +3,7 @@ import { promisify } from 'node:util'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { persistCost } from '../cost.js'
+import { findFaces } from './findFaces.js'
 
 // Narrow, high-resolution checks for the TVC ad (spec 2026-10-05-tvc-quality-
 // tools-design.md §2 "Check design"). One short question per full-resolution
@@ -312,13 +313,20 @@ export async function runStillChecks(ask: AskFn, still: Img, input: StillInputs)
   return { passed: reasons.length === 0, reasons }
 }
 
-export const FACE_BOX_QUESTION = 'Find every human face in this image. Reply ONLY JSON {"faces":[{"x0":0,"y0":0,"x1":0,"y1":0}]} with coordinates as fractions (0 to 1) of the image width and height; {"faces":[]} if there are none.'
-
-export async function faceBoxes(ask: AskFn, frame: Img): Promise<Box[]> {
-  const v = await ask([{ image: frame }, { text: FACE_BOX_QUESTION }])
-  const faces = Array.isArray(v.faces) ? v.faces as Array<Record<string, unknown>> : []
-  return faces.filter((f) => ['x0', 'y0', 'x1', 'y1'].every((k) => typeof f[k] === 'number'))
-    .map((f) => ({ x0: f.x0 as number, y0: f.y0 as number, x1: f.x1 as number, y1: f.y1 as number }))
+/** Every face (head) in a frame, as corners, from the shared finder (K2).
+ *  Retries once; then CheckUnavailableError, and the callers keep the
+ *  requested placement. */
+export async function faceBoxes(tenantId: string, frame: Img, fetchImpl: typeof fetch = fetch): Promise<Box[]> {
+  let lastErr: unknown
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const faces = await findFaces(frame, { tenantId, agentId: 'check-clip', fetchImpl, signal: AbortSignal.timeout(ASK_TIMEOUT_MS) })
+      return faces.map((f) => ({ x0: f.x, y0: f.y, x1: f.x + f.w, y1: f.y + f.h }))
+    } catch (err) {
+      lastErr = err
+    }
+  }
+  throw new CheckUnavailableError(`face check unavailable: ${(lastErr as Error)?.message ?? 'unknown'}`)
 }
 
 // Vertical bands the overlay_text positions occupy (fractions of height).
