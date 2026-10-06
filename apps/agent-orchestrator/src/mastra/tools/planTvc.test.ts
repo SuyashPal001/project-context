@@ -15,7 +15,7 @@ const plan = () => tvcPlanSchema.parse({
 
 const tick = () => new Promise((r) => setTimeout(r, 5))
 
-function fakeDeps(opts: { slow?: boolean; checked?: string[] } = {}) {
+function fakeDeps(opts: { slow?: boolean; checked?: string[]; detectCutTimes?: PlanTvcDeps['detectCutTimes'] } = {}) {
   const store = new Map<string, SavedPlan>()
   const keyToId = new Map<string, string>()
   let n = 0
@@ -29,6 +29,7 @@ function fakeDeps(opts: { slow?: boolean; checked?: string[] } = {}) {
     price: async () => ({ fullCostCredits: 42, shortfallCredits: 0 }),
     newKey: () => `generated/conv/tvc-plan-${n + 1}.json`,
     stillChecked: (id) => (opts.checked ? opts.checked.includes(id) : true),
+    detectCutTimes: opts.detectCutTimes ?? (async () => { throw new Error('detectCutTimes not expected in this test') }),
   }
   return { deps, store }
 }
@@ -58,6 +59,36 @@ describe('runPlanTvc check', () => {
     const shots = JSON.parse(shot1.slice!).shots
     expect(shots[0].stillFileId).toBe('s1')
     expect(shots[1].stillFileId).toBeUndefined()
+  })
+})
+
+describe('runPlanTvc check: reference cut times come from the file, not Director (Task 4)', () => {
+  it('refuses cutTimes given without a videoFileId', async () => {
+    const { deps } = fakeDeps()
+    const p = plan(); p.brief.reference = { cutTimes: [2, 4] }
+    const out = await runPlanTvc({ action: 'check', plan: p }, deps)
+    expect(out.refusalReason).toMatch(/^REFERENCE_VIDEO_MISSING/)
+  })
+  it('overwrites Director\'s cutTimes with what detection returns, so an edited count still fails (the 13-vs-7 case)', async () => {
+    const { deps } = fakeDeps({ detectCutTimes: async () => ({ cutTimes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13], durationSeconds: 15 }) })
+    const p = plan()
+    // Director rewrote cutTimes to 2 to match its 2-boundary plan — detection
+    // must overwrite it with the real 13 cuts, which this plan cannot match.
+    p.brief.reference = { videoFileId: 'ref-video', cutTimes: [2] }
+    const out = await runPlanTvc({ action: 'check', plan: p }, deps)
+    expect(out.errors?.join(' ')).toMatch(/the reference has \d+ cuts in \d+s; this plan has \d+/)
+  })
+  it('refuses when detection fails, never falling back to the plan\'s own cutTimes', async () => {
+    const { deps } = fakeDeps({ detectCutTimes: async () => { throw new Error('ffmpeg failed') } })
+    const p = plan(); p.brief.reference = { videoFileId: 'ref-video' }
+    const out = await runPlanTvc({ action: 'check', plan: p }, deps)
+    expect(out.refusalReason).toMatch(/^REFERENCE_CUTS_UNAVAILABLE/)
+  })
+  it('a valid videoFileId with matching real cuts passes', async () => {
+    const { deps } = fakeDeps({ detectCutTimes: async () => ({ cutTimes: [2, 4], durationSeconds: 6 }) })
+    const p = plan(); p.brief.reference = { videoFileId: 'ref-video' }
+    const out = await runPlanTvc({ action: 'check', plan: p }, deps)
+    expect(out.errors).toEqual([])
   })
 })
 

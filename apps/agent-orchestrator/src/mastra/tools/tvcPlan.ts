@@ -70,8 +70,9 @@ export const tvcPlanSchema = z.object({
     voiceId: z.string().optional().describe('The announcer voice for the voiceover, as Olmo passed it ("Voice ID: <id>")'),
     reference: z.object({
       productType: productTypeSchema.optional(),
-      cutTimes: z.array(z.number().positive()).optional(),
-    }).optional().describe('When recreating a reference ad: its product type and its real cut times (detect_cuts)'),
+      videoFileId: z.string().optional().describe('The reference video. plan_tvc check reads its real cut times from this file and overwrites cutTimes; do not set cutTimes without it'),
+      cutTimes: z.array(z.number().positive()).optional().describe('Read-only from plan_tvc\'s point of view: overwritten on every check from the reference video (videoFileId), never from what is sent here'),
+    }).optional().describe('When recreating a reference ad: its product type, the reference video (videoFileId), and its real cut times (read from the file by plan_tvc check)'),
     product: productTypeSchema.optional().describe('This product\'s type; must match the reference\'s when one is given'),
     actorLook: z.string().optional().describe('The lead\'s look, e.g. "long dark wavy hair, magenta shirt"; extras never share it'),
     jingle: jingleSchema.optional().describe('A sung sign-off over the ending; only when the user wants one or the reference ad has one'),

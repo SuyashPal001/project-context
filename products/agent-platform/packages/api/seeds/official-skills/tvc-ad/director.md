@@ -40,6 +40,7 @@ Auto mode (supersedes "Make ONE moment per delegation" when Olmo's brief says "a
 Quality tools (supersede the matching lines above):
 - step plan: give every shot an angle (eye, low, high, top, side or pov). Write every turn as one direction and complete ("spins all the way around in one direction, 360°"). Give an endState to every action that changes an object (open, pop, pour, bite, apply, peel, unwrap, cut). Give continuesFrom to a shot that continues the previous shot's action at the same place. Write each place as {name, extras}, with extras (who is in the background) for any public place. Write brief.actorLook when the plan has an actor. Keep a hard action in ONE shot. Split it only into a clearly different angle AND size, and use flashCut only for a deliberate flash cut. plan_tvc enforces the rest.
 - Recreating a reference ad: Olmo's brief has "Reference video: <fileId>". Call detect_cuts on it and write brief.reference.cutTimes. Write brief.reference.productType (material, closure, openedBy) from what the reference shows, and brief.product the same way for the user's product. If they differ, plan_tvc refuses; tell Olmo the reference's product type so the user can match it.
+- Set brief.reference.videoFileId to the reference video; plan_tvc reads its cut times itself, so plan shots to match them rather than editing cutTimes.
 - step stills: after each still, call check_still:
   - productFileId whenever the product is visible
   - productScale: wide for a wide shot, medium for a medium shot, otherwise close

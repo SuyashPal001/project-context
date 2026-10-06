@@ -13,9 +13,34 @@ export function parseShowinfoCuts(stderr: string): number[] {
   return [...stderr.matchAll(/pts_time:([0-9.]+)/g)].map((m) => Math.round(Number(m[1]) * 100) / 100).filter((n) => n > 0)
 }
 
+export interface CutTimesResult { cutTimes: number[]; durationSeconds: number }
+
+// Shared by the detect_cuts tool and plan_tvc check (spec Task 4): the plan
+// must never trust Director's own cutTimes, only what ffmpeg finds in the
+// reference file itself. Cached per videoFileId within the process so a
+// Director re-check loop doesn't re-run ffmpeg on every plan_tvc call.
+const cutTimesCache = new Map<string, Promise<CutTimesResult>>()
+
+async function detectCutTimesUncached(videoFileId: string, idToken: string, scopeId: string, threshold: number): Promise<CutTimesResult> {
+  const url = await fetchPresignedUrl(videoFileId, idToken)
+  const { filePath } = await downloadToSessionCache(scopeId, videoFileId, url, MAX_SOURCE_BYTES)
+  const { stderr } = await execFile('ffmpeg', ['-hide_banner', '-i', filePath, '-filter:v', `select='gt(scene,${threshold})',showinfo`, '-f', 'null', '-'], { timeout: 180_000, maxBuffer: 32 * 1024 * 1024 })
+  const { stdout } = await execFile('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath], { timeout: 30_000 })
+  return { cutTimes: parseShowinfoCuts(stderr), durationSeconds: Math.round(parseFloat(stdout.trim()) * 100) / 100 }
+}
+
+export function detectCutTimes(videoFileId: string, idToken: string, scopeId: string, threshold = 0.25): Promise<CutTimesResult> {
+  const cached = cutTimesCache.get(videoFileId)
+  if (cached) return cached
+  const promise = detectCutTimesUncached(videoFileId, idToken, scopeId, threshold)
+  promise.catch(() => cutTimesCache.delete(videoFileId))
+  cutTimesCache.set(videoFileId, promise)
+  return promise
+}
+
 export const detectCuts = createTool({
   id: 'detect-cuts',
-  description: 'Free: finds the real cut times (scene changes) in a reference video, for recreating its edit timing. Write the result into the TVC plan as brief.reference.cutTimes.',
+  description: 'Free: finds the real cut times (scene changes) in a reference video, for recreating its edit timing. Set brief.reference.videoFileId in the TVC plan instead of writing cutTimes yourself — plan_tvc check reads the cuts from the file.',
   inputSchema: z.object({
     videoFileId: z.string().describe('The reference video'),
     threshold: z.number().min(0.05).max(0.9).default(0.25).describe('Scene-change sensitivity; 0.25 matched the 2026-10-05 reference ad'),
@@ -33,11 +58,7 @@ export const detectCuts = createTool({
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined ?? 'unknown'
     if (!idToken) return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE' }
     try {
-      const url = await fetchPresignedUrl(videoFileId, idToken)
-      const { filePath } = await downloadToSessionCache(tenantId || conversationId, videoFileId, url, MAX_SOURCE_BYTES)
-      const { stderr } = await execFile('ffmpeg', ['-hide_banner', '-i', filePath, '-filter:v', `select='gt(scene,${threshold})',showinfo`, '-f', 'null', '-'], { timeout: 180_000, maxBuffer: 32 * 1024 * 1024 })
-      const { stdout } = await execFile('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath], { timeout: 30_000 })
-      return { cutTimes: parseShowinfoCuts(stderr), durationSeconds: Math.round(parseFloat(stdout.trim()) * 100) / 100 }
+      return await detectCutTimes(videoFileId, idToken, tenantId || conversationId, threshold)
     } catch (err) {
       console.error('[detectCuts] failed:', (err as Error).message)
       return { refused: true, refusalReason: 'DETECT_CUTS_FAILED' }

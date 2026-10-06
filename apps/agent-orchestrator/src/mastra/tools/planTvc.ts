@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { uploadFileWithKey } from '../../persistence.js'
 import { fetchPresignedUrl } from './mediaCache.js'
+import { detectCutTimes } from './detectCuts.js'
 import { computeCreditPlan, priceFromRates, readBalanceForTenant } from './checkCreditPlan.js'
 import { recordOnPlan, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, jingleErrors, type TvcPlan } from './tvcPlan.js'
 import { stillPassedCheck } from './checkStill.js'
@@ -19,6 +20,11 @@ export interface PlanTvcDeps {
   price: (plan: TvcPlan) => Promise<{ fullCostCredits: number; shortfallCredits: number }>
   newKey: () => string
   stillChecked: (stillFileId: string) => boolean | Promise<boolean>
+  // P6 (Task 4): the only source of truth for a reference ad's cut times.
+  // Director can set brief.reference.videoFileId but never cutTimes itself —
+  // check always overwrites cutTimes with what this returns, so a plan can
+  // never be made to pass by editing the numbers.
+  detectCutTimes: (videoFileId: string) => Promise<{ cutTimes: number[]; durationSeconds: number }>
 }
 
 export const planTvcInputSchema = z.object({
@@ -119,7 +125,24 @@ export async function runPlanTvc(input: PlanTvcInput, deps: PlanTvcDeps): Promis
 async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promise<PlanTvcOutput> {
   if (input.action === 'check') {
     if (!input.plan) return { refused: true, refusalReason: 'PLAN_REQUIRED' }
-    const { errors, warnings, plan } = validateTvcPlan(input.plan)
+    const planInput = structuredClone(input.plan)
+    const ref = planInput.brief.reference
+    // P6 (Task 4): cut times always come from the reference file itself, never
+    // from Director — overwrite before validation so editing cutTimes can
+    // never make a failing plan pass.
+    if (ref?.cutTimes !== undefined && !ref.videoFileId) {
+      return { refused: true, refusalReason: 'REFERENCE_VIDEO_MISSING: pass brief.reference.videoFileId; cut times are read from the reference file' }
+    }
+    if (ref?.videoFileId) {
+      try {
+        const { cutTimes } = await deps.detectCutTimes(ref.videoFileId)
+        ref.cutTimes = cutTimes
+      } catch (err) {
+        console.error('[planTvc] detectCutTimes failed:', (err as Error).message)
+        return { refused: true, refusalReason: 'REFERENCE_CUTS_UNAVAILABLE: could not read the reference video\'s cut times; try again' }
+      }
+    }
+    const { errors, warnings, plan } = validateTvcPlan(planInput)
     if (errors.length) return { errors, warnings }
     // Only `record` may set the jingle fields — a fresh plan arriving with
     // them (or a re-check carrying them over from input.plan) never passed
@@ -217,6 +240,7 @@ export const planTvc = createTool({
       },
       newKey: () => `generated/${conversationId}/tvc-plan-${randomUUID()}.json`,
       stillChecked: (id) => stillPassedCheck({ threadId: conversationId, resourceId: tenantId }, id),
+      detectCutTimes: (videoFileId) => detectCutTimes(videoFileId, idToken, tenantId || conversationId),
     }
     try {
       return await runPlanTvc(inputData as PlanTvcInput, deps)
