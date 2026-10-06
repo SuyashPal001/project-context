@@ -129,3 +129,15 @@ describe('jingle blocks (J6)', () => {
     expect(inputSchema.safeParse({ videoFileId: 'v', blocks: [{ audioFileId: 'a', startSeconds: 2, kind: 'song' }] }).success).toBe(false)
   })
 })
+
+describe('buildVoiceoverFilter room voice', () => {
+  it('puts the narrator in the room only when asked, never on a jingle', async () => {
+    const { buildVoiceoverFilter, ROOM_VOICE } = await import('./mixVoiceover.js')
+    const blocks = [{ start: 0.3, duration: 2.2 }, { start: 5, duration: 2 }]
+    expect(buildVoiceoverFilter(blocks, true)).not.toContain('aecho')
+    const g = buildVoiceoverFilter(blocks, true, undefined, false, true)
+    expect(g).toContain(`[1:a]${ROOM_VOICE}adelay=300|300[vo0]`)
+    expect(g).toContain(`[2:a]${ROOM_VOICE}adelay=5000|5000[vo1]`)
+    expect(buildVoiceoverFilter([{ start: 1, duration: 2, kind: 'jingle' as const }], true, undefined, false, true)).not.toContain('aecho')
+  })
+})

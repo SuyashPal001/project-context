@@ -44,7 +44,7 @@ export const videoItemSchema = z.object({
   aspectRatio: z.enum(['16:9', '9:16']),
   durationSeconds: z.number().int().min(3).max(10),
   startImageFileId: z.string().optional().describe('Required for animate_frame — an existing files row to use as the literal first frame'),
-  referenceFileIds: z.array(z.string()).min(1).max(3).optional().describe('Required for composite_references — identity-anchor images the model builds a new scene around'),
+  referenceFileIds: z.array(z.string()).min(1).max(3).optional().describe('Required for composite_references — identity-anchor images the model builds a new scene around. A storyboard sheet may go first: the clip then plays its panels in order as shots (never showing the grid).'),
   continueFrom: z.string().optional().describe('Required for continue — the interactionId a previous generate_video returned. The model continues THAT video (same person, voice, room and light) for durationSeconds more and may speak a new approved line; the result is the whole video so far, not just the new part.'),
   approvedDialogue: z.string().optional().describe('The exact spoken line the user approved, if the prompt includes quoted dialogue — required to match a quoted line in prompt byte-for-byte'),
   identityAnchor: z.object({
