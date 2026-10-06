@@ -2,7 +2,8 @@
 
 import { useState, useRef } from "react";
 import { Terminal, Info, RotateCcw, Pencil, Check, X } from "lucide-react";
-import { ClarificationRequest, Message, MessagePart, PlanResult, ToolCall, CompletedToolCall, UploadRequest } from "./types";
+import { ClarificationRequest, Message, MessageAttachment, MessagePart, PlanResult, ToolCall, CompletedToolCall, UploadRequest } from "./types";
+import { useThumbnailUrl } from "@/hooks/useAssetThumbnail";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import ReactMarkdown from 'react-markdown';
@@ -109,8 +110,16 @@ export function MessageItem({
     // it, so the full still reads first and the close-up second.
     const traceFileIds = new Set((message.completedTrace?.toolCalls ?? []).flatMap(tc => extractResultFiles(tc.toolName, tc.result)).map(f => f.fileId));
     const visibleAttachments = message.attachments?.filter(file => !file.fileId || (!hiddenCreativeAttachmentIds.has(file.fileId) && !traceFileIds.has(file.fileId)));
+    // Working files (inputs to a later step this turn) fold behind one row, so
+    // the finished result is what the reply shows (see workingFiles.ts).
+    const resultAttachments = (visibleAttachments ?? []).filter(file => !file.working);
+    const workingAttachments = (visibleAttachments ?? []).filter(file => file.working);
+    // Once the turn has a finished video, the pictures and clips shown along
+    // the way fold too.
+    const hasFinalVideo = resultAttachments.some(file => file.type.startsWith('video/'));
 
     const [userExpanded, setUserExpanded] = useState(false);
+    const [showWorking, setShowWorking] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [editContent, setEditContent] = useState('');
     const editTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -281,6 +290,7 @@ export function MessageItem({
                     />
                 ) : isAssistant && !message.isStreaming && message.completedTrace && (
                     <TraceSummary
+                        foldMedia={hasFinalVideo}
                         elapsedSec={message.completedTrace.elapsedSec}
                         toolCalls={message.completedTrace.toolCalls ?? []}
                         reasoningText={message.completedTrace.reasoningText}
@@ -408,15 +418,37 @@ export function MessageItem({
                     </div>
                 )}
 
-                {visibleAttachments && visibleAttachments.length > 0 && (
+                {resultAttachments.length > 0 && (
                     <div className={cn(
                         "flex flex-wrap gap-2 mt-2",
                         isUser ? "justify-end" : "justify-start"
                     )}>
-                        {visibleAttachments.map((file, index) => {
+                        {resultAttachments.map((file, index) => {
                             const url = (file.fileId ? freshUrls[file.fileId] : null) || file.previewUrl || null;
                             return <GeneratedAssetCard key={file.id ?? `att-${index}`} file={file} url={url} createdAt={message.createdAt} />;
                         })}
+                    </div>
+                )}
+
+                {workingAttachments.length > 0 && (
+                    <div className="flex flex-col w-full mt-1" data-testid="working-files">
+                        <button
+                            type="button"
+                            onClick={() => setShowWorking(v => !v)}
+                            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 self-start"
+                        >
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className={cn("shrink-0 transition-transform", showWorking ? "rotate-90" : "")}>
+                                <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                            <span>{workingAttachments.length} working file{workingAttachments.length === 1 ? '' : 's'}</span>
+                        </button>
+                        {showWorking && (
+                            <div className="flex flex-wrap gap-2 mt-1">
+                                {workingAttachments.map((file, index) => (
+                                    <WorkingFileCard key={file.id ?? `work-${index}`} file={file} createdAt={message.createdAt} />
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -486,4 +518,11 @@ export function MessageItem({
                 )}
         </div>
     );
+}
+
+// A folded working file loads its own link only once the row is opened, through
+// the shared, rate-limited thumbnail loader.
+function WorkingFileCard({ file, createdAt }: { file: MessageAttachment; createdAt: string }) {
+    const url = useThumbnailUrl(file.fileId ?? '', !!file.fileId);
+    return <GeneratedAssetCard file={file} url={url ?? file.previewUrl ?? null} createdAt={createdAt} />;
 }

@@ -29,6 +29,16 @@ export const TYPE_BADGES: Record<AssetType, string> = {
   tasks: 'TASKS',
 };
 
+// Audio and video badges show the file's real format: a narration .wav was
+// badged "MP3" (2026-10-06). Other types keep their family badge.
+export function typeBadge(type: AssetType, name?: string): string {
+  if ((type === 'audio' || type === 'video') && name && name.includes('.')) {
+    const ext = name.split('.').pop()!.toUpperCase();
+    if (/^[A-Z0-9]{2,4}$/.test(ext)) return ext;
+  }
+  return TYPE_BADGES[type];
+}
+
 // Per-type tinted background + icon color. Every type gets one so a tile is
 // never a flat grey square: for audio/pdf/docx/markdown it *is* the preview,
 // and for image/video it sits behind the thumbnail as the surface it loads

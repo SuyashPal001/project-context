@@ -254,7 +254,10 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                 ...messages.flatMap(m => m.completedTrace?.toolCalls ?? []),
             ].flatMap(tc => extractResultFiles(tc.toolName, tc.result))
                 .map(f => ({ fileId: f.fileId, previewUrl: undefined as string | undefined }));
-            const combined = [...messages.flatMap(m => m.attachments || []), ...toolResultAttachments]
+            // Working files (folded behind a row) fetch their own link when opened —
+            // fetching every file of every ad at once went past the API's 60/min
+            // limit and left the result cards without pictures after a reload.
+            const combined = [...messages.flatMap(m => (m.attachments || []).filter(att => !att.working)), ...toolResultAttachments]
                 .filter(att => att.fileId && (!att.previewUrl || att.previewUrl.startsWith('blob:')))
                 .filter(att => {
                     if (freshUrls[att.fileId!]) return false;

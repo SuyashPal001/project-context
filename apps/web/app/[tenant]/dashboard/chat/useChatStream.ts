@@ -26,7 +26,7 @@ const SAVE_TOOL_NAMES = new Set(['save-prd', 'save-plan', 'save-tasks', 'saveprd
 // dropped `generation` from this same map, and only surfaced when the API's
 // own Zod schema was independently caught stripping it too.
 export function mapStreamAttachments(
-    attachmentsRaw: Array<{ fileId: string; name: string; type: string; size?: number; generation?: MessageAttachment['generation'] }>,
+    attachmentsRaw: Array<{ fileId: string; name: string; type: string; size?: number; generation?: MessageAttachment['generation']; working?: boolean }>,
 ): MessageAttachment[] {
     return attachmentsRaw.map(a => ({
         id: crypto.randomUUID(),
@@ -35,6 +35,7 @@ export function mapStreamAttachments(
         type: a.type,
         size: a.size,
         generation: a.generation,
+        ...(a.working ? { working: true } : {}),
     } satisfies MessageAttachment));
 }
 const sortByDate = (a: Message, b: Message) =>

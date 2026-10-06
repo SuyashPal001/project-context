@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { MessageAttachment } from './types';
 import type { Asset } from '@/types/assets';
 import { assetTypeForFile } from '@/lib/assetType';
-import { TYPE_ICONS, TYPE_STYLES, TYPE_BADGES } from '@/components/platform/canvas/assetTypeStyles';
+import { TYPE_ICONS, TYPE_STYLES, typeBadge } from '@/components/platform/canvas/assetTypeStyles';
 import { formatFileSize } from '@/components/platform/files/lib/fileIcons';
 
 interface InlineAttachmentCardProps {
@@ -69,7 +69,7 @@ export function InlineAttachmentCard({ file, url }: InlineAttachmentCardProps) {
         className={`relative block ${portrait ? 'w-[180px]' : 'w-[240px]'} max-w-full ${ratio ? '' : 'aspect-video'} rounded-xl border border-border/60 overflow-hidden text-left hover:border-border transition-colors ${typeStyle.bg}`}
       >
         <span className="absolute top-1.5 left-1.5 z-10 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
-          {TYPE_BADGES[type]}
+          {typeBadge(type, file.name)}
         </span>
 
         {url ? (
@@ -104,7 +104,7 @@ export function InlineAttachmentCard({ file, url }: InlineAttachmentCardProps) {
         <span className="text-[9px] font-medium line-clamp-2 text-center break-all leading-tight">{file.name}</span>
       </div>
       <span className="absolute top-1 left-1 text-[8px] font-bold px-1 py-0.5 rounded bg-background/90 border border-border/60">
-        {TYPE_BADGES[type]}
+        {typeBadge(type, file.name)}
       </span>
     </button>
   );
