@@ -33,4 +33,15 @@ describe('StepList', () => {
         render(<StepList steps={steps} live={false} />);
         expect(screen.queryByTestId('orb')).toBeNull();
     });
+    it('says when a step waits for your OK, was skipped or needs credits', () => {
+        render(<StepList steps={[
+            step('a', 'pictures', 'Pictures', 'image', 'waiting'),
+            step('b', 'clips', 'Video clips', 'video', 'skipped'),
+            step('c', 'voice', 'Voice', 'voice', 'credits'),
+        ]} />);
+        expect(screen.queryByTestId('orb')).toBeNull();
+        expect(screen.getByText('waiting for your OK')).toBeTruthy();
+        expect(screen.getByText('skipped')).toBeTruthy();
+        expect(screen.getByText('needs credits')).toBeTruthy();
+    });
 });

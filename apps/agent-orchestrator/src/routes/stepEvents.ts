@@ -9,7 +9,9 @@ const stableToolCallId = (id: string): string => createHash('sha256').update(id)
 // events by key into rows. `kind` picks the animation shown on a running row.
 
 export type StepKind = 'image' | 'video' | 'voice' | 'join' | 'finish' | 'check' | 'cast'
-export type StepState = 'running' | 'done' | 'failed'
+// waiting = held on the user's OK; skipped = cancelled, declined or stopped;
+// credits = refused for want of credits.
+export type StepState = 'running' | 'waiting' | 'done' | 'failed' | 'skipped' | 'credits'
 
 export interface StepEvent {
   id: string
@@ -70,10 +72,16 @@ export function stepStart(toolName: string, toolCallId: string, args: Record<str
   }
 }
 
-/** The same step finished: done, or failed when the tool refused or a check did not pass. */
+/**
+ * The same step finished: done; skipped when cancelled or declined; credits
+ * when refused for want of credits; failed when the tool refused or a check
+ * did not pass.
+ */
 export function stepEnd(start: StepEvent, result: unknown): StepEvent {
   const r = (result ?? {}) as Record<string, unknown>
-  const failed = r.refused === true || r.failed === true || r.insufficientCredits === true || r.cancelled === true
+  if (r.insufficientCredits === true) return { ...start, state: 'credits' }
+  if (r.cancelled === true || r.declined === true) return { ...start, state: 'skipped' }
+  const failed = r.refused === true || r.failed === true
     || (start.key === 'checks' && r.passed === false)
     || (typeof r.failed === 'number' && typeof r.succeeded === 'number' && r.succeeded === 0)
   return { ...start, state: failed ? 'failed' : 'done' }

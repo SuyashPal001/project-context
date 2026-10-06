@@ -187,6 +187,7 @@ chatRouter.post('/api/chat', async (c) => {
   // 3. Set up SSE ReadableStream
   const encoder = new TextEncoder()
   let streamClosed = false
+  let clientStopHandler: (() => void) | null = null
   let streamController!: ReadableStreamDefaultController<Uint8Array>
   const sendEvent = (event: string, data: object): void => {
     if (streamClosed) return
@@ -235,6 +236,7 @@ chatRouter.post('/api/chat', async (c) => {
     cancel() {
       console.log(`[sse:${sessionId}] client disconnected`)
       streamClosed = true
+      try { clientStopHandler?.() } catch (err) { console.error(`[sse:${sessionId}] stop save failed:`, (err as Error).message) }
       sseApprovalChannels.delete(sessionId)
       releaseMCPClientForSession(sessionId)
       // Resolve any pending clarification immediately so the server-side agent
@@ -316,6 +318,7 @@ chatRouter.post('/api/chat', async (c) => {
     internalUserId, idToken, agentId, sessionId, startTime,
     workingMemoryPromise, sendEvent, sendHeartbeat, closeStream,
     isStreamClosed: () => streamClosed,
+    onClientStop: (handler) => { clientStopHandler = handler },
     folderId, folderPrefix, allowMode, skillsUsed, isFirstMessage,
   })
 

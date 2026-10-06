@@ -561,7 +561,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             const step: LiveStep = {
                 id: raw.id, key: String(raw.key ?? raw.label), label: raw.label,
                 kind: (raw.kind as LiveStep['kind']) ?? 'finish',
-                state: raw.state === 'done' || raw.state === 'failed' ? raw.state : 'running',
+                state: (['waiting', 'done', 'failed', 'skipped', 'credits'] as const).find(s => s === raw.state) ?? 'running',
                 count: typeof raw.count === 'number' ? raw.count : 1,
             };
             const prev = liveStepsRef.current;
@@ -819,8 +819,57 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
         await sendMessage(content, attachments, userMessage.skillsUsed);
     };
 
+    // Stop keeps what the turn already made. Aborting the stream used to drop
+    // the live trace with every still and clip in it, and the server saved
+    // nothing (2026-10-06: "if i stop all these cards will be lost"). The trace
+    // settles onto the turn's message like a finished one, steps still running
+    // show as skipped, and once the server's copy of the turn (saved at the
+    // moment of Stop, see chatStream.ts onClientStop) lands it replaces this one.
+    const stop = useCallback(() => {
+        cancel();
+        const cid = conversationIdRef.current;
+        const toolCalls = completedToolCallsRef.current;
+        const steps = liveStepsRef.current.map(s => (s.state === 'running' || s.state === 'waiting' ? { ...s, state: 'skipped' as const } : s));
+        const reasoning = reasoningTextRef.current;
+        const elapsedSec = streamStartRef.current !== null ? Math.max(0, Math.floor((Date.now() - streamStartRef.current) / 1000)) : 0;
+        streamStartRef.current = null;
+        reasoningStartRef.current = null;
+        reasoningLastRef.current = null;
+        const hadTrace = toolCalls.length > 0 || steps.length > 0 || !!reasoning;
+        const trace = hadTrace
+            ? { completedTrace: { elapsedSec, afterSeq: traceAfterSeqRef.current ?? undefined, toolCalls, reasoningText: reasoning || undefined, ...(steps.length ? { steps } : {}) } }
+            : {};
+        resetTrace();
+        if (!cid) return;
+        queryClient.setQueryData<MessagesResponse>(['messages', cid], old => {
+            const data = old ? [...old.data] : [];
+            const zIdx = data.findIndex(m => m.isStreaming === true);
+            if (zIdx >= 0) data[zIdx] = { ...data[zIdx], isStreaming: false, ...trace };
+            else if (hadTrace) data.push({ id: crypto.randomUUID(), conversationId: cid, role: 'assistant', content: '', createdAt: new Date().toISOString(), isStreaming: false, ...trace });
+            return { data: [...data].sort(sortByDate) };
+        });
+        if (!hadTrace) return;
+        const reconcile = (attempt: number): void => {
+            // Fetched outside the query cache, so an answer from before the
+            // save lands never replaces the local turn.
+            api.get<MessagesResponse>(`/api/v1/conversations/${cid}/messages`).then(fresh => {
+                const local = queryClient.getQueryData<MessagesResponse>(['messages', cid])?.data ?? [];
+                const data = normalizeMessages(fresh.data);
+                const last = data[data.length - 1];
+                // Not saved yet: keep the local turn and look again shortly.
+                if (data.length < local.length || last?.role !== 'assistant') {
+                    if (attempt < 4) setTimeout(() => reconcile(attempt + 1), 2000);
+                    return;
+                }
+                data[data.length - 1] = { ...last, ...trace };
+                queryClient.setQueryData<MessagesResponse>(['messages', cid], { data });
+            }).catch(() => { if (attempt < 4) setTimeout(() => reconcile(attempt + 1), 2000); });
+        };
+        setTimeout(() => reconcile(0), 2000);
+    }, [cancel, queryClient, resetTrace]);
+
     return {
-        sendMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, sendUploadAnswer, cancel, isStreaming, isPreparingMessage, isRetrying,
+        sendMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, sendUploadAnswer, cancel: stop, isStreaming, isPreparingMessage, isRetrying,
         activeToolCalls, completedToolCalls, liveSteps, reasoningText, traceAfterSeq,
         eventError, warmupMessage, agentTimedOut, hasSentFirstMessage,
         lastStreamEvent, regenerate, editAndResubmit,

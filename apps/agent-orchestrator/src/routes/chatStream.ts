@@ -77,6 +77,8 @@ export interface ChatStreamOpts {
   sendHeartbeat: () => void
   closeStream: () => void
   isStreamClosed: () => boolean
+  /** Registers what to run when the browser disconnects (Stop, or a switch to another chat). */
+  onClientStop?: (handler: () => void) => void
   folderId?: string
   folderPrefix?: string
   allowMode?: 'ask' | 'auto'
@@ -248,7 +250,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const {
     message, displayMessage, attachments, conversationId, tenantId,
     internalUserId, idToken, agentId, sessionId, startTime,
-    workingMemoryPromise, sendEvent, sendHeartbeat, closeStream, isStreamClosed,
+    workingMemoryPromise, sendEvent, sendHeartbeat, closeStream, isStreamClosed, onClientStop,
     folderId, folderPrefix, allowMode, skillsUsed, isFirstMessage,
   } = opts
   // The newest id token for this conversation — see freshIdToken.ts.
@@ -295,6 +297,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const assistantMessageId = crypto.randomUUID()
   let pendingArtifactRef: ArtifactRefPayload | null = null
   const pendingAttachments: AttachmentPayload[] = []
+  // One card per file: a delegate's media are relayed as each finishes and
+  // then come back again inside the delegate's own result.
+  const addAttachments = (list: AttachmentPayload[]): void => {
+    for (const a of list) if (!pendingAttachments.some(p => p.fileId === a.fileId)) pendingAttachments.push(a)
+  }
   // File ids this turn's tool calls took as inputs (see workingFiles.ts).
   const turnInputFileIds = new Set<string>()
   // Live step list (stepEvents.ts): running steps by tool call id, Olmo's own and nested.
@@ -310,6 +317,13 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     if (!s) return
     runningSteps.delete(toolCallId)
     sendEvent('step', { ...stepEnd(s, result), conversationId })
+  }
+  // A step held on the user's OK shows as waiting, not as running.
+  const holdStep = (toolName: string, toolCallId: string, args: unknown, state: 'waiting' | 'running') => {
+    const s = runningSteps.get(toolCallId) ?? stepStart(toolName, toolCallId, (args ?? {}) as Record<string, unknown>)
+    if (!s) return
+    runningSteps.set(toolCallId, s)
+    sendEvent('step', { ...s, state, conversationId })
   }
   const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks', 'rendercanvas', 'render-canvas', 'render_canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video', 'generate-narration', 'lipsync', 'assemble-clips', 'mux-beat-audio', 'composite-end-card', 'burn-captions', 'overlay-text', 'stretch-clip', 'mix-music-bed', 'trim-clip', 'generate-videos', 'generate-images'])
 
@@ -560,7 +574,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
     // Persists the user message and this turn's assistant message. Shared by the
     // normal finish path and the instant-cancel path.
+    let turnSaved = false
     const saveTurn = (): void => {
+      if (turnSaved) return
+      turnSaved = true
       const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
       saveUserMessage(liveIdToken(), conversationId, displayMessage, atts, skillsUsed)
       // Mirrors the frontend's own hadTrace gate (useChatStream.ts onDone) so a
@@ -575,6 +592,17 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         : null
       saveAssistantMessage(liveIdToken(), conversationId, redactUnverifiedFileIds(fullText, pendingAttachments), assistantMessageId, pendingArtifactRef, completedTrace, markWorkingFiles(pendingAttachments, turnInputFileIds))
     }
+
+    // Stop mid-turn: keep what was already made. The stills and clips shown so
+    // far are paid for and sit in Drive; without this save the whole turn,
+    // the user's own message included, was gone after a reload (2026-10-06:
+    // "if i stop all these cards will be lost"). Saved at the moment of Stop,
+    // so it never lands after a message the user sends next.
+    onClientStop?.(() => {
+      if (backgroundDecline || (pendingAttachments.length === 0 && !fullText.trim())) return
+      console.log(`[sse:${sessionId}] stopped by the user at +${Date.now() - startTime}ms; saving ${pendingAttachments.length} file(s) made so far`)
+      saveTurn()
+    })
 
     // Settles when Mastra's background title call reports back (or is skipped),
     // so the stream can stay open long enough to deliver the 'title' event.
@@ -635,6 +663,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         if (relayed) {
           sendEvent('tool_call', { toolName: relayed.toolName, toolCallId: relayed.toolCallId, args: {}, conversationId })
           sendEvent('tool_done', { ...relayed, conversationId })
+          addAttachments(attachmentsFromToolResult(relayed.toolName.toLowerCase().replace(/_/g, '-'), relayed.result))
         }
       }
 
@@ -753,6 +782,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             ...(preview ? { preview } : {}),
             ...(count ? { count } : {}),
           })
+          holdStep(toolName, toolCallId, args, 'waiting')
 
           if (conversationId && idToken) {
             saveGenerationConfirmRequest(liveIdToken(), conversationId, approvalMessageId, {
@@ -813,6 +843,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // A declined call never yields a tool-result, so the client's "Generating…"
           // placeholder for it would otherwise sit there until the whole turn
           // ends. Close it out here (same pairing as the tool-result case below).
+          if (confirmed) holdStep(toolName, toolCallId, args, 'running')
+          else endStep(toolCallId, { cancelled: true })
           if (!confirmed) {
             if (!isClientHiddenTool(toolName)) sendEvent('tool_done', { toolCallId, toolName, result: { cancelled: true }, conversationId })
             toolCallNames.delete(toolCallId)
@@ -920,7 +952,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // render-canvas persists its content as a file (see renderCanvas.ts);
           // collect it into the assistant message's attachments alongside any
           // user-uploaded ones, so multiple canvas outputs in one turn all survive.
-          pendingAttachments.push(...attachmentsFromToolResult(normName, result))
+          addAttachments(attachmentsFromToolResult(normName, result))
 
           // A delegate wrapper's own tool-result (toolName agent-director/
           // agent-producer) never carries fileId at the top level — the real
@@ -937,7 +969,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
               fileIdsIn(entry.args, turnInputFileIds)
               const innerName = typeof entry.toolName === 'string' ? entry.toolName.toLowerCase().replace(/_/g, '-') : ''
               const innerResult = (entry.result ?? {}) as Record<string, unknown>
-              pendingAttachments.push(...attachmentsFromToolResult(innerName, innerResult))
+              addAttachments(attachmentsFromToolResult(innerName, innerResult))
             }
           }
           break

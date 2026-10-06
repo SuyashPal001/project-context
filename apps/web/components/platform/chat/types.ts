@@ -177,7 +177,8 @@ export interface LiveStep {
     key: string;
     label: string;
     kind: 'image' | 'video' | 'voice' | 'join' | 'finish' | 'check' | 'cast';
-    state: 'running' | 'done' | 'failed';
+    /** waiting = held on your OK; skipped = cancelled or stopped; credits = not enough credits. */
+    state: 'running' | 'waiting' | 'done' | 'failed' | 'skipped' | 'credits';
     count: number;
 }
 

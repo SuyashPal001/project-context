@@ -26,6 +26,12 @@ export interface StepRow {
     total: number;
     done: number;
     failed: number;
+    /** Held on the user's OK. */
+    waiting: number;
+    /** Cancelled, declined or stopped. */
+    skipped: number;
+    /** Refused for want of credits. */
+    credits: number;
     running: boolean;
 }
 
@@ -33,10 +39,13 @@ export interface StepRow {
 export function groupSteps(steps: LiveStep[]): StepRow[] {
     const rows = new Map<string, StepRow>();
     for (const s of steps) {
-        const row = rows.get(s.key) ?? { key: s.key, label: s.label, kind: s.kind, total: 0, done: 0, failed: 0, running: false };
+        const row = rows.get(s.key) ?? { key: s.key, label: s.label, kind: s.kind, total: 0, done: 0, failed: 0, waiting: 0, skipped: 0, credits: 0, running: false };
         row.total += s.count;
         if (s.state === 'done') row.done += s.count;
         else if (s.state === 'failed') row.failed += s.count;
+        else if (s.state === 'waiting') row.waiting += s.count;
+        else if (s.state === 'skipped') row.skipped += s.count;
+        else if (s.state === 'credits') row.credits += s.count;
         else row.running = true;
         rows.set(s.key, row);
     }
@@ -45,8 +54,39 @@ export function groupSteps(steps: LiveStep[]): StepRow[] {
 
 function rowMeta(row: StepRow): string {
     if (row.running) return row.total > 1 ? `${row.done} of ${row.total}` : '';
+    if (row.waiting) return 'waiting for your OK';
+    if (row.credits) return 'needs credits';
     if (row.failed) return row.failed === row.total ? (row.key === 'checks' ? 'needs a look' : 'failed') : `${row.failed} of ${row.total} need a look`;
+    if (row.skipped) return row.skipped === row.total ? 'skipped' : `${row.done} of ${row.total} · ${row.skipped} skipped`;
     return row.total > 1 ? String(row.total) : '';
+}
+
+const amberMark = (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-amber-600 dark:text-amber-400" aria-hidden>
+        <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.3" />
+        <path d="M7 4v3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        <circle cx="7" cy="9.6" r="0.7" fill="currentColor" />
+    </svg>
+);
+
+function RowIcon({ row, live }: { row: StepRow; live: boolean }) {
+    if (row.running && live) return <ThinkingOrb state={ORB_FOR_KIND[row.kind]} size={20} aria-label={`${row.label} in progress`} />;
+    if (row.waiting) return (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-muted-foreground" aria-label="waiting for your OK">
+            <path d="M5 3.5v7M9 3.5v7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+    );
+    if (row.credits || row.failed) return <span aria-label={row.credits ? 'needs credits' : 'needs a look'}>{amberMark}</span>;
+    if (row.skipped && !row.done) return (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-muted-foreground/70" aria-label="skipped">
+            <path d="M3.5 7h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+    );
+    return (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-muted-foreground" aria-label="done">
+            <path d="M2.5 7L5.5 10L11.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    );
 }
 
 export function StepList({ steps, live = true }: { steps: LiveStep[]; live?: boolean }) {
@@ -57,24 +97,12 @@ export function StepList({ steps, live = true }: { steps: LiveStep[]; live?: boo
             {rows.map(row => (
                 <li key={row.key} className="flex items-center gap-2 text-sm min-w-0">
                     <span className="h-5 w-5 shrink-0 flex items-center justify-center">
-                        {row.running && live ? (
-                            <ThinkingOrb state={ORB_FOR_KIND[row.kind]} size={20} aria-label={`${row.label} in progress`} />
-                        ) : row.failed > 0 ? (
-                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-amber-500" aria-label="needs a look">
-                                <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.3" />
-                                <path d="M7 4v3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                                <circle cx="7" cy="9.6" r="0.7" fill="currentColor" />
-                            </svg>
-                        ) : (
-                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-muted-foreground" aria-label="done">
-                                <path d="M2.5 7L5.5 10L11.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                        )}
+                        <RowIcon row={row} live={live} />
                     </span>
                     {/* A running step shimmers like the header and "Thinking…": live work
                         reads the same everywhere; finished rows are quiet. */}
-                    <span className={row.running && live ? 'shimmer-text text-shimmer-accent-80 truncate' : 'text-muted-foreground truncate'}>{row.label}</span>
-                    {rowMeta(row) && <span className="text-xs text-muted-foreground tabular-nums shrink-0">{rowMeta(row)}</span>}
+                    <span className={row.running && live ? 'shimmer-text text-shimmer-accent-80 truncate' : row.skipped && !row.done && !row.failed ? 'text-muted-foreground/70 truncate' : 'text-muted-foreground truncate'}>{row.label}</span>
+                    {rowMeta(row) && <span className={`text-xs tabular-nums shrink-0 ${row.credits && !row.running ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>{rowMeta(row)}</span>}
                 </li>
             ))}
         </ul>

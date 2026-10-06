@@ -19,5 +19,7 @@ describe('step events', () => {
     expect(stepEnd(s, { passed: false }).state).toBe('failed')
     expect(stepEnd(stepStart('generate_video', 'h')!, { refused: true }).state).toBe('failed')
     expect(stepEnd(stepStart('generate_videos', 'i')!, { failed: 2, succeeded: 0 }).state).toBe('failed')
+    expect(stepEnd(stepStart('generate_image', 'j')!, { cancelled: true }).state).toBe('skipped')
+    expect(stepEnd(stepStart('generate_image', 'k')!, { refused: true, insufficientCredits: true }).state).toBe('credits')
   })
 })
