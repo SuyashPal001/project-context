@@ -2,7 +2,6 @@
 import { render, screen, cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('thinking-orbs', () => ({ ThinkingOrb: ({ state }: { state: string }) => <span data-testid="orb">{state}</span> }));
 import { StepList, groupSteps } from './StepList';
 import type { LiveStep } from './types';
 
@@ -23,15 +22,15 @@ describe('StepList', () => {
             ['Storyboard', 1, 1, false], ['Video clips', 1, 1, false], ['Voice', 1, 3, true], ['Quality checks', 0, 1, false],
         ]);
     });
-    it('animates only the running row, with the orb for its kind of work', () => {
+    it('animates only the running row, with the loader for its kind of media', () => {
         render(<StepList steps={steps} />);
-        expect(screen.getAllByTestId('orb').map(o => o.textContent)).toEqual(['listening']);
+        expect(screen.getAllByTestId('pixel-loader').map(o => o.getAttribute('data-kind'))).toEqual(['audio']);
         expect(screen.getByText('1 of 3')).toBeTruthy();
         expect(screen.getByText('needs a look')).toBeTruthy();
     });
     it('shows no animation once the turn is over', () => {
         render(<StepList steps={steps} live={false} />);
-        expect(screen.queryByTestId('orb')).toBeNull();
+        expect(screen.queryByTestId('pixel-loader')).toBeNull();
     });
     it('says when a step waits for your OK, was skipped or needs credits', () => {
         render(<StepList steps={[
@@ -39,7 +38,7 @@ describe('StepList', () => {
             step('b', 'clips', 'Video clips', 'video', 'skipped'),
             step('c', 'voice', 'Voice', 'voice', 'credits'),
         ]} />);
-        expect(screen.queryByTestId('orb')).toBeNull();
+        expect(screen.queryByTestId('pixel-loader')).toBeNull();
         expect(screen.getByText('waiting for your OK')).toBeTruthy();
         expect(screen.getByText('skipped')).toBeTruthy();
         expect(screen.getByText('needs credits')).toBeTruthy();
