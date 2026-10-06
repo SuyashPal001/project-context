@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AgentOrb } from "./AgentOrb";
 import { ToolCall, CompletedToolCall, LiveStep } from "./types";
 import { StepList } from "./StepList";
-import { ToolCallCard, groupImageToolCalls, withoutRepeatedTraceFiles } from "./ToolCallCard";
+import { AwaitingApprovalContext, ToolCallCard, groupImageToolCalls, withoutRepeatedTraceFiles } from "./ToolCallCard";
 import type { PersonaSummary } from "../personas/types";
 
 // Live extended-thinking trace, streamed via the 'reasoning' SSE event (see
@@ -150,7 +150,9 @@ export function LiveTrace({
     const [blockOpen, setBlockOpen] = useState(true);
     // Seconds spent waiting on the user, excluded from "Working for Ns".
     const [pausedMs, setPausedMs] = useState(0);
-    const awaitingUser = isAwaitingUser(activeToolCalls);
+    // An open approval card pauses the run as much as a question does.
+    const awaitingApproval = useContext(AwaitingApprovalContext);
+    const awaitingUser = isAwaitingUser(activeToolCalls) || awaitingApproval;
 
     const isRAG = activeToolCalls.some(tc => tc.toolName === 'retrieve_documents');
     const isPRD = activeToolCalls.some(tc =>
@@ -256,7 +258,7 @@ export function LiveTrace({
                 <button type="button" onClick={() => setBlockOpen(o => !o)} className="flex items-center gap-2 text-left mb-1">
                     <Chevron open={blockOpen} />
                     {awaitingUser ? (
-                        <span className="text-sm text-muted-foreground">Waiting for your answer</span>
+                        <span className="text-sm text-muted-foreground">{awaitingApproval ? 'Waiting for your OK' : 'Waiting for your answer'}</span>
                     ) : (
                         <span className="shimmer-text text-sm text-shimmer-accent-80" key={loadingTools.length > 0 ? messageIndex : 'done'}>
                             {liveElapsed >= 2 ? `Working for ${liveElapsed}s` : 'Working…'}{loadingTools.length > 0 && steps.length === 0 ? ` · ${thinkingMessages[messageIndex % thinkingMessages.length]}` : ''}
@@ -390,6 +392,7 @@ export function ThinkingIndicator({
     freshUrls,
 }: ThinkingIndicatorProps) {
     const [stepIndex, setStepIndex] = useState(0);
+    const awaitingApprovalCtx = useContext(AwaitingApprovalContext);
 
     useEffect(() => {
         if (!isRetrying) {
@@ -429,7 +432,7 @@ export function ThinkingIndicator({
     if (!isStreaming) return null;
 
     const hasToolActivity = activeToolCalls.some(t => t.isLoading) || completedToolCalls.length > 0;
-    const awaitingUser = isAwaitingUser(activeToolCalls);
+    const awaitingUser = isAwaitingUser(activeToolCalls) || awaitingApprovalCtx;
 
     return (
         <div className="flex items-start gap-4">
