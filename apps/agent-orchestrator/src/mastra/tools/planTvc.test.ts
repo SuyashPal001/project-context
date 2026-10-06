@@ -1,5 +1,9 @@
-import { describe, it, expect } from 'vitest'
-import { runPlanTvc, type PlanTvcDeps, type SavedPlan } from './planTvc.js'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+vi.mock('./mediaCache.js', () => ({ fetchPresignedUrl: vi.fn() }))
+
+import { runPlanTvc, resolveProductPhotoMimeType, type PlanTvcDeps, type SavedPlan } from './planTvc.js'
+import { fetchPresignedUrl } from './mediaCache.js'
 import { tvcPlanSchema } from './tvcPlan.js'
 
 const plan = () => tvcPlanSchema.parse({
@@ -140,6 +144,32 @@ describe('runPlanTvc check: product photo must be an image, never the reference 
     const { deps } = fakeDeps({ productPhotoMimeType: async () => { throw new Error('file lookup failed') } })
     const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
     expect(out.refusalReason).toBe('PRODUCT_PHOTO_UNCHECKED: could not read the product photo; try again')
+  })
+})
+
+describe('resolveProductPhotoMimeType: the real dep strips x-amz-checksum-mode before fetching (Task 1 review fix)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('fetches the presigned URL with x-amz-checksum-mode removed, and cancels the body', async () => {
+    vi.mocked(fetchPresignedUrl).mockResolvedValue('https://bucket.s3.amazonaws.com/k?X-Amz-Signature=s&x-amz-checksum-mode=ENABLED')
+    const cancel = vi.fn()
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'image/png' },
+      body: { cancel },
+    }) as never
+
+    const mimeType = await resolveProductPhotoMimeType('f1', 'tok')
+
+    expect(mimeType).toBe('image/png')
+    expect((global.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe('https://bucket.s3.amazonaws.com/k?X-Amz-Signature=s')
+    expect(cancel).toHaveBeenCalled()
+  })
+
+  it('throws when the fetch fails, so the caller refuses rather than passing silently', async () => {
+    vi.mocked(fetchPresignedUrl).mockResolvedValue('https://bucket.s3.amazonaws.com/k?X-Amz-Signature=s')
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 403 }) as never
+    await expect(resolveProductPhotoMimeType('f1', 'tok')).rejects.toThrow(/403/)
   })
 })
 

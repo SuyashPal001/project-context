@@ -14,6 +14,25 @@ import { stillPassedCheck } from './checkStill.js'
 // "TVC plan: <id>" and a step — the plan itself never rides in a prompt.
 export interface SavedPlan { version: 1; storageKey: string; plan: TvcPlan }
 
+// Task 1 review fix: the presigned GET breaks if the `x-amz-checksum-mode`
+// query param survives (same fix as `load` above, analyzeImage.ts,
+// extractFrame.ts, mediaCache.ts, productDescribe.ts) — a real product photo
+// would 400 and be refused as PRODUCT_PHOTO_UNCHECKED instead of being read.
+// Extracted so it can be unit-tested with a fake fetch, independent of the
+// rest of planTvc's execute wiring.
+export async function resolveProductPhotoMimeType(fileId: string, idToken: string): Promise<string> {
+  const url = new URL(await fetchPresignedUrl(fileId, idToken))
+  url.searchParams.delete('x-amz-checksum-mode')
+  const res = await fetch(url.toString())
+  if (!res.ok) throw new Error(`product photo fetch failed: HTTP ${res.status}`)
+  const mimeType = res.headers.get('content-type') ?? 'application/octet-stream'
+  // Only the header is needed — cancel the body so the image isn't
+  // downloaded for nothing (the presigned URL is signed for GET, so this
+  // stays a GET rather than switching to HEAD).
+  await res.body?.cancel()
+  return mimeType
+}
+
 // plan_tvc never takes a threshold from Director — only the detect_cuts tool
 // does (see detectCuts.ts's cache-poisoning note). Always the fixed default
 // that matched the 2026-10-05 reference ad, so a plan's check is always
@@ -284,12 +303,7 @@ export const planTvc = createTool({
       newKey: () => `generated/${conversationId}/tvc-plan-${randomUUID()}.json`,
       stillChecked: (id) => stillPassedCheck({ threadId: conversationId, resourceId: tenantId }, id),
       detectCutTimes: (videoFileId) => detectCutTimes(videoFileId, idToken, tenantId || conversationId, REFERENCE_CUT_THRESHOLD),
-      productPhotoMimeType: async (fileId) => {
-        const url = await fetchPresignedUrl(fileId, idToken)
-        const res = await fetch(url)
-        if (!res.ok) throw new Error(`product photo fetch failed: HTTP ${res.status}`)
-        return res.headers.get('content-type') ?? 'application/octet-stream'
-      },
+      productPhotoMimeType: (fileId) => resolveProductPhotoMimeType(fileId, idToken),
     }
     try {
       return await runPlanTvc(inputData as PlanTvcInput, deps)
