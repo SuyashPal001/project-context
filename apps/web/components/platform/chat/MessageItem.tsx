@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from "react";
-import { Terminal, Info, RotateCcw, Pencil, Check, X } from "lucide-react";
+import { Terminal, Info, Pencil, Check, X } from "lucide-react";
 import { ClarificationRequest, LiveStep, Message, MessageAttachment, MessagePart, PlanResult, ToolCall, CompletedToolCall, UploadRequest } from "./types";
 import { useThumbnailUrl } from "@/hooks/useAssetThumbnail";
 import { cn } from "@/lib/utils";
@@ -22,7 +22,6 @@ import { ChatArtifactCard } from "../canvas/ChatArtifactCard";
 import { GeneratedAssetCard } from "./GeneratedAssetCard";
 import { assetTypeForFile } from "@/lib/assetType";
 import { TYPE_ICONS, TYPE_STYLES, typeBadge } from "@/components/platform/canvas/assetTypeStyles";
-import { CitationStrip } from "./CitationStrip";
 import { FollowUpChips } from "./FollowUpChips";
 import { SkillIcon } from "@/components/platform/skills/SkillIcon";
 import { CreativeBriefChips } from "./creative-library/CreativeBriefChips";
@@ -408,13 +407,6 @@ export function MessageItem({
                     </div>
                 )}
 
-                {isAssistant && !message.isStreaming && message.citations && message.citations.length > 0 && (
-                    <CitationStrip citations={message.citations} />
-                )}
-
-                {isAssistant && !message.isStreaming && isLastMessage && message.suggestedFollowUps && message.suggestedFollowUps.length > 0 && onFollowUpSelect && (
-                    <FollowUpChips suggestions={message.suggestedFollowUps} onSelect={onFollowUpSelect} />
-                )}
 
                 {message.skillsUsed && message.skillsUsed.length > 0 && (
                     <div className={cn(
@@ -517,21 +509,18 @@ export function MessageItem({
                 )}
 
                 {isAssistant && !message.isStreaming && hasDisplayedContent && (
-                    <MessageFeedback messageId={message.id} conversationId={message.conversationId} content={message.content} />
+                    <MessageFeedback
+                        messageId={message.id}
+                        conversationId={message.conversationId}
+                        content={message.content}
+                        citations={message.citations}
+                        alwaysVisible={isLastMessage}
+                        onRetry={isLastMessage && !isStreaming && onRegenerate ? () => onRegenerate(message) : undefined}
+                    />
                 )}
 
-                {isAssistant && hasDisplayedContent && isLastMessage && !message.isStreaming && !isStreaming && onRegenerate && (
-                    <div className="flex items-center gap-2 opacity-0 group-hover/msg:opacity-100 transition-opacity">
-                        <button
-                            type="button"
-                            onClick={() => onRegenerate(message)}
-                            className="flex items-center gap-1 text-[11px] text-muted-foreground/70 hover:text-foreground px-1 mt-1"
-                            title="Regenerate response"
-                        >
-                            <RotateCcw className="h-3 w-3" />
-                            <span>Regenerate</span>
-                        </button>
-                    </div>
+                {isAssistant && !message.isStreaming && isLastMessage && message.suggestedFollowUps && message.suggestedFollowUps.length > 0 && onFollowUpSelect && (
+                    <FollowUpChips suggestions={message.suggestedFollowUps} onSelect={onFollowUpSelect} />
                 )}
         </div>
     );

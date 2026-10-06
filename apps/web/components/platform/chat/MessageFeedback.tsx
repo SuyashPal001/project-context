@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from "react";
-import { ThumbsUp, ThumbsDown, Copy, Check } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Copy, Check, RotateCcw, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { api, ApiError } from "@/lib/api";
@@ -15,8 +15,19 @@ const FEEDBACK_ISSUE_OPTIONS = [
     'Other',
 ] as const;
 
-export function MessageFeedback({ messageId, conversationId, content }: { messageId: string; conversationId: string; content?: string }) {
+// One row under a reply: copy · retry · 👍 · 👎 · sources (after beautiful-ui's
+// streaming text, 2026-10-07). Retry and sources show only when there are any.
+export function MessageFeedback({ messageId, conversationId, content, onRetry, citations, alwaysVisible }: {
+    messageId: string;
+    conversationId: string;
+    content?: string;
+    onRetry?: () => void;
+    citations?: Array<{ name: string; score: number }>;
+    /** The latest reply keeps its row on screen; older ones show it on hover. */
+    alwaysVisible?: boolean;
+}) {
     const [rating, setRating] = useState<'up' | 'down' | null>(null);
+    const [sourcesOpen, setSourcesOpen] = useState(false);
     const [modalOpen, setModalOpen] = useState(false);
     const [issueType, setIssueType] = useState('');
     const [detail, setDetail] = useState('');
@@ -85,7 +96,7 @@ export function MessageFeedback({ messageId, conversationId, content }: { messag
 
     return (
         <div className="mt-1">
-            <div className="flex items-center gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-150">
+            <div className={cn("flex items-center gap-1 transition-opacity duration-150", !alwaysVisible && !sourcesOpen && "opacity-0 group-hover/msg:opacity-100")}>
                 {content && (
                     <button
                         onClick={handleCopy}
@@ -93,6 +104,17 @@ export function MessageFeedback({ messageId, conversationId, content }: { messag
                         aria-label={copied ? "Copied" : "Copy message"}
                     >
                         {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                    </button>
+                )}
+                {onRetry && (
+                    <button
+                        type="button"
+                        onClick={onRetry}
+                        className="p-1 rounded hover:bg-muted/50 transition-colors text-muted-foreground/50 hover:text-muted-foreground"
+                        aria-label="Retry"
+                        title="Retry"
+                    >
+                        <RotateCcw className="h-3.5 w-3.5" />
                     </button>
                 )}
                 <button
@@ -119,7 +141,34 @@ export function MessageFeedback({ messageId, conversationId, content }: { messag
                 >
                     <ThumbsDown className={cn("h-3.5 w-3.5", rating === 'down' && "fill-current")} />
                 </button>
+                {!!citations?.length && (
+                    <button
+                        type="button"
+                        onClick={() => setSourcesOpen(o => !o)}
+                        aria-expanded={sourcesOpen}
+                        className="ml-1.5 flex items-center gap-1.5 rounded px-1 py-0.5 text-[12px] text-muted-foreground/70 hover:text-foreground transition-colors"
+                    >
+                        <span className="flex -space-x-1">
+                            {citations.slice(0, 3).map((_, i) => (
+                                <span key={i} className="flex h-4 w-4 items-center justify-center rounded-full bg-muted ring-2 ring-background">
+                                    <FileText className="h-2.5 w-2.5" />
+                                </span>
+                            ))}
+                        </span>
+                        <span>{citations.length} source{citations.length === 1 ? '' : 's'}</span>
+                    </button>
+                )}
             </div>
+            {sourcesOpen && !!citations?.length && (
+                <ul className="mt-1 flex flex-col gap-1 pl-1">
+                    {citations.map((c, i) => (
+                        <li key={i} className="flex items-center gap-2 text-[12.5px] text-muted-foreground" title={`Relevance: ${(c.score * 100).toFixed(0)}%`}>
+                            <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+                            <span className="truncate">{c.name}</span>
+                        </li>
+                    ))}
+                </ul>
+            )}
 
             <Dialog open={modalOpen} onOpenChange={(open) => { if (!open) handleCancel(); }}>
                 <DialogContent className="sm:max-w-md">

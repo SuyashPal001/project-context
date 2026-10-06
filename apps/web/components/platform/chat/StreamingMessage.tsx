@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { chatMarkdownComponents } from './markdownComponents';
+import { rehypeStreamWords } from './streamWords';
 
 interface StreamingMessageProps {
   isStreaming: boolean;
@@ -47,15 +48,14 @@ export function StreamingMessage({ isStreaming, content, isThinking }: Streaming
 
   return (
     <div ref={contentRef}>
+      {/* Words fade in as they arrive; no cursor block (2026-10-07, after beautiful-ui's streaming text). */}
       <ReactMarkdown
           remarkPlugins={[remarkGfm]}
+          rehypePlugins={isStreaming ? [rehypeStreamWords] : []}
           components={chatMarkdownComponents}
       >
           {content}
       </ReactMarkdown>
-      {isStreaming && (
-        <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1" />
-      )}
     </div>
   );
 }
