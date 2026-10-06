@@ -194,6 +194,12 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     const [isPreparingMessage, setIsPreparingMessage] = useState(false);
     const isPreparingMessageRef = useRef(false);
     const [activeToolCalls, setActiveToolCalls] = useState<Map<string, ToolCall>>(new Map());
+    // Calls started but not yet done, kept in step with the events rather than
+    // with renders. A delegate's finished still arrives as tool_call and
+    // tool_done in the same network chunk, before React re-renders; looked up
+    // in state, the done found no call and was dropped, leaving a stuck
+    // "Generating image…" card and no still (2026-10-06).
+    const startedCallsRef = useRef<Map<string, ToolCall>>(new Map());
     const [completedToolCalls, setCompletedToolCalls] = useState<CompletedToolCall[]>([]);
     // Mirrors completedToolCalls synchronously — onDone is a useCallback that
     // closes over completedToolCalls, but a 'tool_done' SSE event immediately
@@ -249,6 +255,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     // into the next conversation (see the 8th live-test bug this fixes).
     const resetTrace = useCallback(() => {
         setActiveToolCalls(new Map());
+        startedCallsRef.current.clear();
         setCompletedToolCalls([]);
         completedToolCallsRef.current = [];
         setLiveSteps([]);
@@ -261,7 +268,8 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     }, []);
 
     const handleToolDone = useCallback((toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>, result?: Record<string, unknown>) => {
-        const call = activeToolCalls.get(toolCallId);
+        const call = activeToolCalls.get(toolCallId) ?? startedCallsRef.current.get(toolCallId);
+        startedCallsRef.current.delete(toolCallId);
         if (!call) return;
         setCompletedToolCalls(prev => {
             const next = [...prev, { ...call, results, result }];
@@ -481,6 +489,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 next.set(toolCallId, { id: toolCallId, toolName, arguments: args, isLoading: true, query });
                 return next;
             });
+            startedCallsRef.current.set(toolCallId, { id: toolCallId, toolName, arguments: args, isLoading: true, query });
             const normTool = toolName.toLowerCase().replace(/_/g, '-');
             // Only open canvas when an actual save tool fires — this is the definitive signal
             // that a PRD/roadmap/tasks artifact is being persisted. Never open on agent delegation
@@ -540,7 +549,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
         onGenerationStarted: useCallback((aspectRatio?: string, count?: number) => {
             setActiveToolCalls(prev => {
                 let targetId: string | undefined;
-                for (const [id, call] of prev) if (call.isLoading) targetId = id;
+                for (const [id, call] of prev) if (call.isLoading && !id.startsWith('sub-')) targetId = id;
                 const existing = targetId ? prev.get(targetId) : undefined;
                 if (!targetId || !existing) return prev;
                 const next = new Map(prev);
@@ -574,7 +583,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
         onToolStatus: useCallback((text: string, details?: string[]) => {
             setActiveToolCalls(prev => {
                 let targetId: string | undefined;
-                for (const [id, call] of prev) if (call.isLoading) targetId = id;
+                for (const [id, call] of prev) if (call.isLoading && !id.startsWith('sub-')) targetId = id;
                 const existing = targetId ? prev.get(targetId) : undefined;
                 if (!targetId || !existing) return prev;
                 const next = new Map(prev);
@@ -597,7 +606,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 // so fall back to the most recent loading call to carry the count.
                 let targetId = prev.has(toolCallId) ? toolCallId : undefined;
                 if (!targetId) {
-                    for (const [id, call] of prev) if (call.isLoading) targetId = id;
+                    for (const [id, call] of prev) if (call.isLoading && !id.startsWith('sub-')) targetId = id;
                 }
                 const existing = targetId ? prev.get(targetId) : undefined;
                 if (!targetId || !existing) return prev;
