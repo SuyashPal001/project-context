@@ -54,4 +54,25 @@ describe('getThinkingBudget', () => {
   it('returns 1024 as the default for an ordinary question', () => {
     expect(getThinkingBudget('what time does the store open')).toBe(1024)
   })
+
+  it('live 2026-10-06: a short unknown reply that is not conversational or an approval gets default budget, not 0', () => {
+    // "aoorived" is 3 edits from "approved" — too far for isTypoedApproval's
+    // 1-edit cap — but it is also not a known conversational word. It must
+    // not fall into the old "any short message" bucket.
+    expect(getThinkingBudget('aoorived')).toBe(1024)
+  })
+
+  it('"yes approved" still reaches the delegate map', () => {
+    expect(getThinkingBudget('yes approved')).toBe(1024)
+  })
+
+  it('common greetings and acks still get 0', () => {
+    // 'ok' is deliberately excluded here: it is also an APPROVAL_SIGNALS
+    // entry, and approval precedence (checked first, see comment above
+    // APPROVAL_SIGNALS) intentionally wins for it — pre-existing behaviour,
+    // unchanged by this fix.
+    for (const word of ['hi', 'hello', 'thanks', 'thank you', 'cool', 'bye']) {
+      expect(getThinkingBudget(word), word).toBe(0)
+    }
+  })
 })

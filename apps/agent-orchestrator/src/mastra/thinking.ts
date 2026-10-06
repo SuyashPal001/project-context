@@ -7,8 +7,9 @@
 //   8192  — complex reasoning: planning, analysis, code, PRDs
 
 const CONVERSATIONAL = new Set([
-  'hi', 'hello', 'hey', 'thanks', 'thank you', 'ok', 'okay', 'got it',
-  'sure', 'yes', 'no', 'great', 'nice', 'cool', 'good', 'bye', 'goodbye',
+  'hi', 'hello', 'hey', 'hiya', 'yo', 'thanks', 'thank you', 'thx', 'ty',
+  'ok', 'okay', 'got it', 'sure', 'yes', 'no', 'great', 'nice', 'cool',
+  'good', 'lol', 'haha', 'bye', 'goodbye', 'see ya', 'take care',
   'sounds good', 'perfect', 'alright', 'understood', 'noted',
 ])
 
@@ -97,8 +98,18 @@ export function getThinkingBudget(message: string): number {
   if (APPROVAL_SIGNALS.has(firstWord) || APPROVAL_SIGNALS.has(firstTwoWords)) return 1024
   if (isTypoedApproval(firstWord)) return 1024
 
-  // Very short or purely conversational
-  if (lower.length < 15 || CONVERSATIONAL.has(lower)) return 0
+  // Only known conversational messages (greetings, thanks, acks) or pure
+  // emoji/punctuation (stripped down to an empty string by the normalizer
+  // above) get the zero-thinking fast path. Live 2026-10-06: "aoorived" (an
+  // approval typo 3 edits from "approved", so isTypoedApproval's 1-edit cap
+  // correctly didn't catch it) was under 15 characters and used to hit a
+  // blanket length check here, landing at budget=0. That hid Olmo's
+  // delegate map entirely (buildOlmoDelegates returned {}), so the
+  // agent-director call it still tried to make became an orphan client
+  // tool and Olmo invented a fake failure instead of delegating. A short
+  // message that is neither conversational nor an approval must fall
+  // through to the default below instead of being assumed harmless.
+  if (CONVERSATIONAL.has(lower) || lower === '') return 0
 
   // Complex reasoning keywords
   if (COMPLEX_KEYWORDS.some(kw => lower.includes(kw))) return 8192
