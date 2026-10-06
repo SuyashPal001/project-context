@@ -84,6 +84,14 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
       // The delegate's own tools read this before showing an approval card
       // (reviewGate.ts): a batch waits until the user has seen the first one.
       if (briefIsReviewedAdFlow(context.prompt)) ctx.set(AD_FLOW_KEY as never, true as never)
+      // F4: plan_tvc's check can't trust Director to keep brief.reference —
+      // a live run dropped it on the very first check. Olmo's own delegation
+      // prompt is the one place that fact can't be edited away: when it
+      // recreates a reference ad, it carries "Reference video: <id>" (same
+      // pattern as AD_FLOW_KEY above), and planTvc.ts reads this back off
+      // requestContext to refuse a plan that disagrees.
+      const refMatch = /Reference video:\s*(\S+)/.exec(context.prompt)
+      if (refMatch) ctx.set('tvcReferenceVideoFileId' as never, refMatch[1] as never)
       const spec = lookup(context.primitiveId)
       const tenantId = host.tenantId || (ctx.get('tenantId') as string | undefined) || ''
       const agentId = host.agentId ?? (ctx.get('agentId') as string | undefined) ?? null

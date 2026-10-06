@@ -89,6 +89,21 @@ describe('onDelegationStart', () => {
     expect(nested.requestContext.get('delegationDepth')).toBe(2)
   })
 
+  // F4: Olmo's delegation prompt is the one untamperable source for "this ad
+  // recreates a reference" — plan_tvc reads this back off requestContext
+  // (planTvc.ts's expectedReferenceVideoFileId) to refuse a plan that drops
+  // or never had the reference, even on its very first check.
+  it('parses "Reference video: <id>" off the prompt into tvcReferenceVideoFileId', async () => {
+    const ctx = startContext({ prompt: 'TVC plan: plan-1\nReference video: file-ref-99\nStep: shot 1' })
+    await buildDelegationConfig(host, { budget: allow, record: noopRecord }).onDelegationStart!(ctx as never)
+    expect(ctx.requestContext.get('tvcReferenceVideoFileId')).toBe('file-ref-99')
+  })
+  it('leaves tvcReferenceVideoFileId unset when the prompt carries no reference', async () => {
+    const ctx = startContext()
+    await buildDelegationConfig(host, { budget: allow, record: noopRecord }).onDelegationStart!(ctx as never)
+    expect(ctx.requestContext.get('tvcReferenceVideoFileId')).toBeUndefined()
+  })
+
   it('refuses the delegation when the budget gate says no, and does not rewrite identity', async () => {
     const ctx = startContext()
     const budget = async () => ({ allowed: false, reason: 'out of credits' })
