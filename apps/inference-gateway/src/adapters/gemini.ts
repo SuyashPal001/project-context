@@ -61,6 +61,9 @@ function encodeToolCallId(index: number, streamId: string, signature: string | u
   return `gs.${b64}.${index}`
 }
 
+/** Google's placeholder signature for replayed calls that never had one. */
+export const SKIP_THOUGHT_SIGNATURE = 'skip_thought_signature_validator'
+
 function decodeToolCallSignature(toolCallId: string): string | undefined {
   if (!toolCallId.startsWith('gs.')) return undefined
   const [, b64] = toolCallId.split('.')
@@ -90,7 +93,7 @@ export function toGeminiParts(content: string | OpenAIContentPart[] | null): Gem
   })
 }
 
-function toGeminiContents(messages: OpenAIMessage[]): {
+export function toGeminiContents(messages: OpenAIMessage[]): {
   systemInstruction: GeminiContent | undefined
   contents: GeminiContent[]
 } {
@@ -150,6 +153,16 @@ function toGeminiContents(messages: OpenAIMessage[]): {
         if (signature) (part as { thoughtSignature?: string }).thoughtSignature = signature
         return part
       })
+      // A replayed tool-call turn whose calls carry no signature at all — the
+      // model sent the call without one (the gateway then named it `call_…`),
+      // or Mastra split a parallel set so an unsigned call stands alone — is
+      // refused outright: "function call … is missing a thought_signature"
+      // (HTTP 400, tested 2026-10-07). It broke every resume after an approval
+      // whose Director call was unsigned (Lakmē ad runs, 2026-10-06). Google's
+      // documented placeholder for history it cannot sign lets it through.
+      if (!parts.some((pt) => 'thoughtSignature' in pt && pt.thoughtSignature)) {
+        (parts[0] as { thoughtSignature?: string }).thoughtSignature = SKIP_THOUGHT_SIGNATURE
+      }
       if (msg.content) parts.unshift({ text: typeof msg.content === 'string' ? msg.content : '' })
       contents.push({ role: 'model', parts })
       continue
