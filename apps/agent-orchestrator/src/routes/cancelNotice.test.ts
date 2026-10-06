@@ -36,6 +36,12 @@ describe('buildCancelNotice', () => {
   })
 })
 
+describe('generate_jingle cancel', () => {
+  it('says the jingle was cancelled', () => {
+    expect(buildCancelNotice('generate_jingle', {}, 'make the ad')).toMatch(/^Cancelled the jingle\./)
+  })
+})
+
 describe('background decline tracking', () => {
   it('returns none when nothing is pending', async () => {
     expect(await waitForBackgroundDecline('c-none')).toBe('none')

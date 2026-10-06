@@ -128,6 +128,10 @@ const firstItem = (args: Record<string, unknown>): Record<string, unknown> =>
 const imageGen = { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Generate image', buildPreview: promptPreview, subjectFor: imageSubject }
 const videoGen = { resourceType: 'video_generation', subject: VIDEO_MODEL, label: 'Generate video', buildPreview: promptPreview }
 const songGen = { resourceType: 'music_generation', subject: MUSIC_MODEL, label: 'Generate song' }
+const jingleGen = {
+  resourceType: 'music_generation', subject: 'lyria-3-clip-preview', label: 'Generate jingle',
+  buildPreview: (args: Record<string, unknown>) => (typeof args.line === 'string' ? `Sung line: "${args.line}"` : undefined),
+}
 const imageEdit = { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Edit image', buildPreview: promptPreview }
 // The narration card shows the exact words and language, so approving the
 // cost also approves the script — the user never gets a read they didn't see.
@@ -171,6 +175,8 @@ export const GENERATION_APPROVAL_METADATA: Record<string, {
   'generate_video': videoGen,
   'generate-song': songGen,
   'generate_song': songGen,
+  'generate-jingle': jingleGen,
+  'generate_jingle': jingleGen,
   'edit-image': imageEdit,
   'edit_image': imageEdit,
   'generate-videos': videoBatchGen,

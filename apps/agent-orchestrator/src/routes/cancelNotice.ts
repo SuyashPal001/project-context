@@ -44,6 +44,8 @@ export function buildCancelNotice(toolName: string, args: Record<string, unknown
       return `Cancelled: ${count || 'the'} videos${subject ? ` of ${subject}` : ''}${ar}.` + RETRY
     case 'generate_song':
       return (subject ? `Cancelled: ${subject} song.` : 'Cancelled the song.') + RETRY
+    case 'generate_jingle':
+      return 'Cancelled the jingle.' + RETRY
     case 'generate_narration':
       return (subject ? `Cancelled: ${subject} voiceover.` : 'Cancelled the voiceover.') + RETRY
     case 'save_skill':

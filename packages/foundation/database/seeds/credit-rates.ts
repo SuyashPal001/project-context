@@ -6,7 +6,7 @@ import type { db as DB } from './index';
 // paid tier (ai.google.dev/gemini-api/docs/pricing, checked 2026-10-02), not Vertex.
 // $X per 1M tokens -> X*100 credits -> X*100_000_000 micro.
 // e.g. gemini-3.6-flash $0.75/1M input -> 75 credits -> 75_000_000 micro.
-const RATES = [
+export const RATES = [
   // The live chat model (MASTRA_MODEL). $0.75 in / $3.75 out per 1M tokens.
   { resourceType: 'llm_tokens', subject: 'gemini-3.6-flash',
     pricingSchema: { per_million_tokens_micro: { input: 75_000_000, output: 375_000_000 } } },
@@ -44,6 +44,10 @@ const RATES = [
   // listed there): 8 credits. (Was 60_000 — the same dollars-for-cents slip, 1/100 of cost.)
   { resourceType: 'music_generation', subject: 'lyria-002',
     pricingSchema: { per_call_micro: 8_000_000 } },
+  // Lyria 3 sung clip (lyria-3-clip-preview, Vertex, location global): $0.04 per
+  // ~30s clip, checked 2026-10-05: 4 credits. Used by generate_jingle.
+  { resourceType: 'music_generation', subject: 'lyria-3-clip-preview',
+    pricingSchema: { per_call_micro: 4_000_000 } },
   // Veo-family models bill per SECOND ($0.03-$0.75/sec depending on tier/audio) but this tool
   // charges a flat per-call rate because generateVideo.ts never receives clip duration back
   // from the inference gateway to meter against. 400_000 assumes a worst-case ~8s clip at the

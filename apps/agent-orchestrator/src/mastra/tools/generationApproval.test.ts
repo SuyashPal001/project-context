@@ -78,6 +78,7 @@ describe('GENERATION_APPROVAL_METADATA', () => {
         'generate-image', 'generate_image',
         'generate-images', 'generate_images',
         'generate-song', 'generate_song',
+        'generate-jingle', 'generate_jingle',
         'generate-video', 'generate_video',
         'generate-videos', 'generate_videos',
         'generate-narration', 'generate_narration',
@@ -110,6 +111,9 @@ describe('GENERATION_APPROVAL_METADATA', () => {
     expect(GENERATION_APPROVAL_METADATA['edit_image']).toBe(GENERATION_APPROVAL_METADATA['edit-image'])
     expect(GENERATION_APPROVAL_METADATA['generate_video']).toBe(GENERATION_APPROVAL_METADATA['generate-video'])
     expect(GENERATION_APPROVAL_METADATA['generate_song']).toBe(GENERATION_APPROVAL_METADATA['generate-song'])
+    expect(GENERATION_APPROVAL_METADATA['generate_jingle']).toBe(GENERATION_APPROVAL_METADATA['generate-jingle'])
+    expect(GENERATION_APPROVAL_METADATA['generate_jingle']).toMatchObject({ resourceType: 'music_generation', subject: 'lyria-3-clip-preview', label: 'Generate jingle' })
+    expect(GENERATION_APPROVAL_METADATA['generate_jingle'].buildPreview!({ line: 'Bubbli, feel the magic' })).toBe('Sung line: "Bubbli, feel the magic"')
   })
 
   it('generate-image previews the prompt so the card shows what is being paid for', () => {

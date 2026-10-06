@@ -24,3 +24,11 @@ describe('credit rate seed versioning', () => {
     expect(planRateChange(existing, { per_call_micro: 1_000 })).toEqual({ action: 'insert', version: 2 });
   });
 });
+
+import { RATES } from './credit-rates';
+
+describe('Lyria 3 jingle rate', () => {
+  it('prices lyria-3-clip-preview at its $0.04 per clip (4 credits)', () => {
+    expect(RATES.find((r) => r.resourceType === 'music_generation' && r.subject === 'lyria-3-clip-preview')?.pricingSchema).toEqual({ per_call_micro: 4_000_000 });
+  });
+});
