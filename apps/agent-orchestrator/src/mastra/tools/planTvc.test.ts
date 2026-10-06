@@ -15,7 +15,7 @@ const plan = () => tvcPlanSchema.parse({
 
 const tick = () => new Promise((r) => setTimeout(r, 5))
 
-function fakeDeps(opts: { slow?: boolean; checked?: string[]; detectCutTimes?: PlanTvcDeps['detectCutTimes'] } = {}) {
+function fakeDeps(opts: { slow?: boolean; checked?: string[]; detectCutTimes?: PlanTvcDeps['detectCutTimes']; productPhotoMimeType?: PlanTvcDeps['productPhotoMimeType'] } = {}) {
   const store = new Map<string, SavedPlan>()
   const keyToId = new Map<string, string>()
   let n = 0
@@ -30,6 +30,7 @@ function fakeDeps(opts: { slow?: boolean; checked?: string[]; detectCutTimes?: P
     newKey: () => `generated/conv/tvc-plan-${n + 1}.json`,
     stillChecked: (id) => (opts.checked ? opts.checked.includes(id) : true),
     detectCutTimes: opts.detectCutTimes ?? (async () => { throw new Error('detectCutTimes not expected in this test') }),
+    productPhotoMimeType: opts.productPhotoMimeType ?? (async () => 'image/jpeg'),
   }
   return { deps, store }
 }
@@ -115,6 +116,30 @@ describe('runPlanTvc check: reference cut times come from the file, not Director
     const same = plan(); same.brief.reference = { videoFileId: 'ref-video-a' }
     const sameOut = await runPlanTvc({ action: 'check', plan: same, planFileId }, deps)
     expect(sameOut.errors).toEqual([])
+  })
+})
+
+describe('runPlanTvc check: product photo must be an image, never the reference (Task 1)', () => {
+  it('refuses a video mime type', async () => {
+    const { deps } = fakeDeps({ productPhotoMimeType: async () => 'video/mp4' })
+    const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    expect(out.refusalReason).toMatch(/^PRODUCT_PHOTO_NOT_IMAGE/)
+  })
+  it('refuses when productPhotoFileId is the reference video, before even checking its mime type', async () => {
+    const { deps } = fakeDeps({ productPhotoMimeType: async () => { throw new Error('should not be called') } })
+    const p = plan(); p.brief.productPhotoFileId = 'ref-video'; p.brief.reference = { videoFileId: 'ref-video' }
+    const out = await runPlanTvc({ action: 'check', plan: p }, deps)
+    expect(out.refusalReason).toMatch(/^PRODUCT_PHOTO_NOT_IMAGE/)
+  })
+  it('passes a real image', async () => {
+    const { deps } = fakeDeps({ productPhotoMimeType: async () => 'image/png' })
+    const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    expect(out.errors).toEqual([])
+  })
+  it('refuses, never passing silently, when the mime lookup itself fails', async () => {
+    const { deps } = fakeDeps({ productPhotoMimeType: async () => { throw new Error('file lookup failed') } })
+    const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    expect(out.refusalReason).toBe('PRODUCT_PHOTO_UNCHECKED: could not read the product photo; try again')
   })
 })
 

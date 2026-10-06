@@ -31,6 +31,11 @@ export interface PlanTvcDeps {
   // check always overwrites cutTimes with what this returns, so a plan can
   // never be made to pass by editing the numbers.
   detectCutTimes: (videoFileId: string) => Promise<{ cutTimes: number[]; durationSeconds: number }>
+  // Task 1: the product photo's real mime type, read from the file itself —
+  // never trusted from Director. A live run passed the reference video's
+  // fileId as productPhotoFileId; every still then failed GENERATION_FAILED.
+  // Throws if the file can't be read (check refuses rather than passing silently).
+  productPhotoMimeType: (fileId: string) => Promise<string>
 }
 
 export const planTvcInputSchema = z.object({
@@ -133,6 +138,23 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     if (!input.plan) return { refused: true, refusalReason: 'PLAN_REQUIRED' }
     const planInput = structuredClone(input.plan)
     const ref = planInput.brief.reference
+    // Task 1: the product photo must be an image, and never the reference
+    // video itself — checked before anything else so a bad id can't ride
+    // through on a plan that otherwise validates.
+    const productPhotoFileId = planInput.brief.productPhotoFileId
+    if (ref?.videoFileId && ref.videoFileId === productPhotoFileId) {
+      return { refused: true, refusalReason: 'PRODUCT_PHOTO_NOT_IMAGE: the product photo must be a photo of the product (jpg/png/webp), not a video; ask the user to upload one' }
+    }
+    let productPhotoMimeType: string
+    try {
+      productPhotoMimeType = await deps.productPhotoMimeType(productPhotoFileId)
+    } catch (err) {
+      console.error('[planTvc] productPhotoMimeType failed:', (err as Error).message)
+      return { refused: true, refusalReason: 'PRODUCT_PHOTO_UNCHECKED: could not read the product photo; try again' }
+    }
+    if (!productPhotoMimeType.startsWith('image/')) {
+      return { refused: true, refusalReason: 'PRODUCT_PHOTO_NOT_IMAGE: the product photo must be a photo of the product (jpg/png/webp), not a video; ask the user to upload one' }
+    }
     // A re-check loads the previously saved plan up front (not only later,
     // for storageKey/carryOver) so the reference-video identity check below
     // runs before any detection: once a plan is tied to a reference ad, that
@@ -262,6 +284,12 @@ export const planTvc = createTool({
       newKey: () => `generated/${conversationId}/tvc-plan-${randomUUID()}.json`,
       stillChecked: (id) => stillPassedCheck({ threadId: conversationId, resourceId: tenantId }, id),
       detectCutTimes: (videoFileId) => detectCutTimes(videoFileId, idToken, tenantId || conversationId, REFERENCE_CUT_THRESHOLD),
+      productPhotoMimeType: async (fileId) => {
+        const url = await fetchPresignedUrl(fileId, idToken)
+        const res = await fetch(url)
+        if (!res.ok) throw new Error(`product photo fetch failed: HTTP ${res.status}`)
+        return res.headers.get('content-type') ?? 'application/octet-stream'
+      },
     }
     try {
       return await runPlanTvc(inputData as PlanTvcInput, deps)
