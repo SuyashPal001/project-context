@@ -118,26 +118,35 @@ export function mergeCheckInputs(before: CheckInputs | undefined, now: CheckInpu
 
 // Today's in-process record, kept only as the fallback when the thread
 // cannot hold the record (missing, foreign, or the store is down).
+// Every successful thread write is mirrored here too, so a later store-read
+// failure in the same process still sees what the clip was checked with.
 const fallbackCheckedWith = new Map<string, CheckInputs>()
+function rememberFallback(key: string, merged: CheckInputs): void {
+  fallbackCheckedWith.delete(key)
+  if (fallbackCheckedWith.size > 1000) fallbackCheckedWith.delete(fallbackCheckedWith.keys().next().value as string)
+  fallbackCheckedWith.set(key, merged)
+}
 export function droppedCheckInputsFallback(key: string, now: CheckInputs): string[] {
   const { dropped, merged } = mergeCheckInputs(fallbackCheckedWith.get(key), now)
-  if (dropped.length === 0) {
-    if (fallbackCheckedWith.size > 1000) fallbackCheckedWith.delete(fallbackCheckedWith.keys().next().value as string)
-    fallbackCheckedWith.set(key, merged)
-  }
+  if (dropped.length === 0) rememberFallback(key, merged)
   return dropped
 }
 
 /** What a clip was first checked with lives in the thread's metadata (K1). */
 export async function droppedCheckInputs(scope: CheckScope, clipFileId: string, now: CheckInputs): Promise<string[]> {
   let dropped: string[] = []
+  let merged: CheckInputs | undefined
   const out = await updateCheckRecords(scope, (r) => {
     const res = mergeCheckInputs(r.checkedWith[clipFileId], now)
     dropped = res.dropped
     if (dropped.length) return null
+    merged = res.merged
     return { ...r, checkedWith: { ...r.checkedWith, [clipFileId]: res.merged }, checkedOrder: [...r.checkedOrder.filter((k) => k !== clipFileId), clipFileId] }
   })
-  return out === 'unavailable' ? droppedCheckInputsFallback(`${scope.threadId}:${clipFileId}`, now) : dropped
+  const key = `${scope.threadId}:${clipFileId}`
+  if (out === 'unavailable') return droppedCheckInputsFallback(key, now)
+  if (out === 'written' && merged) rememberFallback(key, mergeCheckInputs(fallbackCheckedWith.get(key), merged).merged)
+  return dropped
 }
 
 export async function fetchBase64(fileId: string, idToken: string, signal: AbortSignal): Promise<{ data: string; mime: string }> {

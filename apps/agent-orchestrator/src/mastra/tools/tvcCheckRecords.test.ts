@@ -75,6 +75,12 @@ describe('K1: never writes a foreign or missing thread', () => {
     expect(env.rows.get('conv-B')!.metadata).toEqual({})
   })
 
+  it('a clip checked through the thread keeps its guard when a later thread read throws', async () => {
+    expect(await droppedCheckInputs(mine, 'clip-mirror', all)).toEqual([])
+    env.store.getThreadById = async () => { throw new Error('db down') }
+    expect(await droppedCheckInputs(mine, 'clip-mirror', none)).toEqual(['expectedLine', 'product', 'reference'])
+  })
+
   it('a store that throws on write counts as unavailable, never as a pass', async () => {
     const broken = inMemoryThreadStore([{ id: 'conv-1', resourceId: 'tenant-A' }])
     broken.store.updateThread = async () => { throw new Error('db down') }
