@@ -44,6 +44,10 @@ export interface UseChatOptions {
     // that exact message even when it arrives before any text.
     onClarificationRequired?: (clarificationId: string, questions: ClarificationQuestion[], turnMessageId: string) => void;
     onUploadRequired?: (uploadId: string, prompt: string, minFiles: number, maxFiles: number, turnMessageId: string) => void;
+    /** A question or approval ended this part of the turn: settle the message so far (messageId is null when nothing streamed yet). */
+    onTurnPause?: (messageId: string | null, payload: Record<string, unknown>) => void;
+    /** The user answered: their answer is the next message, and a new part of the turn starts. */
+    onTurnResume?: (payload: Record<string, unknown>) => void;
 }
 
 export interface UseChatReturn {
@@ -81,6 +85,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         onGenerationConfirmRequired,
         onClarificationRequired,
         onUploadRequired,
+        onTurnPause,
+        onTurnResume,
     } = options;
 
     const [isStreaming, setIsStreaming] = useState(false);
@@ -112,6 +118,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const onGenerationConfirmRequiredRef = useRef(onGenerationConfirmRequired);
     const onClarificationRequiredRef = useRef(onClarificationRequired);
     const onUploadRequiredRef = useRef(onUploadRequired);
+    const onTurnPauseRef = useRef(onTurnPause);
+    const onTurnResumeRef = useRef(onTurnResume);
     const conversationIdRef = useRef(conversationId);
     const agentIdRef = useRef(agentId);
     const folderIdRef = useRef(folderId);
@@ -137,6 +145,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     onGenerationConfirmRequiredRef.current = onGenerationConfirmRequired;
     onClarificationRequiredRef.current = onClarificationRequired;
     onUploadRequiredRef.current = onUploadRequired;
+    onTurnPauseRef.current = onTurnPause;
+    onTurnResumeRef.current = onTurnResume;
     conversationIdRef.current = conversationId;
     agentIdRef.current = agentId;
 
@@ -490,6 +500,21 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                                 payload.maxFiles as number,
                                 currentMessageId,
                             );
+                            break;
+                        }
+
+                        case 'turn_pause': {
+                            // The text so far belongs to the settled part; what
+                            // comes after the answer opens a new message.
+                            onTurnPauseRef.current?.(currentMessageId, payload);
+                            currentMessageId = null;
+                            accumulatedText = '';
+                            setStreamingText('');
+                            break;
+                        }
+
+                        case 'turn_resume': {
+                            onTurnResumeRef.current?.(payload);
                             break;
                         }
 

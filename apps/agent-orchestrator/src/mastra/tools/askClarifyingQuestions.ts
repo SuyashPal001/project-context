@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { latestIdToken } from '../../freshIdToken.js'
 import { pendingClarifications, sessionActiveClarification } from '../../types.js'
 import { saveClarificationRequest, updateClarificationRequest } from '../../persistence.js'
+import { clarificationAnswerText, type TurnPauseFn, type TurnResumeFn } from '../../routes/turnAnswer.js'
 
 // Long enough to compare four generated faces or think about a brief. The SSE
 // heartbeat keeps the stream open while this tool waits, and a client
@@ -67,6 +68,8 @@ export const askClarifyingQuestionsTool = createTool({
     }
 
     if (sessionId) sessionActiveClarification.set(sessionId, clarificationId)
+    // The question ends this part of the turn; the answer starts the next (chatStream.ts).
+    ;(execContext?.requestContext?.get('pauseTurn' as never) as TurnPauseFn | undefined)?.()
 
     const answers = await new Promise<Array<{ questionIndex: number; selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }>>((resolve) => {
       const timer = setTimeout(() => {
@@ -106,6 +109,8 @@ export const askClarifyingQuestionsTool = createTool({
     })
 
     if (sessionId) sessionActiveClarification.delete(sessionId)
+    const answerFiles = answers.flatMap((a) => a.files ?? [])
+    ;(execContext?.requestContext?.get('resumeTurn' as never) as TurnResumeFn | undefined)?.(clarificationAnswerText(inputData.questions, answers), answerFiles)
     // The user just answered, so the browser handed over a fresh id token
     // (freshIdToken.ts) — later calls in this turn, tools included, use it.
     if (conversationId && idToken) execContext?.requestContext?.set('idToken', latestIdToken(conversationId, idToken))

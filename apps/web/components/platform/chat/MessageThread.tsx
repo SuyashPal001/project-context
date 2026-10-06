@@ -423,8 +423,14 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     while (prevIdx >= 0 && !messageHasDisplayedContent(messages[prevIdx])) prevIdx--;
                     const prevRole = prevIdx >= 0 ? messages[prevIdx].role : null;
                     const isLastMessage = i === messages.length - 1;
+                    // The user's answer to this message's question is the next
+                    // message (see useChatStream onTurnPause), so its card shows
+                    // just the question.
+                    const next = messages.slice(i + 1).find(messageHasDisplayedContent);
+                    const answerShownBelow = message.role === 'assistant' && next?.role === 'user';
                     return (
                         <MessageItem
+                            answerShownBelow={answerShownBelow}
                             key={message.id}
                             message={message}
                             isFirstInSequence={prevRole === null || prevRole !== message.role}
@@ -456,9 +462,11 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     made so far) on screen; the plain waiting row is only for a
                     turn with nothing to show. It used to replace the trace, so
                     clips the agent asked about were hidden (2026-10-06). */}
-                {awaitingReply && !((activeToolCalls?.length || completedToolCalls?.length) && !hasStreamingMessage) ? (
-                    <WaitingForReplyIndicator avatarUrl={agentAvatarUrl} persona={agentPersona} isDefault={agentIsDefault} />
-                ) : (isStreaming || isRetrying) && !hasStreamingMessage ? (
+                {/* An open question or approval ends the part of the turn
+                    before it (see useChatStream onTurnPause): what was made sits
+                    in that settled message above the card, so nothing here may
+                    look like it is still working while the user decides. */}
+                {awaitingReply || pendingGenerationConfirm ? null : (isStreaming || isRetrying) && !hasStreamingMessage ? (
                     <ThinkingIndicator
                         isRetrying={isRetrying ?? false}
                         isStreaming={isStreaming ?? false}
@@ -597,21 +605,3 @@ function ThinkingDots({ label = 'Thinking...', avatarUrl, persona, isDefault }: 
     );
 }
 
-// Static, un-animated counterpart to ThinkingIndicator/ThinkingDots — rendered instead of
-// either whenever the last message is blocking on a pending clarificationRequest. No timer,
-// no shimmer: the agent isn't doing anything, so nothing here should look like it's working.
-function WaitingForReplyIndicator({ avatarUrl, persona, isDefault }: { avatarUrl?: string | null; persona?: PersonaSummary | null; isDefault?: boolean }) {
-    return (
-        <div className="flex items-start gap-4 animate-in fade-in duration-300">
-            <AgentOrb size={32} state="idle" avatarUrl={avatarUrl} persona={persona} isDefault={isDefault} />
-            <div className="flex items-center gap-2 pt-1.5 text-muted-foreground">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="shrink-0">
-                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
-                    <path d="M9.5 9a2.5 2.5 0 0 1 4.83-.92c-.28.7-.77 1.1-1.33 1.5-.62.44-1 .8-1 1.67" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    <circle cx="12" cy="16.25" r="0.75" fill="currentColor" />
-                </svg>
-                <span className="text-sm font-mono">Waiting for your reply</span>
-            </div>
-        </div>
-    );
-}

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { latestIdToken } from '../../freshIdToken.js'
 import { pendingUploads, sessionActiveUpload, UPLOAD_TIMEOUT_MS } from '../../types.js'
 import { saveUploadRequest, updateUploadRequest } from '../../persistence.js'
+import { uploadAnswerText, type TurnPauseFn, type TurnResumeFn } from '../../routes/turnAnswer.js'
 
 // Lets the platform agent pause mid-conversation to ask the user to upload one
 // or more files (a logo, screenshots, a reference asset) before proceeding,
@@ -53,6 +54,8 @@ export const requestUploadTool = createTool({
     }
 
     if (sessionId) sessionActiveUpload.set(sessionId, uploadId)
+    // The request ends this part of the turn; the upload starts the next (chatStream.ts).
+    ;(execContext?.requestContext?.get('pauseTurn' as never) as TurnPauseFn | undefined)?.()
 
     const answer = await new Promise<{ files: { fileId: string; name: string; mimeType: string }[]; freeText?: string; skipped?: boolean }>((resolve) => {
       const timer = setTimeout(() => {
@@ -83,6 +86,10 @@ export const requestUploadTool = createTool({
     })
 
     if (sessionId) sessionActiveUpload.delete(sessionId)
+    ;(execContext?.requestContext?.get('resumeTurn' as never) as TurnResumeFn | undefined)?.(
+      uploadAnswerText(answer),
+      answer.files.map((f) => ({ fileId: f.fileId, name: f.name, type: f.mimeType })),
+    )
     // The user just answered, so the browser handed over a fresh id token
     // (freshIdToken.ts) — later calls in this turn, tools included, use it.
     if (conversationId && idToken) execContext?.requestContext?.set('idToken', latestIdToken(conversationId, idToken))

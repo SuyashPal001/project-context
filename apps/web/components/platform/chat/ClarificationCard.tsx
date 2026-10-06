@@ -90,9 +90,11 @@ interface ClarificationCardProps {
     // of order, so "last page" alone is not a safe signal that the backend's
     // full answer set is complete.
     onAnswer: (answer: { questionIndex: number; selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }, allAnswered: boolean) => Promise<boolean>;
+    /** Answered, and the answer is the user's next message: show only the question, as plain text. */
+    promptOnly?: boolean;
 }
 
-export function ClarificationCard({ request, onAnswer }: ClarificationCardProps) {
+export function ClarificationCard({ request, onAnswer, promptOnly }: ClarificationCardProps) {
     const [pageIndex, setPageIndex] = useState(0);
     const [selectedByQuestion, setSelectedByQuestion] = useState<Record<number, number>>({});
     // Only populated for multiSelect questions — parallel to selectedByQuestion,
@@ -183,6 +185,14 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
             freeTextRef.current.style.height = `${Math.min(freeTextRef.current.scrollHeight, 160)}px`;
         }
     }, [currentFreeText]);
+
+    if (promptOnly) {
+        return (
+            <div className="flex flex-col gap-1.5 text-[15px] leading-relaxed text-foreground">
+                {request.questions.map((q, i) => <p key={i} className="[overflow-wrap:anywhere]">{q.prompt}</p>)}
+            </div>
+        );
+    }
 
     if (request.status !== 'pending') {
         const total = request.questions.length;

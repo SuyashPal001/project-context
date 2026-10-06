@@ -693,6 +693,76 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 return { data };
             });
         }, [queryClient]),
+
+        // A question or approval ends this part of the turn, the way a reply
+        // that asks something ends: the work so far settles into its own
+        // message with its own "Worked for", and the answer becomes the user's
+        // next message (2026-10-07: one ever-growing block hid every answer and
+        // picture inside one fold). Calls still running carry on into the next
+        // part; only what finished is settled here.
+        onTurnPause: useCallback((messageId: string | null, payload: Record<string, unknown>) => {
+            const startedAt = streamStartRef.current;
+            const elapsedSec = typeof payload.elapsedSec === 'number'
+                ? payload.elapsedSec
+                : startedAt !== null ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
+            const reasoning = reasoningTextRef.current;
+            const reasoningElapsedSec = reasoningStartRef.current !== null && reasoningLastRef.current !== null
+                ? Math.max(1, Math.round((reasoningLastRef.current - reasoningStartRef.current) / 1000))
+                : undefined;
+            const toolCalls = completedToolCallsRef.current;
+            const settledSteps = liveStepsRef.current.filter(s => s.state !== 'running' && s.state !== 'waiting');
+            const hadTrace = toolCalls.length > 0 || settledSteps.length > 0 || !!reasoning;
+            const trace = hadTrace ? { completedTrace: { elapsedSec, afterSeq: traceAfterSeqRef.current ?? undefined, toolCalls, reasoningText: reasoning || undefined, reasoningElapsedSec, ...(settledSteps.length ? { steps: settledSteps } : {}) } } : {};
+            const text = typeof payload.text === 'string' ? payload.text : '';
+            const attachmentsRaw = Array.isArray(payload.attachments) ? payload.attachments : [];
+            const atts = attachmentsRaw.length > 0
+                ? { attachments: mapStreamAttachments(attachmentsRaw as Array<{ fileId: string; name: string; type: string; size?: number; generation?: MessageAttachment['generation'] }>) }
+                : {};
+
+            queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
+                const data = old ? [...old.data] : [];
+                const idx = messageId ? data.findIndex(m => m.id === messageId) : data.findIndex(m => m.isStreaming === true && m.role === 'assistant');
+                if (idx >= 0) {
+                    const m = data[idx];
+                    data[idx] = { ...m, content: text || m.content, isStreaming: false, parts: reconcileParts(m.parts, text || m.content), ...trace, ...atts };
+                } else if (hadTrace || text || 'attachments' in atts) {
+                    // Nothing streamed as text yet (a delegate working silently):
+                    // the part still gets its own message, placed before the card
+                    // that ended it.
+                    const at = startedAt ?? Date.now() - 1;
+                    data.push({ id: messageId ?? crypto.randomUUID(), conversationId: conversationIdRef.current!, role: 'assistant', content: text, createdAt: new Date(at).toISOString(), isStreaming: false, ...trace, ...atts });
+                }
+                return { data: [...data].sort(sortByDate) };
+            });
+
+            setCompletedToolCalls([]);
+            completedToolCallsRef.current = [];
+            const carried = liveStepsRef.current.filter(s => s.state === 'running' || s.state === 'waiting');
+            liveStepsRef.current = carried;
+            setLiveSteps(carried);
+            setReasoningText('');
+            reasoningTextRef.current = '';
+            reasoningStartRef.current = null;
+            reasoningLastRef.current = null;
+            traceAfterSeqRef.current = null;
+            setTraceAfterSeq(null);
+            partSeqRef.current = 0;
+            streamStartRef.current = null;
+        }, [queryClient]),
+
+        onTurnResume: useCallback((payload: Record<string, unknown>) => {
+            const text = typeof payload.text === 'string' && payload.text.trim() ? payload.text : 'OK';
+            const files = Array.isArray(payload.attachments)
+                ? (payload.attachments as Array<{ fileId: string; name: string; type: string }>).map(f => ({ id: crypto.randomUUID(), fileId: f.fileId, name: f.name, type: f.type } satisfies MessageAttachment))
+                : [];
+            const now = Date.now();
+            queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
+                const answer: Message = { id: crypto.randomUUID(), conversationId: conversationIdRef.current!, role: 'user', content: text, createdAt: new Date(now).toISOString(), ...(files.length ? { attachments: files } : {}) };
+                return { data: [...(old?.data ?? []), answer].sort(sortByDate) };
+            });
+            // The next part's "Worked for" counts from the answer.
+            streamStartRef.current = now;
+        }, [queryClient]),
     });
 
     // Cancel any in-flight stream when SWITCHING to a different conversation —

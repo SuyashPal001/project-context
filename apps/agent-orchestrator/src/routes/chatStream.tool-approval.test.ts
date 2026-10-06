@@ -880,3 +880,46 @@ describe('runChatStream — "/" skill invocation gates', () => {
     expect(approveToolCall).not.toHaveBeenCalled()
   })
 })
+
+describe('runChatStream — a question ends the part of the turn before it', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    pendingToolApprovals.clear()
+    agents.current = 'other'
+  })
+
+  it('saves the work before the approval, then the answer as the user\'s message, then the rest as a new message', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream([
+      { type: 'text-delta', payload: { text: 'Here is the plan.' } },
+      { type: 'tool-call-approval', payload: { toolName: 'generate-image', toolCallId: 'tc-s', args: { prompt: 'a cat' } } },
+    ], 'run-s'))
+    approveToolCall.mockResolvedValueOnce(fakeStream([
+      { type: 'text-delta', payload: { text: 'Done — the cat.' } },
+      { type: 'finish', payload: { output: { usage: {} } } },
+    ], 'run-s'))
+
+    const sendEvent = vi.fn()
+    const runPromise = runChatStream(baseOpts({ sendEvent, startTime: 1_000 }))
+    await vi.waitFor(() => expect(sendEvent).toHaveBeenCalledWith('turn_pause', expect.objectContaining({ text: 'Here is the plan.' })))
+    pendingToolApprovals.get('tc-s')?.resolve({ confirmed: true })
+    await runPromise
+
+    const order = sendEvent.mock.calls.map(([e]) => e).filter((e) => ['generation_confirm_request', 'turn_pause', 'turn_resume', 'done'].includes(e))
+    expect(order).toEqual(['generation_confirm_request', 'turn_pause', 'turn_resume', 'done'])
+    expect(sendEvent).toHaveBeenCalledWith('turn_resume', expect.objectContaining({ text: 'Approve' }))
+    expect(sendEvent.mock.calls.find(([e]) => e === 'done')?.[1]).toMatchObject({ text: 'Done — the cat.' })
+
+    const users = vi.mocked(persistence.saveUserMessage).mock.calls
+    expect(users.map((c) => c[2])).toEqual(['draw a cat', 'Approve'])
+    // The original message keeps its send time; the answer gets its own id so a
+    // second "Approve" a few seconds later is not merged into the first.
+    expect(users[0][5]).toEqual({ createdAt: new Date(1_000).toISOString() })
+    expect(users[1][5]).toMatchObject({ id: expect.any(String) })
+
+    const parts = vi.mocked(persistence.saveAssistantMessage).mock.calls
+    expect(parts.map((c) => c[2])).toEqual(['Here is the plan.', 'Done — the cat.'])
+    expect(parts[0][3]).not.toBe(parts[1][3])
+    // The first part sorts right after the user's message, before the card.
+    expect(parts[0][7]).toBe(new Date(1_001).toISOString())
+  })
+})

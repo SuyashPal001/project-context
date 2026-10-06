@@ -44,6 +44,7 @@ export function messageHasDisplayedContent(message: Message): boolean {
         message.planResult ||
         (message.toolCalls && message.toolCalls.length > 0) ||
         (message.clarificationRequests ?? []).some(r => r.status !== 'pending') ||
+        (!!message.generationConfirmRequest && message.generationConfirmRequest.status !== 'pending') ||
         (message.uploadRequests ?? []).some(r => r.status !== 'pending')
     );
 }
@@ -53,6 +54,8 @@ interface MessageItemProps {
     freshUrls: Record<string, string>;
     isFirstInSequence?: boolean;
     isNewExchange?: boolean;
+    /** The user's answer is the next message: answered cards show only their question. */
+    answerShownBelow?: boolean;
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
     onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean }, allAnswered?: boolean) => void;
@@ -85,6 +88,7 @@ export function MessageItem({
     freshUrls,
     isFirstInSequence,
     isNewExchange,
+    answerShownBelow,
     onApprove,
     onDismiss,
     onClarificationAnswer,
@@ -224,6 +228,7 @@ export function MessageItem({
     const renderClarificationCard = (request: ClarificationRequest) => request.status === 'pending' ? null : (
         <ClarificationCard
             request={request}
+            promptOnly={answerShownBelow && request.status === 'answered'}
             onAnswer={(answer, allAnswered) => onClarificationAnswer?.(
                 message.id,
                 request.id,
@@ -476,6 +481,12 @@ export function MessageItem({
                 {!hasParts && (message.uploadRequests ?? []).map(request => (
                     <div key={request.id} className="w-full">{renderUploadCard(request)}</div>
                 ))}
+
+                {/* A decided cost card leaves its question in the chat; the
+                    user's Approve / Cancel is the next message. */}
+                {message.generationConfirmRequest && message.generationConfirmRequest.status !== 'pending' && (
+                    <p className="text-[15px] leading-relaxed text-foreground [overflow-wrap:anywhere]">{/[.?!]$/.test(message.generationConfirmRequest.label.trim()) ? message.generationConfirmRequest.label : `${message.generationConfirmRequest.label.trim()}?`}</p>
+                )}
 
                 {message.toolCalls && message.toolCalls.length > 0 && (
                     <div className="w-full mt-2">

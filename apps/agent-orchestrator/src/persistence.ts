@@ -133,14 +133,18 @@ export function saveUserMessage(
   conversationId: string,
   content: string,
   attachments?: Array<{ fileId?: string; name: string; type: string; size?: number }>,
-  skillsUsed?: Array<{ id: string; name: string }>
+  skillsUsed?: Array<{ id: string; name: string }>,
+  // An answer given mid-turn is saved with its own id and time: the id keeps
+  // a second "Approve" within a minute from being merged into the first, and
+  // the time places it between the parts of the turn it answered.
+  opts?: { id?: string; createdAt?: string },
 ): void {
   fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/save`, {
     method: 'POST',
     // Both: the user token identifies the conversation owner, the service key
     // proves this is the relay rather than a user posting forged assistant text.
     headers: { ...authHeaders(idToken), 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-    body: JSON.stringify({ role: 'user', content, attachments: attachments ?? [], skillsUsed: skillsUsed && skillsUsed.length > 0 ? skillsUsed : undefined, createdAt: new Date().toISOString() }),
+    body: JSON.stringify({ ...(opts?.id ? { id: opts.id } : {}), role: 'user', content, attachments: attachments ?? [], skillsUsed: skillsUsed && skillsUsed.length > 0 ? skillsUsed : undefined, createdAt: opts?.createdAt ?? new Date().toISOString() }),
   }).then(async (res) => {
     if (!res.ok) {
       const body = await res.text().catch(() => '')
@@ -568,11 +572,12 @@ export function saveAssistantMessage(
   artifactRef?: ArtifactRefPayload | null,
   completedTrace?: CompletedTracePayload | null,
   attachments?: AttachmentPayload[] | null,
+  createdAt?: string,
 ): void {
   const payload: Record<string, unknown> = {
     role: 'assistant',
     content,
-    createdAt: new Date(Date.now() + 1000).toISOString(),
+    createdAt: createdAt ?? new Date(Date.now() + 1000).toISOString(),
   }
   if (messageId) payload.id = messageId
   if (artifactRef) payload.artifactRef = artifactRef

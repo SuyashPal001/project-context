@@ -401,3 +401,83 @@ describe('useChatStream conversation-switch trace reset', () => {
         }
     });
 });
+
+describe('useChatStream turn pause and resume', () => {
+    const conversationIdRef = { current: 'conversation-1' };
+    type Opts = Record<string, (...args: unknown[]) => void>;
+    const opts = () => chatMock.lastOptions as unknown as Opts;
+
+    function setup() {
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const wrapper = ({ children }: { children: ReactNode }) => (
+            <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        );
+        const hook = renderHook(() => useChatStream({
+            conversationId: 'conversation-1',
+            conversationIdRef,
+            agentId: 'agent-1',
+            selectedConversation: undefined,
+            messages: [],
+            handleCanvasUpdate: vi.fn(),
+            openCanvas: vi.fn(),
+        }), { wrapper });
+        return { client, hook };
+    }
+    const messages = (client: QueryClient) =>
+        client.getQueryData<{ data: Array<Record<string, any>> }>(['messages', 'conversation-1'])?.data ?? [];
+
+    afterEach(() => vi.useRealTimers());
+
+    it('settles the work before an approval into its own message, then shows the answer as the user\'s message', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(1_000_000);
+        const { client, hook } = setup();
+        act(() => {
+            opts().onDelta('Scene 1 is ready.', 'part-1');
+            opts().onToolCall('agent-director', 'call-1', { prompt: 'scene 1' });
+            opts().onToolDone('call-1', 'agent-director', { ok: true });
+            opts().onStep({ id: 'call-1', key: 'pictures', label: 'Pictures', kind: 'image', state: 'done' });
+            opts().onStep({ id: 'call-2', key: 'clips', label: 'Clips', kind: 'video', state: 'waiting' });
+        });
+        vi.setSystemTime(1_005_000);
+        act(() => {
+            opts().onGenerationConfirmRequired('conf-1', 'video_generation', 'veo', 'Generate video');
+            opts().onTurnPause('part-1', { text: 'Scene 1 is ready.', attachments: [{ fileId: 'still-1', name: 's1.png', type: 'image/png', size: 1 }] });
+        });
+        vi.setSystemTime(1_010_000);
+        act(() => { opts().onTurnResume({ text: 'Approve' }); });
+        vi.setSystemTime(1_011_000);
+        act(() => { opts().onDelta('Making the clip.', 'part-2'); });
+
+        const list = messages(client);
+        expect(list.map(m => m.role === 'user' ? `user:${m.content}` : m.generationConfirmRequest ? 'card' : m.id)).toEqual(['part-1', 'card', 'user:Approve', 'part-2']);
+        const first = list[0];
+        expect(first.isStreaming).toBe(false);
+        expect(first.completedTrace.toolCalls).toHaveLength(1);
+        // Only finished steps settle; the clip held on the approval carries on.
+        expect(first.completedTrace.steps.map((s: { key: string }) => s.key)).toEqual(['pictures']);
+        expect(first.attachments[0].fileId).toBe('still-1');
+        expect(list[3].isStreaming).toBe(true);
+        expect(hook.result.current.liveSteps.map(s => s.key)).toEqual(['clips']);
+        expect(hook.result.current.completedToolCalls).toHaveLength(0);
+    });
+
+    it('gives a part that streamed no text its own message, placed before the card', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(2_000_000);
+        const { client } = setup();
+        act(() => {
+            opts().onToolCall('agent-director', 'call-9', { prompt: 'x' });
+            opts().onToolDone('call-9', 'agent-director', { ok: true });
+        });
+        vi.setSystemTime(2_003_000);
+        act(() => {
+            opts().onGenerationConfirmRequired('conf-9', 'image_generation', 'img', 'Generate image');
+            opts().onTurnPause(null, { text: '' });
+        });
+        const list = messages(client);
+        expect(list).toHaveLength(2);
+        expect(list[0].completedTrace.toolCalls).toHaveLength(1);
+        expect(list[1].generationConfirmRequest.id).toBe('conf-9');
+    });
+});

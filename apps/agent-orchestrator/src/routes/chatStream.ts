@@ -295,15 +295,22 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   let pendingMetrics: Parameters<typeof fireMetrics>[0] | null = null
   let pendingEval: Parameters<typeof fireAutoEval>[0] | null = null
   const toolCallNames = new Map<string, string>()
-  const assistantMessageId = crypto.randomUUID()
+  // A turn that stops to ask the user is saved as several messages, one per
+  // part (see pauseTurn below); this is the id of the part now streaming.
+  let assistantMessageId = crypto.randomUUID()
   let pendingArtifactRef: ArtifactRefPayload | null = null
+  // This part's files; earlier parts' files were saved with those parts.
   const pendingAttachments: AttachmentPayload[] = []
   // One card per file: a delegate's media are relayed as each finishes and
-  // then come back again inside the delegate's own result.
+  // then come back again inside the delegate's own result, possibly after
+  // the user answered a question in between — so this spans the whole turn.
+  const shownFileIds = new Set<string>()
   const addAttachments = (list: AttachmentPayload[]): void => {
     for (const a of list) {
       // Only tool results come through here, so this is what was really made.
       noteMadeFile(conversationId, a.fileId)
+      if (a.fileId && shownFileIds.has(a.fileId)) continue
+      if (a.fileId) shownFileIds.add(a.fileId)
       if (!pendingAttachments.some(p => p.fileId === a.fileId)) pendingAttachments.push(a)
     }
   }
@@ -355,6 +362,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   // running only to let the declined Mastra run finish. Everything user-facing
   // (events, persistence, chips, metrics) is skipped from then on.
   let backgroundDecline = false
+  // Whether the user's own message is saved (see saveUserOnce).
+  let userSaved = false
   // Anything generated (or started, or approved) earlier in this turn means a
   // later cancel is mid-flow, so the instant "Nothing was generated" reply
   // would be false — Olmo answers instead. Counted from several signals because
@@ -601,23 +610,81 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // Persists the user message and this turn's assistant message. Shared by the
     // normal finish path and the instant-cancel path.
     let turnSaved = false
-    const saveTurn = (): void => {
-      if (turnSaved) return
-      turnSaved = true
+    // The user's own message is saved once, stamped with when it was sent, so
+    // every part of the turn and every answer in it sorts after it.
+    const saveUserOnce = (content: string): void => {
+      if (userSaved) return
+      userSaved = true
       const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
-      saveUserMessage(liveIdToken(), conversationId, displayMessage, atts, skillsUsed)
+      saveUserMessage(liveIdToken(), conversationId, content, atts, skillsUsed, { createdAt: new Date(startTime).toISOString() })
+    }
+    // When the part now streaming began: the turn's start, then just after each answer.
+    let segmentStart = startTime
+    const segmentTrace = () => {
       // Mirrors the frontend's own hadTrace gate (useChatStream.ts onDone) so a
       // turn that's too fast/toolless to show a summary live doesn't get one
       // materialize after a reload either.
-      const elapsedSec = Math.max(0, Math.floor((Date.now() - startTime) / 1000))
+      const elapsedSec = Math.max(0, Math.floor((Date.now() - segmentStart) / 1000))
       const reasoningElapsedSec = reasoningStartMs !== null && reasoningLastMs !== null
         ? Math.max(1, Math.round((reasoningLastMs - reasoningStartMs) / 1000))
         : undefined
-      const completedTrace = (toolCallCount > 0 || elapsedSec >= 2 || !!reasoningText)
+      return (toolCallCount > 0 || elapsedSec >= 2 || !!reasoningText)
         ? { elapsedSec, toolCallCount, ...(reasoningText ? { reasoningText } : {}), ...(reasoningElapsedSec !== undefined ? { reasoningElapsedSec } : {}) }
         : null
-      saveAssistantMessage(liveIdToken(), conversationId, redactUnverifiedFileIds(fullText, pendingAttachments), assistantMessageId, pendingArtifactRef, completedTrace, markWorkingFiles(pendingAttachments, turnInputFileIds))
     }
+    // Saves the part now streaming. Stamped with the part's start, so it sorts
+    // before the question card that ended it (saved when it was asked).
+    const saveSegment = (): void => {
+      saveUserOnce(displayMessage)
+      const completedTrace = segmentTrace()
+      if (!fullText.trim() && pendingAttachments.length === 0 && !completedTrace && !pendingArtifactRef) return
+      saveAssistantMessage(liveIdToken(), conversationId, redactUnverifiedFileIds(fullText, pendingAttachments), assistantMessageId, pendingArtifactRef, completedTrace, markWorkingFiles(pendingAttachments, turnInputFileIds), new Date(segmentStart + 1).toISOString())
+    }
+    const saveTurn = (): void => {
+      if (turnSaved) return
+      turnSaved = true
+      saveSegment()
+    }
+
+    // A question or an approval ends the part of the turn before it, like a
+    // reply that asks something; the answer is the user's next message and
+    // what follows is a new part with its own "Worked for". The Mastra run is
+    // the same one throughout — only how the turn is saved and shown changes
+    // (2026-10-07: one ever-growing block hid every answer and picture inside it).
+    let paused = false
+    const pauseTurn = (): void => {
+      if (paused || backgroundDecline || isStreamClosed()) return
+      paused = true
+      const trace = segmentTrace()
+      sendEvent('turn_pause', {
+        conversationId, messageId: assistantMessageId, text: fullText,
+        ...(pendingAttachments.length > 0 ? { attachments: markWorkingFiles(pendingAttachments, turnInputFileIds) } : {}),
+        ...(trace ? { elapsedSec: trace.elapsedSec } : {}),
+      })
+      saveSegment()
+      fullText = ''
+      lastTextSource = null
+      pendingAttachments.length = 0
+      pendingArtifactRef = null
+      toolCallCount = 0
+      reasoningText = ''
+      reasoningStartMs = null
+      reasoningLastMs = null
+      assistantMessageId = crypto.randomUUID()
+    }
+    const resumeTurn = (answer: string, files?: Array<{ fileId: string; name: string; type: string }>): void => {
+      if (!paused) return
+      paused = false
+      // The page closed while the question was open: nothing was answered.
+      if (isStreamClosed()) return
+      const at = Date.now()
+      const text = answer.trim() || 'OK'
+      sendEvent('turn_resume', { conversationId, text, ...(files?.length ? { attachments: files } : {}) })
+      saveUserMessage(liveIdToken(), conversationId, text, files ?? [], undefined, { id: crypto.randomUUID(), createdAt: new Date(at).toISOString() })
+      segmentStart = at + 1
+    }
+    requestContext.set('pauseTurn' as never, pauseTurn as never)
+    requestContext.set('resumeTurn' as never, resumeTurn as never)
 
     // Stop mid-turn: keep what was already made. The stills and clips shown so
     // far are paid for and sit in Drive; without this save the whole turn,
@@ -625,7 +692,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // "if i stop all these cards will be lost"). Saved at the moment of Stop,
     // so it never lands after a message the user sends next.
     onClientStop?.(() => {
-      if (backgroundDecline || (pendingAttachments.length === 0 && !fullText.trim())) return
+      if (backgroundDecline || (pendingAttachments.length === 0 && !fullText.trim())) {
+        // Stopped while a question was open: the parts before it are saved; the user's own message may not be yet.
+        if (!backgroundDecline) saveUserOnce(displayMessage)
+        return
+      }
       console.log(`[sse:${sessionId}] stopped by the user at +${Date.now() - startTime}ms; saving ${pendingAttachments.length} file(s) made so far`)
       saveTurn()
     })
@@ -827,6 +898,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             sessionActiveToolApprovals.set(sessionId, approvalSet)
           }
           approvalSet.add(toolCallId)
+          pauseTurn()
 
           // No timeout here — unlike the old CONFIRM_TIMEOUT_MS, this waits
           // until the human answers (sessions.ts's /api/chat/generation-confirm
@@ -844,6 +916,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
           sessionActiveToolApprovals.get(sessionId)?.delete(toolCallId)
           if (sessionActiveToolApprovals.get(sessionId)?.size === 0) sessionActiveToolApprovals.delete(sessionId)
+          resumeTurn(confirmed ? 'Approve' : declineReason?.trim() || 'Cancel')
 
           // The user just answered the card, so the browser handed over a fresh
           // token (sessions.ts) — everything after this, tools included, uses it.
@@ -899,7 +972,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // after earlier generations, still gets Olmo's own reply.
           let reason = declineReason ?? DECLINED_BY_USER_REASON
           if (confirmed) generationActivity++
-          if (!confirmed && !declineReason && pendingAttachments.length === 0 && generationActivity === 0 && !isStreamClosed()) {
+          if (!confirmed && !declineReason && shownFileIds.size === 0 && generationActivity === 0 && !isStreamClosed()) {
             const notice = buildCancelNotice(toolName, args, displayMessage)
             const out = appendText('parent', notice)
             if (out) sendEvent('delta', { text: out, conversationId })
@@ -1104,8 +1177,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       // Save the user message even on error so attachments aren't lost.
       // The finish path is never reached when the turn throws, so this is the only
       // opportunity to durably persist the user turn.
-      const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
-      saveUserMessage(liveIdToken(), conversationId, message, atts, skillsUsed)
+      // Parts already saved before the error (a question was answered) stay.
+      if (!userSaved) {
+        const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
+        saveUserMessage(liveIdToken(), conversationId, message, atts, skillsUsed)
+      }
     }
     closeStream()
   } finally {
