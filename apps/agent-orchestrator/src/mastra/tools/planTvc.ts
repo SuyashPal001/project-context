@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { uploadFileWithKey } from '../../persistence.js'
 import { fetchPresignedUrl } from './mediaCache.js'
 import { computeCreditPlan, priceFromRates, readBalanceForTenant } from './checkCreditPlan.js'
-import { recordOnPlan, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, type TvcPlan } from './tvcPlan.js'
+import { recordOnPlan, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, jingleErrors, type TvcPlan } from './tvcPlan.js'
 import { stillPassedCheck } from './checkStill.js'
 
 // The TVC ad's plan lives in ONE file whose id never changes: it is always
@@ -22,7 +22,7 @@ export interface PlanTvcDeps {
 }
 
 export const planTvcInputSchema = z.object({
-  action: z.enum(['check', 'get', 'record']).describe('check: validate and save the plan; get: read one slice; record: attach finished stills or clips to their shots, or the finish\'s narration and song to the plan'),
+  action: z.enum(['check', 'get', 'record']).describe('check: validate and save the plan; get: read one slice; record: attach finished stills or clips to their shots, or the finish\'s narration, song and jingle to the plan'),
   plan: tvcPlanSchema.optional().describe('check only: the full plan'),
   planFileId: z.string().optional().describe('The TVC plan id. Required for get and record; pass it on a re-check so the plan keeps its id'),
   slice: z.string().optional().describe('get only: "brief", "finish" or "shots a-b", e.g. "shots 4-6"'),
@@ -37,6 +37,9 @@ export const planTvcInputSchema = z.object({
   })).optional().describe('record only: every still or clip a step made, in one call'),
   narrationFileIds: z.array(z.string()).optional().describe('record only: the finish\'s narration, one per voiceover block, in order'),
   songFileId: z.string().optional().describe('record only: the finish\'s music bed'),
+  jingleFileId: z.string().optional().describe('record only: generate_jingle\'s fileId (the full sung clip)'),
+  signoffFileId: z.string().optional().describe('record only: generate_jingle\'s signoffFileId'),
+  signoffSeconds: z.number().positive().optional().describe('record only: generate_jingle\'s signoffSeconds'),
   keptByUser: z.boolean().optional().describe('record only, single-shot form: the user chose to keep this still although its check failed'),
 })
 export type PlanTvcInput = z.infer<typeof planTvcInputSchema>
@@ -61,6 +64,15 @@ function carryOver(previous: TvcPlan, next: TvcPlan): TvcPlan {
   out.narrationFileIds = sameVoiceover ? previous.narrationFileIds : undefined
   const sameMusic = previous.brief.tier === next.brief.tier && previous.brief.category === next.brief.category
   out.songFileId = sameMusic ? previous.songFileId : undefined
+  // The recorded jingle survives while the jingle asked for is the same and
+  // still fits the (possibly changed) voiceover; otherwise it must be re-made.
+  delete out.jingleFileId; delete out.signoffFileId; delete out.signoffSeconds
+  const sameJingle = !!next.brief.jingle && JSON.stringify(previous.brief.jingle) === JSON.stringify(next.brief.jingle)
+  if (sameJingle && previous.signoffSeconds !== undefined && jingleErrors(out, previous.signoffSeconds).length === 0) {
+    out.jingleFileId = previous.jingleFileId
+    out.signoffFileId = previous.signoffFileId
+    out.signoffSeconds = previous.signoffSeconds
+  }
   const strip = (s: TvcPlan['shots'][number]) => JSON.stringify({ ...s, stillFileId: undefined, clipFileId: undefined })
   out.shots.forEach((s) => {
     const before = previous.shots.find((p) => p.n === s.n)
@@ -125,8 +137,15 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
   if (input.shot !== undefined) records.push({ shot: input.shot, stillFileId: input.stillFileId, clipFileId: input.clipFileId, keptByUser: input.keptByUser })
   else if (input.stillFileId || input.clipFileId) return { refused: true, refusalReason: 'SHOT_AND_FILE_REQUIRED' }
   if (records.some((r) => !r.stillFileId && !r.clipFileId)) return { refused: true, refusalReason: 'SHOT_AND_FILE_REQUIRED' }
-  if (records.length === 0 && !input.narrationFileIds && !input.songFileId) return { refused: true, refusalReason: 'NOTHING_TO_RECORD' }
+  const jingleFields = [input.jingleFileId, input.signoffFileId, input.signoffSeconds].filter((v) => v !== undefined).length
+  if (jingleFields > 0 && jingleFields < 3) return { refused: true, refusalReason: 'JINGLE_RECORD_INCOMPLETE: record jingleFileId, signoffFileId and signoffSeconds together' }
+  if (records.length === 0 && !input.narrationFileIds && !input.songFileId && jingleFields === 0) return { refused: true, refusalReason: 'NOTHING_TO_RECORD' }
   if (input.narrationFileIds && input.narrationFileIds.length !== doc.plan.voiceover.length) return { refused: true, refusalReason: 'NARRATION_COUNT_MISMATCH' }
+  if (jingleFields === 3) {
+    if (!doc.plan.brief.jingle) return { refused: true, refusalReason: 'NO_JINGLE_IN_PLAN: this plan has no brief.jingle; add one with a plan check first' }
+    const errs = jingleErrors(doc.plan, input.signoffSeconds!)
+    if (errs.length) return { refused: true, refusalReason: errs.join(' ') }
+  }
   for (const r of records) {
     if (!r.stillFileId) continue
     const shot = doc.plan.shots.find((s) => s.n === r.shot)
@@ -142,6 +161,7 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
   }
   if (input.narrationFileIds) next = { ...next, narrationFileIds: input.narrationFileIds }
   if (input.songFileId) next = { ...next, songFileId: input.songFileId }
+  if (jingleFields === 3) next = { ...next, jingleFileId: input.jingleFileId, signoffFileId: input.signoffFileId, signoffSeconds: input.signoffSeconds }
   const planFileId = await deps.save({ ...doc, plan: next })
   if (!planFileId) return { refused: true, refusalReason: 'STORAGE_FAILED' }
   return { planFileId }
@@ -149,7 +169,7 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
 
 export const planTvc = createTool({
   id: 'plan-tvc',
-  description: 'Free. The TVC ad plan: "check" validates the plan against the TVC craft rules and saves it (returns the plan id and cost, or plain errors to fix); "get" returns only the slice one step needs; "record" attaches finished stills or clips to their shots (all of a step\'s files in one call, with records) and the finish narration and song to the plan. Use only in the TVC ad flow.',
+  description: 'Free. The TVC ad plan: "check" validates the plan against the TVC craft rules and saves it (returns the plan id and cost, or plain errors to fix); "get" returns only the slice one step needs; "record" attaches finished stills or clips to their shots (all of a step\'s files in one call, with records) and the finish narration and song to the plan. The finish can also record the sung sign-off (jingleFileId, signoffFileId, signoffSeconds); record refuses one that overlaps speech or is too long. Use only in the TVC ad flow.',
   inputSchema: planTvcInputSchema,
   outputSchema: z.object({
     planFileId: z.string().optional(),

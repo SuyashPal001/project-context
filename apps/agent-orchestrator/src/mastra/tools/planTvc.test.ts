@@ -199,3 +199,44 @@ describe('runPlanTvc lock', () => {
     expect((good as { planFileId?: string }).planFileId).toBe(planFileId)
   })
 })
+
+describe('plan_tvc record: the jingle (J5)', () => {
+  const withJingle = () => { const p = plan(); p.brief.jingle = { line: 'Ice cold, every time', style: 'bright pop, male vocal' }; return p }
+  const getFinish = async (deps: PlanTvcDeps, id: string) => JSON.parse((await runPlanTvc({ action: 'get', planFileId: id, slice: 'finish' }, deps)).slice!)
+
+  it('records the jingle and the finish slice returns it with its timing', async () => {
+    const { deps } = fakeDeps()
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: withJingle() }, deps)
+    expect(await runPlanTvc({ action: 'record', planFileId: planFileId!, jingleFileId: 'j1', signoffFileId: 's1', signoffSeconds: 2 }, deps)).toEqual({ planFileId })
+    expect(await getFinish(deps, planFileId!)).toMatchObject({ jingleFileId: 'j1', signoffFileId: 's1', signoffSeconds: 2, signoffStartSeconds: 4, musicFadeOutAtSeconds: 3.7 })
+  })
+  it('refuses JINGLE_TOO_LONG and saves nothing', async () => {
+    const { deps } = fakeDeps()
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: withJingle() }, deps)
+    const out = await runPlanTvc({ action: 'record', planFileId: planFileId!, jingleFileId: 'j1', signoffFileId: 's1', signoffSeconds: 4.5 }, deps)
+    expect(out).toMatchObject({ refused: true, refusalReason: expect.stringMatching(/^JINGLE_TOO_LONG/) })
+    expect((await getFinish(deps, planFileId!)).jingleFileId).toBeUndefined()
+  })
+  it('refuses a partial jingle record, and a jingle on a plan without one', async () => {
+    const { deps } = fakeDeps()
+    const a = await runPlanTvc({ action: 'check', plan: withJingle() }, deps)
+    expect(await runPlanTvc({ action: 'record', planFileId: a.planFileId!, jingleFileId: 'j1' }, deps)).toMatchObject({ refusalReason: expect.stringMatching(/^JINGLE_RECORD_INCOMPLETE/) })
+    const b = await runPlanTvc({ action: 'check', plan: plan() }, fakeDeps().deps)
+    const { deps: d2 } = fakeDeps()
+    const c = await runPlanTvc({ action: 'check', plan: plan() }, d2)
+    expect(b.planFileId).toBeDefined()
+    expect(await runPlanTvc({ action: 'record', planFileId: c.planFileId!, jingleFileId: 'j1', signoffFileId: 's1', signoffSeconds: 2 }, d2)).toMatchObject({ refusalReason: expect.stringMatching(/^NO_JINGLE_IN_PLAN/) })
+  })
+  it('a re-check keeps the recorded jingle while the jingle is the same, and drops it when the line changes', async () => {
+    const { deps } = fakeDeps()
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: withJingle() }, deps)
+    await runPlanTvc({ action: 'record', planFileId: planFileId!, jingleFileId: 'j1', signoffFileId: 's1', signoffSeconds: 2 }, deps)
+    await runPlanTvc({ action: 'check', plan: withJingle(), planFileId }, deps)
+    expect((await getFinish(deps, planFileId!)).jingleFileId).toBe('j1')
+    const changed = withJingle(); changed.brief.jingle!.line = 'Ice cold, always'
+    await runPlanTvc({ action: 'check', plan: changed, planFileId }, deps)
+    const finish = await getFinish(deps, planFileId!)
+    expect(finish.jingleFileId).toBeUndefined()
+    expect(finish.signoffStartSeconds).toBeUndefined()
+  })
+})

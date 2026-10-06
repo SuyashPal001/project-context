@@ -9,6 +9,7 @@ export const MAX_SHOTS = 12
 const SHOT_MIN = 1.2, SHOT_MAX = 2.5, PACK_MIN = 2, PACK_MAX = 4
 const BRAND_BY = 2.0, PRODUCT_BY = 3.0, VO_TAIL = 2.0, MAX_LINES = 2, MAX_LOCATIONS = 2
 const EPS = 0.05
+const JINGLE_GAP = 0.75, JINGLE_OVER_PACK = 2.0, BED_CLEAR = 0.3
 
 export const productTypeSchema = z.object({
   material: z.enum(['glass', 'plastic', 'metal', 'paper', 'other']),
@@ -45,6 +46,14 @@ const shotSchema = z.object({
   flashCut: z.boolean().optional().describe('A deliberate flash cut, allowed down to 0.3s'),
 })
 
+// A sung sign-off over the packshot (spec 2026-10-05-tvc-jingle-design.md J5).
+export const jingleSchema = z.object({
+  line: z.string().min(1).describe('The sung sign-off, e.g. "Bubbli, feel the magic"'),
+  style: z.string().min(1).describe('Genre, mood and voice, e.g. "bright pop, female vocal, 120 bpm"'),
+  lyrics: z.array(z.string().min(1)).max(4).optional().describe('Lines sung before the sign-off'),
+  language: z.string().optional().describe('The language it is sung in, when not English'),
+})
+
 export const tvcPlanSchema = z.object({
   brief: z.object({
     message: z.string().min(1).describe('The one message: one sentence of 12 words or fewer'),
@@ -63,6 +72,7 @@ export const tvcPlanSchema = z.object({
     }).optional().describe('When recreating a reference ad: its product type and its real cut times (detect_cuts)'),
     product: productTypeSchema.optional().describe('This product\'s type; must match the reference\'s when one is given'),
     actorLook: z.string().optional().describe('The lead\'s look, e.g. "long dark wavy hair, magenta shirt"; extras never share it'),
+    jingle: jingleSchema.optional().describe('A sung sign-off over the ending; only when the user wants one or the reference ad has one'),
   }),
   look: z.string().min(1),
   locations: z.array(z.union([z.string().min(1), z.object({
@@ -80,6 +90,9 @@ export const tvcPlanSchema = z.object({
   // them instead of paying for the narration and the song again.
   narrationFileIds: z.array(z.string()).optional().describe('Set by plan_tvc record: one narration per voiceover block, in order'),
   songFileId: z.string().optional().describe('Set by plan_tvc record: the music bed'),
+  jingleFileId: z.string().optional().describe('Set by plan_tvc record: the full sung clip from generate_jingle'),
+  signoffFileId: z.string().optional().describe('Set by plan_tvc record: the sign-off cut from generate_jingle'),
+  signoffSeconds: z.number().positive().optional().describe('Set by plan_tvc record: the sign-off cut\'s length'),
 })
 
 export type TvcPlan = z.infer<typeof tvcPlanSchema>
@@ -125,6 +138,7 @@ export function shotPromptFor(plan: TvcPlan, n: number): string {
 
 export const countWords = (text: string): number => text.trim().split(/\s+/).filter(Boolean).length
 const r1 = (x: number) => Math.round(x * 10) / 10
+const r2 = (x: number) => Math.round(x * 100) / 100
 
 export function shotStarts(plan: TvcPlan): number[] {
   const starts: number[] = []
@@ -318,6 +332,31 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
   return { errors, warnings, plan }
 }
 
+/** When the last spoken word ends: voiceover blocks and on-camera lines, both at 2.7 words per second. */
+export function lastSpeechEnd(plan: TvcPlan): number {
+  const starts = shotStarts(plan)
+  const vo = plan.voiceover.map((v) => r1(v.startSeconds + countWords(v.text) / WORDS_PER_SECOND))
+  const lines = plan.shots.map((s, i) => (s.audio === 'line' && s.line ? r1(starts[i] + countWords(s.line) / WORDS_PER_SECOND) : 0))
+  return Math.max(0, ...vo, ...lines)
+}
+
+/** The sign-off ends with the ad; it must start 0.75s after the last word and fit the packshot plus 2s. */
+export function jingleErrors(plan: TvcPlan, signoffSeconds: number): string[] {
+  const errors: string[] = []
+  const start = r2(plan.brief.lengthSeconds - signoffSeconds)
+  const gap = r2(start - lastSpeechEnd(plan))
+  if (gap < JINGLE_GAP) errors.push(`JINGLE_OVERLAPS_SPEECH: the sung line would start ${gap}s after the last word; shorten the line or end the voiceover earlier`)
+  const max = r2(plan.shots[plan.shots.length - 1].durationSeconds + JINGLE_OVER_PACK)
+  if (signoffSeconds > max + EPS) errors.push(`JINGLE_TOO_LONG: the sung sign-off is ${signoffSeconds}s; at most ${max}s (the packshot plus 2s); shorten the line`)
+  return errors
+}
+
+export function signoffTiming(plan: TvcPlan): { signoffStartSeconds: number; musicFadeOutAtSeconds: number } | undefined {
+  if (plan.signoffSeconds === undefined) return undefined
+  const start = r2(plan.brief.lengthSeconds - plan.signoffSeconds)
+  return { signoffStartSeconds: start, musicFadeOutAtSeconds: r2(Math.max(0, start - BED_CLEAR)) }
+}
+
 export function sliceTvcPlan(plan: TvcPlan, slice: string): unknown {
   const starts = shotStarts(plan)
   const withStart = (s: TvcShot) => ({ ...s, startSeconds: starts[plan.shots.indexOf(s)] })
@@ -328,6 +367,10 @@ export function sliceTvcPlan(plan: TvcPlan, slice: string): unknown {
       shots: plan.shots.map((s) => ({ n: s.n, type: s.type, startSeconds: starts[s.n - 1], durationSeconds: s.durationSeconds, text: s.text, clipFileId: s.clipFileId })),
       voiceover: plan.voiceover, packshot: plan.packshot, legal: plan.legal,
       narrationFileIds: plan.narrationFileIds, songFileId: plan.songFileId,
+      ...(plan.brief.jingle ? { jingle: plan.brief.jingle } : {}),
+      ...(plan.signoffSeconds !== undefined
+        ? { jingleFileId: plan.jingleFileId, signoffFileId: plan.signoffFileId, signoffSeconds: plan.signoffSeconds, ...signoffTiming(plan) }
+        : {}),
     }
   }
   const m = /^shots (\d+)-(\d+)$/.exec(slice.trim())
@@ -382,6 +425,10 @@ export function tvcCreditSteps(plan: TvcPlan): Array<{ kind: 'image' | 'video' |
     { kind: 'image', count: n }, { kind: 'video', count: n },
   ]
   if (plan.voiceover.length > 0) steps.push({ kind: 'narration', count: plan.voiceover.length })
-  steps.push({ kind: 'music', count: 1 }, { kind: 'edit', count: n + 5 })
+  steps.push({ kind: 'music', count: 1 })
+  // The jingle is priced as a second music step (the lyria-002 rate, 8
+  // credits, is above Lyria 3's 4, so the estimate never runs short).
+  if (plan.brief.jingle) steps.push({ kind: 'music', count: 1 })
+  steps.push({ kind: 'edit', count: n + 5 })
   return steps
 }

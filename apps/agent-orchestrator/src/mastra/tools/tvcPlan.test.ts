@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { countWords, legalHoldSeconds, recordOnPlan, shotStarts, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, type TvcPlan } from './tvcPlan.js'
+import { countWords, legalHoldSeconds, recordOnPlan, shotStarts, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, jingleErrors, lastSpeechEnd, signoffTiming, type TvcPlan } from './tvcPlan.js'
 import { generateSecondsFor, minShotSeconds, HARD_ACTION_RE } from './tvcPlan.js'
 import { shotPromptFor, varietySentence, locationName, CAMERA_GRAMMAR } from './tvcPlan.js'
 
@@ -368,5 +368,67 @@ describe('reference fidelity (P5, P6)', () => {
     expect(validateTvcPlan(p).errors.join(' | ')).toMatch(/the cut after shot 2 is at 4s; the reference cuts at 4.4s/)
     p.brief.reference = { cutTimes: [2, 4] }
     expect(validateTvcPlan(p).errors.join(' | ')).toMatch(/the reference has 2 cuts in 15s; this plan has 6/)
+  })
+})
+
+describe('jingle (J5)', () => {
+  const withJingle = (p = goodPlan()): TvcPlan => ({ ...p, brief: { ...p.brief, jingle: { line: 'Soft all day', style: 'warm pop, female vocal' } } })
+
+  it('the last speech is the later of the voiceover end and a line end (words / 2.7)', () => {
+    expect(lastSpeechEnd(goodPlan())).toBe(5.7)
+    const p = goodPlan()
+    p.shots[5] = { ...p.shots[5], audio: 'line', line: 'Soft all day long.' }
+    expect(lastSpeechEnd(p)).toBe(11)
+  })
+  it('accepts a sign-off that starts 0.75s or more after the last word and fits the packshot plus 2s', () => {
+    expect(jingleErrors(withJingle(), 3)).toEqual([])
+  })
+  it('refuses a sign-off that would start too soon after the voiceover', () => {
+    const p = withJingle()
+    p.voiceover[0].startSeconds = 8.5 // ends at 12.2
+    expect(jingleErrors(p, 3)).toEqual(['JINGLE_OVERLAPS_SPEECH: the sung line would start -0.2s after the last word; shorten the line or end the voiceover earlier'])
+    expect(jingleErrors(p, 2)).toEqual([])
+  })
+  it('refuses a sign-off that would start too soon after an on-camera line', () => {
+    const p = withJingle()
+    p.shots[5] = { ...p.shots[5], audio: 'line', line: 'Soft all day long.' } // ends at 11.0
+    expect(jingleErrors(p, 3.6)[0]).toMatch(/^JINGLE_OVERLAPS_SPEECH: the sung line would start 0.4s after the last word/)
+  })
+  it('refuses a sign-off longer than the packshot plus 2s', () => {
+    expect(jingleErrors(withJingle(), 5.5)).toContain('JINGLE_TOO_LONG: the sung sign-off is 5.5s; at most 5s (the packshot plus 2s); shorten the line')
+  })
+  it('the sign-off ends with the ad, and the bed clears 0.3s before it', () => {
+    expect(signoffTiming(withJingle())).toBeUndefined()
+    expect(signoffTiming({ ...withJingle(), signoffSeconds: 2.4 })).toEqual({ signoffStartSeconds: 12.6, musicFadeOutAtSeconds: 12.3 })
+  })
+  it('the finish slice carries the jingle and its timing once recorded', () => {
+    const p = { ...withJingle(), jingleFileId: 'j1', signoffFileId: 's1', signoffSeconds: 2.4 }
+    expect(sliceTvcPlan(p, 'finish')).toMatchObject({
+      jingle: { line: 'Soft all day', style: 'warm pop, female vocal' },
+      jingleFileId: 'j1', signoffFileId: 's1', signoffSeconds: 2.4, signoffStartSeconds: 12.6, musicFadeOutAtSeconds: 12.3,
+    })
+  })
+  it('prices one more music step when the brief has a jingle', () => {
+    expect(tvcCreditSteps(withJingle())).toEqual([
+      { kind: 'image', count: 7 }, { kind: 'video', count: 7 }, { kind: 'narration', count: 1 },
+      { kind: 'music', count: 1 }, { kind: 'music', count: 1 }, { kind: 'edit', count: 12 },
+    ])
+  })
+})
+
+// Review Focus 2: a plan without a jingle is untouched.
+describe('a plan without a jingle slices and prices exactly as before', () => {
+  it('has no new keys in any slice, the same credit steps and the same validation', () => {
+    const p = goodPlan()
+    for (const slice of ['brief', 'finish', 'shots 1-7']) {
+      expect(JSON.stringify(sliceTvcPlan(p, slice))).not.toMatch(/jingle|signoff|musicFadeOut/i)
+    }
+    expect(Object.keys(sliceTvcPlan(p, 'finish') as object)).toEqual(['brief', 'shots', 'voiceover', 'packshot', 'legal', 'narrationFileIds', 'songFileId'])
+    expect(tvcCreditSteps(p)).toEqual([
+      { kind: 'image', count: 7 }, { kind: 'video', count: 7 }, { kind: 'narration', count: 1 },
+      { kind: 'music', count: 1 }, { kind: 'edit', count: 12 },
+    ])
+    expect(validateTvcPlan(p)).toEqual({ errors: [], warnings: expect.any(Array), plan: expect.any(Object) })
+    expect(JSON.stringify(tvcPlanSchema.parse(p))).not.toMatch(/jingle|signoff/i)
   })
 })
