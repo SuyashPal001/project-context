@@ -15,14 +15,21 @@ import { stillPassedCheck } from './checkStill.js'
 // "TVC plan: <id>" and a step — the plan itself never rides in a prompt.
 export interface SavedPlan { version: 1; storageKey: string; plan: TvcPlan }
 
-// Task 1 review fix: the presigned GET breaks if the `x-amz-checksum-mode`
-// query param survives (same fix as `load` above, analyzeImage.ts,
-// extractFrame.ts, mediaCache.ts, productDescribe.ts) — a real product photo
-// would 400 and be refused as PRODUCT_PHOTO_UNCHECKED instead of being read.
-// Extracted so it can be unit-tested with a fake fetch, independent of the
-// rest of planTvc's execute wiring.
-export async function resolveProductPhotoMimeType(fileId: string, idToken: string): Promise<string> {
+export interface ProductPhotoInfo { mimeType: string; pathname: string }
+
+// Task 1 + Task 2 review fix: ONE presigned GET per check, not two — this
+// single URL resolution feeds both the mime-type check (Task 1) and the
+// extracted-frame marker check (Task 2) below. The `x-amz-checksum-mode`
+// query param still has to be stripped before the GET (same fix as `load`
+// above, analyzeImage.ts, extractFrame.ts, mediaCache.ts, productDescribe.ts)
+// or a real product photo 400s and gets refused as PRODUCT_PHOTO_UNCHECKED
+// instead of being read. `pathname` is read off the URL before that
+// mutation — query params never touch the path. Extracted so it can be
+// unit-tested with a fake fetch, independent of the rest of planTvc's
+// execute wiring.
+export async function resolveProductPhotoInfo(fileId: string, idToken: string): Promise<ProductPhotoInfo> {
   const url = new URL(await fetchPresignedUrl(fileId, idToken))
+  const pathname = url.pathname
   url.searchParams.delete('x-amz-checksum-mode')
   const res = await fetch(url.toString())
   if (!res.ok) throw new Error(`product photo fetch failed: HTTP ${res.status}`)
@@ -31,18 +38,27 @@ export async function resolveProductPhotoMimeType(fileId: string, idToken: strin
   // downloaded for nothing (the presigned URL is signed for GET, so this
   // stays a GET rather than switching to HEAD).
   await res.body?.cancel()
-  return mimeType
+  return { mimeType, pathname }
 }
+
+// Task 2 review fix: anchored on a UUID-shaped segment, not a bare substring
+// search. generatedFileKey trims a trailing hyphen, so a title that slugs to
+// nothing (Hindi, punctuation-only) produces "<uuid>-extract-frame.jpg" with
+// no second hyphen after the marker — a plain `includes('-extract-frame-')`
+// missed that case. Anchoring on the 36-char uuid immediately before the
+// marker also stops false positives from an unrelated file whose name merely
+// contains the phrase, e.g. a generated still titled "Bubbli extract frame
+// shot" (key "<uuid>-bubbli-extract-frame-shot.jpg") or a user upload named
+// "my-extract-frame-photo.jpg" — neither has 36 hex/hyphen characters
+// immediately before "-extract-frame".
+const EXTRACTED_FRAME_PATH_RE = new RegExp(`/[0-9a-f-]{36}-${EXTRACTED_FRAME_KEY_MARKER}[-.]`, 'i')
 
 // Task 2: whether productPhotoFileId is itself a frame extract_frame pulled
 // from a video (see extractFrame.ts's EXTRACTED_FRAME_KEY_MARKER) rather
 // than a real photo of the product — a live run had Director do exactly
-// this with the reference ad's last frame. No second network trip beyond
-// the one fetchPresignedUrl already makes: the marker is visible in the
-// resolved URL's path before any bytes are fetched.
-export async function isExtractedFrameFile(fileId: string, idToken: string): Promise<boolean> {
-  const url = new URL(await fetchPresignedUrl(fileId, idToken))
-  return url.pathname.includes(`-${EXTRACTED_FRAME_KEY_MARKER}-`)
+// this with the reference ad's last frame.
+export function isExtractedFramePath(pathname: string): boolean {
+  return EXTRACTED_FRAME_PATH_RE.test(pathname)
 }
 
 // plan_tvc never takes a threshold from Director — only the detect_cuts tool
@@ -62,16 +78,14 @@ export interface PlanTvcDeps {
   // check always overwrites cutTimes with what this returns, so a plan can
   // never be made to pass by editing the numbers.
   detectCutTimes: (videoFileId: string) => Promise<{ cutTimes: number[]; durationSeconds: number }>
-  // Task 1: the product photo's real mime type, read from the file itself —
+  // Task 1 + Task 2 (merged on review): the product photo's real mime type
+  // AND its key's path, both read from the file itself in one lookup —
   // never trusted from Director. A live run passed the reference video's
-  // fileId as productPhotoFileId; every still then failed GENERATION_FAILED.
-  // Throws if the file can't be read (check refuses rather than passing silently).
-  productPhotoMimeType: (fileId: string) => Promise<string>
-  // Task 2: true when productPhotoFileId was produced by extract_frame —
-  // a frame pulled from some video, never the user's real product photo.
-  // Throws if the lookup itself fails (check refuses rather than passing
-  // silently, same contract as productPhotoMimeType above).
-  productPhotoFromExtractedFrame: (fileId: string) => Promise<boolean>
+  // fileId as productPhotoFileId (every still then failed GENERATION_FAILED),
+  // and a separate live run had Director extract the reference's last frame
+  // and use it as "the product". Throws if the file can't be read (check
+  // refuses rather than passing silently).
+  productPhotoInfo: (fileId: string) => Promise<ProductPhotoInfo>
 }
 
 export const planTvcInputSchema = z.object({
@@ -181,28 +195,21 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     if (ref?.videoFileId && ref.videoFileId === productPhotoFileId) {
       return { refused: true, refusalReason: 'PRODUCT_PHOTO_NOT_IMAGE: the product photo must be a photo of the product (jpg/png/webp), not a video; ask the user to upload one' }
     }
-    let productPhotoMimeType: string
+    let productPhotoInfo: ProductPhotoInfo
     try {
-      productPhotoMimeType = await deps.productPhotoMimeType(productPhotoFileId)
+      productPhotoInfo = await deps.productPhotoInfo(productPhotoFileId)
     } catch (err) {
-      console.error('[planTvc] productPhotoMimeType failed:', (err as Error).message)
+      console.error('[planTvc] productPhotoInfo failed:', (err as Error).message)
       return { refused: true, refusalReason: 'PRODUCT_PHOTO_UNCHECKED: could not read the product photo; try again' }
     }
-    if (!productPhotoMimeType.startsWith('image/')) {
+    if (!productPhotoInfo.mimeType.startsWith('image/')) {
       return { refused: true, refusalReason: 'PRODUCT_PHOTO_NOT_IMAGE: the product photo must be a photo of the product (jpg/png/webp), not a video; ask the user to upload one' }
     }
     // Task 2: the product photo can never be a frame extract_frame pulled
     // from a video (the reference ad or any other) — a live run with no
     // product photo had Director extract the reference's last frame and
     // use Coca-Cola's bottle as "the product".
-    let fromExtractedFrame: boolean
-    try {
-      fromExtractedFrame = await deps.productPhotoFromExtractedFrame(productPhotoFileId)
-    } catch (err) {
-      console.error('[planTvc] productPhotoFromExtractedFrame failed:', (err as Error).message)
-      return { refused: true, refusalReason: 'PRODUCT_PHOTO_UNCHECKED: could not read the product photo; try again' }
-    }
-    if (fromExtractedFrame) {
+    if (isExtractedFramePath(productPhotoInfo.pathname)) {
       return { refused: true, refusalReason: 'PRODUCT_PHOTO_FROM_REFERENCE: that image was taken from the reference ad, not the user\'s product; ask the user for a product photo' }
     }
     // A re-check loads the previously saved plan up front (not only later,
@@ -334,8 +341,7 @@ export const planTvc = createTool({
       newKey: () => `generated/${conversationId}/tvc-plan-${randomUUID()}.json`,
       stillChecked: (id) => stillPassedCheck({ threadId: conversationId, resourceId: tenantId }, id),
       detectCutTimes: (videoFileId) => detectCutTimes(videoFileId, idToken, tenantId || conversationId, REFERENCE_CUT_THRESHOLD),
-      productPhotoMimeType: (fileId) => resolveProductPhotoMimeType(fileId, idToken),
-      productPhotoFromExtractedFrame: (fileId) => isExtractedFrameFile(fileId, idToken),
+      productPhotoInfo: (fileId) => resolveProductPhotoInfo(fileId, idToken),
     }
     try {
       return await runPlanTvc(inputData as PlanTvcInput, deps)

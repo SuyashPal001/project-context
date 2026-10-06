@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('./mediaCache.js', () => ({ fetchPresignedUrl: vi.fn() }))
 
-import { runPlanTvc, resolveProductPhotoMimeType, isExtractedFrameFile, type PlanTvcDeps, type SavedPlan } from './planTvc.js'
+import { runPlanTvc, planTvc, resolveProductPhotoInfo, isExtractedFramePath, type PlanTvcDeps, type SavedPlan } from './planTvc.js'
 import { fetchPresignedUrl } from './mediaCache.js'
 import { tvcPlanSchema } from './tvcPlan.js'
 import { extractFrameKey } from './extractFrame.js'
+import { generatedFileKey } from '../../persistence.js'
 
 const plan = () => tvcPlanSchema.parse({
   brief: { message: 'Ice cold refreshment', category: 'beverage', tier: 'mass', objective: 'brand', market: 'generic', lengthSeconds: 6, aspectRatio: '16:9', productPhotoFileId: 'prod' },
@@ -20,7 +21,7 @@ const plan = () => tvcPlanSchema.parse({
 
 const tick = () => new Promise((r) => setTimeout(r, 5))
 
-function fakeDeps(opts: { slow?: boolean; checked?: string[]; detectCutTimes?: PlanTvcDeps['detectCutTimes']; productPhotoMimeType?: PlanTvcDeps['productPhotoMimeType']; productPhotoFromExtractedFrame?: PlanTvcDeps['productPhotoFromExtractedFrame'] } = {}) {
+function fakeDeps(opts: { slow?: boolean; checked?: string[]; detectCutTimes?: PlanTvcDeps['detectCutTimes']; productPhotoInfo?: PlanTvcDeps['productPhotoInfo'] } = {}) {
   const store = new Map<string, SavedPlan>()
   const keyToId = new Map<string, string>()
   let n = 0
@@ -35,8 +36,7 @@ function fakeDeps(opts: { slow?: boolean; checked?: string[]; detectCutTimes?: P
     newKey: () => `generated/conv/tvc-plan-${n + 1}.json`,
     stillChecked: (id) => (opts.checked ? opts.checked.includes(id) : true),
     detectCutTimes: opts.detectCutTimes ?? (async () => { throw new Error('detectCutTimes not expected in this test') }),
-    productPhotoMimeType: opts.productPhotoMimeType ?? (async () => 'image/jpeg'),
-    productPhotoFromExtractedFrame: opts.productPhotoFromExtractedFrame ?? (async () => false),
+    productPhotoInfo: opts.productPhotoInfo ?? (async () => ({ mimeType: 'image/jpeg', pathname: '/generated/conv1/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa-product-photo.jpg' })),
   }
   return { deps, store }
 }
@@ -127,23 +127,23 @@ describe('runPlanTvc check: reference cut times come from the file, not Director
 
 describe('runPlanTvc check: product photo must be an image, never the reference (Task 1)', () => {
   it('refuses a video mime type', async () => {
-    const { deps } = fakeDeps({ productPhotoMimeType: async () => 'video/mp4' })
+    const { deps } = fakeDeps({ productPhotoInfo: async () => ({ mimeType: 'video/mp4', pathname: '/generated/conv1/x-video.mp4' }) })
     const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
     expect(out.refusalReason).toMatch(/^PRODUCT_PHOTO_NOT_IMAGE/)
   })
   it('refuses when productPhotoFileId is the reference video, before even checking its mime type', async () => {
-    const { deps } = fakeDeps({ productPhotoMimeType: async () => { throw new Error('should not be called') } })
+    const { deps } = fakeDeps({ productPhotoInfo: async () => { throw new Error('should not be called') } })
     const p = plan(); p.brief.productPhotoFileId = 'ref-video'; p.brief.reference = { videoFileId: 'ref-video' }
     const out = await runPlanTvc({ action: 'check', plan: p }, deps)
     expect(out.refusalReason).toMatch(/^PRODUCT_PHOTO_NOT_IMAGE/)
   })
   it('passes a real image', async () => {
-    const { deps } = fakeDeps({ productPhotoMimeType: async () => 'image/png' })
+    const { deps } = fakeDeps({ productPhotoInfo: async () => ({ mimeType: 'image/png', pathname: '/generated/conv1/x-product-photo.png' }) })
     const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
     expect(out.errors).toEqual([])
   })
   it('refuses, never passing silently, when the mime lookup itself fails', async () => {
-    const { deps } = fakeDeps({ productPhotoMimeType: async () => { throw new Error('file lookup failed') } })
+    const { deps } = fakeDeps({ productPhotoInfo: async () => { throw new Error('file lookup failed') } })
     const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
     expect(out.refusalReason).toBe('PRODUCT_PHOTO_UNCHECKED: could not read the product photo; try again')
   })
@@ -151,41 +151,53 @@ describe('runPlanTvc check: product photo must be an image, never the reference 
 
 describe('runPlanTvc check: the product photo can never be a frame pulled from a video (Task 2)', () => {
   it('refuses a product photo produced by extract_frame', async () => {
-    const { deps } = fakeDeps({ productPhotoFromExtractedFrame: async () => true })
+    const pathname = `/${extractFrameKey('conv1', 'Bubbli Last Frame')}`
+    const { deps } = fakeDeps({ productPhotoInfo: async () => ({ mimeType: 'image/jpeg', pathname }) })
     const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
     expect(out.refusalReason).toMatch(/^PRODUCT_PHOTO_FROM_REFERENCE/)
   })
   it('passes a real image that was not extracted from any video', async () => {
-    const { deps } = fakeDeps({ productPhotoFromExtractedFrame: async () => false })
+    const { deps } = fakeDeps({ productPhotoInfo: async () => ({ mimeType: 'image/jpeg', pathname: '/generated/conv1/abc-product-photo.jpg' }) })
     const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
     expect(out.errors).toEqual([])
   })
   it('refuses, never passing silently, when the origin lookup itself fails', async () => {
-    const { deps } = fakeDeps({ productPhotoFromExtractedFrame: async () => { throw new Error('lookup failed') } })
+    const { deps } = fakeDeps({ productPhotoInfo: async () => { throw new Error('lookup failed') } })
     const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
     expect(out.refusalReason).toBe('PRODUCT_PHOTO_UNCHECKED: could not read the product photo; try again')
   })
 })
 
-describe('isExtractedFrameFile: recognises extract_frame\'s own key marker from the presigned URL alone (Task 2)', () => {
-  beforeEach(() => vi.clearAllMocks())
-
-  it('is true for a key extract_frame built', async () => {
-    const key = extractFrameKey('conv1', 'Bubbli Product Photo Frame')
-    vi.mocked(fetchPresignedUrl).mockResolvedValue(`https://bucket.s3.amazonaws.com/${key}?X-Amz-Signature=s`)
-    expect(await isExtractedFrameFile('f1', 'tok')).toBe(true)
+// Task 2 review fix: isExtractedFramePath is anchored on a 36-char uuid-shaped
+// segment immediately before the marker, not a bare substring search — a
+// bare `includes('-extract-frame-')` missed a title that slugs to nothing
+// (generatedFileKey trims the trailing hyphen down to "<uuid>-extract-frame.jpg")
+// and would also false-positive on an unrelated file whose name merely
+// contains the phrase.
+describe('isExtractedFramePath: recognises extract_frame\'s own key marker, anchored on the uuid (Task 2 review fix)', () => {
+  it('is true for a title that slugs to nothing — Hindi — where the trailing hyphen is trimmed away', () => {
+    expect(isExtractedFramePath(`/${extractFrameKey('conv1', 'उत्पाद फ्रेम')}`)).toBe(true)
   })
-  it('is false for an ordinary uploaded file\'s key', async () => {
-    vi.mocked(fetchPresignedUrl).mockResolvedValue('https://bucket.s3.amazonaws.com/generated/conv1/abc-product-photo.jpg?X-Amz-Signature=s')
-    expect(await isExtractedFrameFile('f1', 'tok')).toBe(false)
+  it('is true for a punctuation-only title, for the same reason', () => {
+    expect(isExtractedFramePath(`/${extractFrameKey('conv1', '!!!')}`)).toBe(true)
+  })
+  it('is true for an ordinary title (the slug survives, with a trailing hyphen before it)', () => {
+    expect(isExtractedFramePath(`/${extractFrameKey('conv1', 'Bubbli Product Photo Frame')}`)).toBe(true)
+  })
+  it('is false for a generated image whose title merely contains the phrase (no uuid immediately before it)', () => {
+    const key = generatedFileKey('conv1', 'Bubbli extract frame shot', 'jpg')
+    expect(isExtractedFramePath(`/${key}`)).toBe(false)
+  })
+  it('is false for a plain user upload named with the phrase', () => {
+    expect(isExtractedFramePath('/t1/11111111-1111-4111-8111-111111111111/my-extract-frame-photo.jpg')).toBe(false)
   })
 })
 
-describe('resolveProductPhotoMimeType: the real dep strips x-amz-checksum-mode before fetching (Task 1 review fix)', () => {
+describe('resolveProductPhotoInfo: the real dep strips x-amz-checksum-mode before fetching, and returns the path untouched (Task 1 + Task 2 review fix)', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('fetches the presigned URL with x-amz-checksum-mode removed, and cancels the body', async () => {
-    vi.mocked(fetchPresignedUrl).mockResolvedValue('https://bucket.s3.amazonaws.com/k?X-Amz-Signature=s&x-amz-checksum-mode=ENABLED')
+  it('fetches the presigned URL with x-amz-checksum-mode removed, cancels the body, and keeps the pathname', async () => {
+    vi.mocked(fetchPresignedUrl).mockResolvedValue('https://bucket.s3.amazonaws.com/generated/conv1/k.png?X-Amz-Signature=s&x-amz-checksum-mode=ENABLED')
     const cancel = vi.fn()
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -193,17 +205,44 @@ describe('resolveProductPhotoMimeType: the real dep strips x-amz-checksum-mode b
       body: { cancel },
     }) as never
 
-    const mimeType = await resolveProductPhotoMimeType('f1', 'tok')
+    const info = await resolveProductPhotoInfo('f1', 'tok')
 
-    expect(mimeType).toBe('image/png')
-    expect((global.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe('https://bucket.s3.amazonaws.com/k?X-Amz-Signature=s')
+    expect(info.mimeType).toBe('image/png')
+    expect(info.pathname).toBe('/generated/conv1/k.png')
+    expect((global.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe('https://bucket.s3.amazonaws.com/generated/conv1/k.png?X-Amz-Signature=s')
     expect(cancel).toHaveBeenCalled()
   })
 
   it('throws when the fetch fails, so the caller refuses rather than passing silently', async () => {
     vi.mocked(fetchPresignedUrl).mockResolvedValue('https://bucket.s3.amazonaws.com/k?X-Amz-Signature=s')
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 403 }) as never
-    await expect(resolveProductPhotoMimeType('f1', 'tok')).rejects.toThrow(/403/)
+    await expect(resolveProductPhotoInfo('f1', 'tok')).rejects.toThrow(/403/)
+  })
+
+  // Only one presign lookup and one GET per check — not a second round trip
+  // for the extracted-frame marker (Task 2 review fix: Minor 2).
+  it('makes exactly one presigned-url call and one fetch', async () => {
+    vi.mocked(fetchPresignedUrl).mockResolvedValue('https://bucket.s3.amazonaws.com/generated/conv1/k.png?X-Amz-Signature=s')
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, headers: { get: () => 'image/png' }, body: { cancel: vi.fn() } }) as never
+    await resolveProductPhotoInfo('f1', 'tok')
+    expect(vi.mocked(fetchPresignedUrl)).toHaveBeenCalledTimes(1)
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+  })
+})
+
+// Task 2 review fix: Minor 3 — the production dep wiring (not just fakeDeps)
+// must reach the real resolveProductPhotoInfo and refuse on its result.
+describe('planTvc execute: the real productPhotoInfo wiring refuses an extracted-frame product photo (Task 2 review fix)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('refuses PRODUCT_PHOTO_FROM_REFERENCE through the tool\'s actual execute, not a fake dep', async () => {
+    const key = extractFrameKey('conv1', 'Bubbli Last Frame')
+    vi.mocked(fetchPresignedUrl).mockResolvedValue(`https://bucket.s3.amazonaws.com/${key}?X-Amz-Signature=s`)
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, headers: { get: () => 'image/jpeg' }, body: { cancel: vi.fn() } }) as never
+    const values: Record<string, unknown> = { idToken: 'tok', conversationId: 'conv1', tenantId: 't1' }
+    const ctx = { requestContext: { get: (k: string) => values[k] } }
+    const out = await (planTvc as unknown as { execute: (input: unknown, ctx: unknown) => Promise<{ refusalReason?: string }> }).execute({ action: 'check', plan: plan() }, ctx)
+    expect(out.refusalReason).toMatch(/^PRODUCT_PHOTO_FROM_REFERENCE/)
   })
 })
 

@@ -22,7 +22,7 @@ describe('frameArgs', () => {
   })
 })
 
-// Task 2 (TVC live fixes): plan_tvc.ts's isExtractedFrameFile recognises this
+// Task 2 (TVC live fixes): plan_tvc.ts's isExtractedFramePath recognises this
 // exact marker in the S3 key to refuse a product photo that is really a
 // frame pulled from a video — this key-builder is the only place the marker
 // is written, so this test pins the contract both sides rely on.
