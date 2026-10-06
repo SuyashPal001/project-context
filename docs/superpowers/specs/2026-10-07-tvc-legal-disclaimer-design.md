@@ -57,6 +57,23 @@ The source of the rules is ASCI, "Guidelines for Disclaimers", amended 13 July 2
 - **Veg-mark plan message:** "recommended for food (FSSAI packaging rule; common practice in TV ads)", not "required".
 - **"Creative visualisation":** keep auto-adding it; it is industry practice. It uses the legal style. The skill text must not claim it protects a performance claim; ASCI rejected that.
 
+## 3b. Edge cases (checked against the code on 2026-10-07)
+
+| # | Case | What happens today | Decision |
+|---|---|---|---|
+| E1 | **Hindi or other Indic disclaimer** | overlay_text uses `DejaVu Sans`, which has **no Devanagari glyphs**, so it would render empty boxes | The legal style uses a font that covers Latin + Devanagari (e.g. Noto Sans + Noto Sans Devanagari via fontconfig fallback). The real-ffmpeg test renders a Hindi line and checks that no glyph is missing (no tofu). If the VM lacks the font, the deploy step installs `fonts-noto-core`. Size rule for scripts with no lowercase: font px stays at 4.6% of the frame (same visual weight). |
+| E2 | **Vertical 9:16 ad** | ASCI's "1080 lines" is a TV (landscape) raster rule | The px rule uses the **shorter side** of the frame (1080 for both 1920×1080 and 1080×1920), not the height. Otherwise a 9:16 ad would get a huge ~89 px font that fits about 20 characters per line. Same for 4:5 and 1:1. |
+| E3 | **6 s ad with a long disclaimer** | A 2-line disclaimer needs ≥ 8 s, longer than the ad | Refused with `LEGAL_HOLD_TOO_LONG`, unless `wholeAd: true` (ASCI allows on-screen for the whole duration). The message names both options. |
+| E4 | **End card covers the disclaimer** | The finish runs overlay_text and composite_end_card. If the end card is laid after the text, its full-frame card hides any legal line during the packshot | The finish slice fixes the order: **composite_end_card first, overlay_text last**, so text is always the top layer. The plan check refuses a legal line over the packshot if the order can't be guaranteed. Test it. |
+| E5 | **Disclaimer collides with other bottom text** (packshot tagline, shot text moved down by avoidFaces) | Two boxes can overlap | Legal always owns the bottom band. Other text placed at the bottom while a legal line is on screen moves to center. avoidFaces may move the legal box up, but never onto another text. |
+| E6 | **Two claims in one voiceover block** | Both disclaimers would start at the same time and break one-per-frame | The plan refuses the second with `LEGAL_OVERLAP` and suggests combining them into one disclaimer (≤ 2 lines) or moving the second claim to its own voiceover block. |
+| E7 | **`forVoiceoverBlock` points at a block that doesn't exist**, or the voiceover changes on a re-check | Wrong or empty start | Plan error `LEGAL_CLAIM_MISSING: legal line "<text>" points at voiceover block <n>, which doesn't exist`. On a re-check, the start is recomputed from the current voiceover. |
+| E8 | **Word counting** | — | Not counted: the brand name (`brief.brandName`), logos, `Rs`, `Rs.`, `₹`, `%`, and a number attached to them (`₹499`, `50%`). A URL or an email = 1 word. `T&C` = 1 word. Hindi words split on spaces. Unit tests for each. |
+| E9 | **Special characters** (`{ }`, `\N`, quotes, `&`) | ASS escaping exists (escapeAssText) | Reused; tests include `{T&C apply}` and a backslash. |
+| E10 | **More than 12 overlays** | The cap drops per-shot texts first | Unchanged; legal lines are never dropped. If legal lines alone exceed 12 (unrealistic), the plan refuses. |
+| E11 | **Text shrunk by avoidFaces** (Part A shrinks text near a face) | Shrinking would go below the ASCI size | The legal style is never shrunk; only its position may change. |
+| E12 | **A copy edit after the ad is made** | — | Only overlay_text re-runs, about 1 credit. The plan recomputes holds before it does. |
+
 ## 4. Error handling
 - New plain reasons: `LEGAL_TOO_LONG`, `LEGAL_HOLD_TOO_LONG`, `LEGAL_OVERLAP`.
 - Every rule is checked before any paid step. `overlay_text`'s charge and refund are unchanged.
