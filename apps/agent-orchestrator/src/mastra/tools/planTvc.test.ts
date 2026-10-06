@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('./mediaCache.js', () => ({ fetchPresignedUrl: vi.fn() }))
 
-import { runPlanTvc, resolveProductPhotoMimeType, type PlanTvcDeps, type SavedPlan } from './planTvc.js'
+import { runPlanTvc, resolveProductPhotoMimeType, isExtractedFrameFile, type PlanTvcDeps, type SavedPlan } from './planTvc.js'
 import { fetchPresignedUrl } from './mediaCache.js'
 import { tvcPlanSchema } from './tvcPlan.js'
+import { extractFrameKey } from './extractFrame.js'
 
 const plan = () => tvcPlanSchema.parse({
   brief: { message: 'Ice cold refreshment', category: 'beverage', tier: 'mass', objective: 'brand', market: 'generic', lengthSeconds: 6, aspectRatio: '16:9', productPhotoFileId: 'prod' },
@@ -19,7 +20,7 @@ const plan = () => tvcPlanSchema.parse({
 
 const tick = () => new Promise((r) => setTimeout(r, 5))
 
-function fakeDeps(opts: { slow?: boolean; checked?: string[]; detectCutTimes?: PlanTvcDeps['detectCutTimes']; productPhotoMimeType?: PlanTvcDeps['productPhotoMimeType'] } = {}) {
+function fakeDeps(opts: { slow?: boolean; checked?: string[]; detectCutTimes?: PlanTvcDeps['detectCutTimes']; productPhotoMimeType?: PlanTvcDeps['productPhotoMimeType']; productPhotoFromExtractedFrame?: PlanTvcDeps['productPhotoFromExtractedFrame'] } = {}) {
   const store = new Map<string, SavedPlan>()
   const keyToId = new Map<string, string>()
   let n = 0
@@ -35,6 +36,7 @@ function fakeDeps(opts: { slow?: boolean; checked?: string[]; detectCutTimes?: P
     stillChecked: (id) => (opts.checked ? opts.checked.includes(id) : true),
     detectCutTimes: opts.detectCutTimes ?? (async () => { throw new Error('detectCutTimes not expected in this test') }),
     productPhotoMimeType: opts.productPhotoMimeType ?? (async () => 'image/jpeg'),
+    productPhotoFromExtractedFrame: opts.productPhotoFromExtractedFrame ?? (async () => false),
   }
   return { deps, store }
 }
@@ -144,6 +146,38 @@ describe('runPlanTvc check: product photo must be an image, never the reference 
     const { deps } = fakeDeps({ productPhotoMimeType: async () => { throw new Error('file lookup failed') } })
     const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
     expect(out.refusalReason).toBe('PRODUCT_PHOTO_UNCHECKED: could not read the product photo; try again')
+  })
+})
+
+describe('runPlanTvc check: the product photo can never be a frame pulled from a video (Task 2)', () => {
+  it('refuses a product photo produced by extract_frame', async () => {
+    const { deps } = fakeDeps({ productPhotoFromExtractedFrame: async () => true })
+    const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    expect(out.refusalReason).toMatch(/^PRODUCT_PHOTO_FROM_REFERENCE/)
+  })
+  it('passes a real image that was not extracted from any video', async () => {
+    const { deps } = fakeDeps({ productPhotoFromExtractedFrame: async () => false })
+    const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    expect(out.errors).toEqual([])
+  })
+  it('refuses, never passing silently, when the origin lookup itself fails', async () => {
+    const { deps } = fakeDeps({ productPhotoFromExtractedFrame: async () => { throw new Error('lookup failed') } })
+    const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    expect(out.refusalReason).toBe('PRODUCT_PHOTO_UNCHECKED: could not read the product photo; try again')
+  })
+})
+
+describe('isExtractedFrameFile: recognises extract_frame\'s own key marker from the presigned URL alone (Task 2)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('is true for a key extract_frame built', async () => {
+    const key = extractFrameKey('conv1', 'Bubbli Product Photo Frame')
+    vi.mocked(fetchPresignedUrl).mockResolvedValue(`https://bucket.s3.amazonaws.com/${key}?X-Amz-Signature=s`)
+    expect(await isExtractedFrameFile('f1', 'tok')).toBe(true)
+  })
+  it('is false for an ordinary uploaded file\'s key', async () => {
+    vi.mocked(fetchPresignedUrl).mockResolvedValue('https://bucket.s3.amazonaws.com/generated/conv1/abc-product-photo.jpg?X-Amz-Signature=s')
+    expect(await isExtractedFrameFile('f1', 'tok')).toBe(false)
   })
 })
 

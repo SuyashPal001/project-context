@@ -95,6 +95,8 @@ describe('OFFICIAL_SKILLS', () => {
     expect(director).toMatch(/When plan_tvc check returns JINGLE_WONT_FIT, move the voiceover earlier or shorten the sung line as it says, then check again, before making any jingle\./)
     expect(card).toContain('Jingle: <the line to sing>')
     expect(card).toMatch(/default is no jingle/)
+    // Task 2: the product photo can never be a frame pulled from the reference or any other file.
+    expect(director).toMatch(/If the brief has no product photo, never take one from the reference video or any other file; return to Olmo so it asks the user to upload a product photo\./)
   });
 
   it('each entry file exists and is non-empty', () => {

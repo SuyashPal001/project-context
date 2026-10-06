@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { uploadFileWithKey } from '../../persistence.js'
 import { fetchPresignedUrl } from './mediaCache.js'
+import { EXTRACTED_FRAME_KEY_MARKER } from './extractFrame.js'
 import { detectCutTimes } from './detectCuts.js'
 import { computeCreditPlan, priceFromRates, readBalanceForTenant } from './checkCreditPlan.js'
 import { recordOnPlan, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, jingleErrors, type TvcPlan } from './tvcPlan.js'
@@ -33,6 +34,17 @@ export async function resolveProductPhotoMimeType(fileId: string, idToken: strin
   return mimeType
 }
 
+// Task 2: whether productPhotoFileId is itself a frame extract_frame pulled
+// from a video (see extractFrame.ts's EXTRACTED_FRAME_KEY_MARKER) rather
+// than a real photo of the product — a live run had Director do exactly
+// this with the reference ad's last frame. No second network trip beyond
+// the one fetchPresignedUrl already makes: the marker is visible in the
+// resolved URL's path before any bytes are fetched.
+export async function isExtractedFrameFile(fileId: string, idToken: string): Promise<boolean> {
+  const url = new URL(await fetchPresignedUrl(fileId, idToken))
+  return url.pathname.includes(`-${EXTRACTED_FRAME_KEY_MARKER}-`)
+}
+
 // plan_tvc never takes a threshold from Director — only the detect_cuts tool
 // does (see detectCuts.ts's cache-poisoning note). Always the fixed default
 // that matched the 2026-10-05 reference ad, so a plan's check is always
@@ -55,6 +67,11 @@ export interface PlanTvcDeps {
   // fileId as productPhotoFileId; every still then failed GENERATION_FAILED.
   // Throws if the file can't be read (check refuses rather than passing silently).
   productPhotoMimeType: (fileId: string) => Promise<string>
+  // Task 2: true when productPhotoFileId was produced by extract_frame —
+  // a frame pulled from some video, never the user's real product photo.
+  // Throws if the lookup itself fails (check refuses rather than passing
+  // silently, same contract as productPhotoMimeType above).
+  productPhotoFromExtractedFrame: (fileId: string) => Promise<boolean>
 }
 
 export const planTvcInputSchema = z.object({
@@ -173,6 +190,20 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     }
     if (!productPhotoMimeType.startsWith('image/')) {
       return { refused: true, refusalReason: 'PRODUCT_PHOTO_NOT_IMAGE: the product photo must be a photo of the product (jpg/png/webp), not a video; ask the user to upload one' }
+    }
+    // Task 2: the product photo can never be a frame extract_frame pulled
+    // from a video (the reference ad or any other) — a live run with no
+    // product photo had Director extract the reference's last frame and
+    // use Coca-Cola's bottle as "the product".
+    let fromExtractedFrame: boolean
+    try {
+      fromExtractedFrame = await deps.productPhotoFromExtractedFrame(productPhotoFileId)
+    } catch (err) {
+      console.error('[planTvc] productPhotoFromExtractedFrame failed:', (err as Error).message)
+      return { refused: true, refusalReason: 'PRODUCT_PHOTO_UNCHECKED: could not read the product photo; try again' }
+    }
+    if (fromExtractedFrame) {
+      return { refused: true, refusalReason: 'PRODUCT_PHOTO_FROM_REFERENCE: that image was taken from the reference ad, not the user\'s product; ask the user for a product photo' }
     }
     // A re-check loads the previously saved plan up front (not only later,
     // for storageKey/carryOver) so the reference-video identity check below
@@ -304,6 +335,7 @@ export const planTvc = createTool({
       stillChecked: (id) => stillPassedCheck({ threadId: conversationId, resourceId: tenantId }, id),
       detectCutTimes: (videoFileId) => detectCutTimes(videoFileId, idToken, tenantId || conversationId, REFERENCE_CUT_THRESHOLD),
       productPhotoMimeType: (fileId) => resolveProductPhotoMimeType(fileId, idToken),
+      productPhotoFromExtractedFrame: (fileId) => isExtractedFrameFile(fileId, idToken),
     }
     try {
       return await runPlanTvc(inputData as PlanTvcInput, deps)

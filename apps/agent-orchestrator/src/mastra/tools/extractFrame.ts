@@ -5,7 +5,7 @@ import { promisify } from 'node:util'
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { uploadGeneratedFile } from '../../persistence.js'
+import { generatedFileKey, uploadFileWithKey } from '../../persistence.js'
 import { fetchPresignedUrl } from './mediaCache.js'
 
 // The default way to chain talking-head clips: clip N+1 starts from the real
@@ -20,6 +20,24 @@ const TIMEOUT_MS = 60_000
 export function frameArgs(input: string, output: string, at: 'last' | 'first' | number): string[] {
   const seek = at === 'last' ? ['-sseof', '-0.1'] : at === 'first' ? [] : ['-ss', String(Math.max(0, at))]
   return ['-y', ...seek, '-i', input, '-frames:v', '1', '-q:v', '2', output]
+}
+
+// Task 2 (TVC live fixes): plan_tvc's check refuses a product photo that is
+// really a frame extracted from a video — a live run had Director call
+// extract_frame on the reference ad and use its last frame (a Coca-Cola
+// bottle) as "the product". There is no files-table column recording a
+// file's origin, and this task may not add one (no DB migration), so the
+// marker lives in the one field this tool already controls: the generated
+// file's S3 key. `planTvc.ts` imports this exact literal rather than
+// hardcoding its own copy, so detection can never drift from what gets
+// written here.
+export const EXTRACTED_FRAME_KEY_MARKER = 'extract-frame'
+
+/** The S3 key for an extracted frame — carries the marker above so plan_tvc
+ *  can recognise it later purely from the presigned URL's path, no extra
+ *  network call beyond the one it already makes to resolve that URL. */
+export function extractFrameKey(conversationId: string, title: string): string {
+  return generatedFileKey(conversationId, `${EXTRACTED_FRAME_KEY_MARKER} ${title}`, 'jpg')
 }
 
 export const extractFrame = createTool({
@@ -57,9 +75,11 @@ export const extractFrame = createTool({
       writeFileSync(inputPath, Buffer.from(await videoRes.arrayBuffer()))
       const outputPath = join(workDir, 'frame.jpg')
       await execFile('ffmpeg', frameArgs(inputPath, outputPath, at ?? 'last'), { timeout: TIMEOUT_MS })
-      const attachment = await uploadGeneratedFile(idToken, {
-        conversationId, title: title ?? 'Last frame',
-        content: readFileSync(outputPath), contentType: 'image/jpeg', extension: 'jpg',
+      const frameTitle = title ?? 'Last frame'
+      const attachment = await uploadFileWithKey(idToken, {
+        key: extractFrameKey(conversationId, frameTitle),
+        name: `${frameTitle}.jpg`,
+        content: readFileSync(outputPath), contentType: 'image/jpeg',
       })
       if (!attachment) return { refused: true, refusalReason: 'STORAGE_FAILED' }
       return { fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size }
