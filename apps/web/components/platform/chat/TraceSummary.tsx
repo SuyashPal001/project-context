@@ -42,6 +42,7 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
     // wrappers with no result media, plan/PRD tools, ...) is what collapses.
     const mediaCalls = withoutRepeatedTraceFiles(toolCalls).filter(tc => extractResultFiles(tc.toolName, tc.result).length > 0);
     const stepCalls = toolCalls.filter(tc => extractResultFiles(tc.toolName, tc.result).length === 0);
+    const stepCount = steps && steps.length > 0 ? new Set(steps.map(s => s.key)).size : toolCalls.length;
     const mediaFileCount = mediaCalls.reduce((n, tc) => n + extractResultFiles(tc.toolName, tc.result).length, 0);
 
     return (
@@ -85,15 +86,12 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
                 >
                     <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-                <span>Worked for {elapsedSec}s{toolCalls.length > 0 ? ` · ${toolCalls.length} step${toolCalls.length === 1 ? '' : 's'}` : ''}</span>
+                <span>Worked for {elapsedSec}s{stepCount > 0 ? ` · ${stepCount} step${stepCount === 1 ? '' : 's'}` : ''}</span>
             </button>
-            {!collapsed && steps && steps.length > 0 && (
-                <div className="ml-4">
-                    <StepList steps={steps} live={false} />
-                </div>
-            )}
-            {!collapsed && (stepCalls.length > 0 || reasoningText) && (
-                <div className="ml-4 flex flex-col gap-1 normal-case">
+            {!collapsed && ((steps && steps.length > 0) || stepCalls.length > 0 || reasoningText) && (
+                <div className="ml-[4px] border-l border-border/70 pl-3 flex flex-col gap-1 normal-case">
+                    {reasoningText && <ReasoningRow text={reasoningText} completed elapsedSec={reasoningElapsedSec} />}
+                    {steps && steps.length > 0 && <StepList steps={steps} live={false} />}
                     {groupImageToolCalls(stepCalls).map((group, gi) => (
                         group.length > 1 ? (
                             <div key={gi} className="flex flex-wrap gap-2">
@@ -105,7 +103,6 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
                             <ToolCallCard key={group[0].id} toolName={group[0].toolName} query={group[0].query} status="done" results={group[0].results} result={group[0].result} freshUrls={freshUrls} />
                         )
                     ))}
-                    {reasoningText && <ReasoningRow text={reasoningText} completed elapsedSec={reasoningElapsedSec} />}
                 </div>
             )}
         </div>

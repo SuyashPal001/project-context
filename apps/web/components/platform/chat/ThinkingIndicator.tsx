@@ -18,59 +18,56 @@ import type { PersonaSummary } from "../personas/types";
 // violet/shimmer treatment (an active, in-progress state); completed reads
 // "Thought for Ns" in plain text-foreground, matching ToolCallCard's finished
 // rows — shimmer/color on a state that already ended reads as still-active.
-export function ReasoningRow({ text, completed = false, elapsedSec }: { text: string; completed?: boolean; elapsedSec?: number }) {
-    // Live thinking opens itself — the point is to watch the agent reason in
-    // real time, not to hunt for a chevron. The completed/historical row (used
-    // by TraceSummary, a separate mount) keeps the original collapsed-by-default
-    // disclosure pattern.
-    const [expanded, setExpanded] = useState(!completed);
+// Chevron on the left, a thin guide line under an open row, no boxes — the
+// same shape as the step list it sits with (user's pick, 2026-10-06).
+export function Chevron({ open }: { open: boolean }) {
+    return (
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className={`shrink-0 transition-transform text-muted-foreground ${open ? "rotate-90" : ""}`}>
+            <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    );
+}
+
+export function ReasoningRow({ text, completed = false, elapsedSec, defaultOpen }: { text: string; completed?: boolean; elapsedSec?: number; defaultOpen?: boolean }) {
+    // Live thinking opens itself when it is all there is to watch; during a
+    // long job with a step list it stays one quiet line that opens on tap.
+    // The completed row (TraceSummary) starts folded.
+    const [expanded, setExpanded] = useState(defaultOpen ?? !completed);
     if (!text) return null;
 
     return (
-        <div className="my-1.5 text-foreground">
+        <div className="my-1 text-foreground">
             <button
                 type="button"
                 onClick={() => setExpanded(e => !e)}
                 className="flex items-center gap-2 w-full text-left"
             >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-current">
-                    <path d="M2 3.5h10a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5.5L3 12v-2.5H2a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
-                </svg>
+                <Chevron open={expanded} />
                 {completed ? (
-                    <span className="text-sm font-semibold flex-1 truncate text-foreground">
+                    <span className="text-sm text-muted-foreground flex-1 truncate">
                         {elapsedSec !== undefined ? `Thought for ${elapsedSec}s` : 'Thought it through'}
                     </span>
                 ) : (
                     // text-shimmer-accent-60, not text-primary/60: --primary itself is a pale
                     // rose that reads as unreadably faint (and fails WCAG AA) on this theme's
                     // near-white background — --shimmer-accent is the same hue family, darkened,
-                    // and only overridden in light theme (dark theme's pale rose already has
-                    // plenty of contrast, so it stays on --primary there). See globals.css.
-                    <span className="shimmer-text text-sm font-semibold flex-1 truncate text-shimmer-accent-60">Thinking it through</span>
+                    // and only overridden in light theme. See globals.css.
+                    <span className="shimmer-text text-sm flex-1 truncate text-shimmer-accent-60">Thinking…</span>
                 )}
-                <svg
-                    width="10" height="10" viewBox="0 0 10 10" fill="none"
-                    className={`shrink-0 transition-transform text-foreground ${expanded ? "rotate-90" : ""}`}
-                >
-                    <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
             </button>
             {expanded && (
-                <div className="flex gap-2.5 mt-1.5 pl-0.5">
-                    <div className="w-3 shrink-0 border-l border-b border-border rounded-bl-md" style={{ marginTop: '-4px', height: '0.85em' }} />
-                    <div className="text-sm text-muted-foreground flex-1 min-w-0 [&>*]:mb-2 [&>*:last-child]:mb-0">
-                        <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                                p: ({ children }) => <p className="whitespace-pre-wrap">{children}</p>,
-                                strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
-                                ul: ({ children }) => <ul className="list-disc list-outside ml-4 space-y-1">{children}</ul>,
-                                ol: ({ children }) => <ol className="list-decimal list-outside ml-4 space-y-1">{children}</ol>,
-                            }}
-                        >
-                            {text}
-                        </ReactMarkdown>
-                    </div>
+                <div className="mt-1 ml-[4px] border-l border-border/70 pl-3 text-sm text-muted-foreground min-w-0 [&>*]:mb-2 [&>*:last-child]:mb-0">
+                    <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                            p: ({ children }) => <p className="whitespace-pre-wrap">{children}</p>,
+                            strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+                            ul: ({ children }) => <ul className="list-disc list-outside ml-4 space-y-1">{children}</ul>,
+                            ol: ({ children }) => <ol className="list-decimal list-outside ml-4 space-y-1">{children}</ol>,
+                        }}
+                    >
+                        {text}
+                    </ReactMarkdown>
                 </div>
             )}
         </div>
@@ -138,6 +135,7 @@ export function LiveTrace({
     // streaming finishes) — purely a local display value for the in-progress
     // Phase 2a line, so it doesn't need to survive this component unmounting.
     const [liveElapsed, setLiveElapsed] = useState(0);
+    const [blockOpen, setBlockOpen] = useState(true);
     // Seconds spent waiting on the user, excluded from "Working for Ns".
     const [pausedMs, setPausedMs] = useState(0);
     const awaitingUser = isAwaitingUser(activeToolCalls);
@@ -241,17 +239,22 @@ export function LiveTrace({
     if (loadingTools.length > 0 || completedToolCalls.length > 0) {
         return (
             <div className="w-full min-w-0 animate-in fade-in duration-300">
-                {awaitingUser ? (
-                    <div className="text-sm text-muted-foreground font-mono mb-1.5">
-                        Waiting for your answer
-                    </div>
-                ) : liveElapsed >= 2 && (
-                    <div className="shimmer-text text-sm text-shimmer-accent-80 font-mono mb-1.5" key={loadingTools.length > 0 ? messageIndex : 'done'}>
-                        Working for {liveElapsed}s{loadingTools.length > 0 && steps.length === 0 ? ` · ${thinkingMessages[messageIndex % thinkingMessages.length]}` : ''}
-                    </div>
-                )}
+                {/* One block: a header that folds, then thinking, steps and
+                    results under a thin guide line. */}
+                <button type="button" onClick={() => setBlockOpen(o => !o)} className="flex items-center gap-2 text-left mb-1">
+                    <Chevron open={blockOpen} />
+                    {awaitingUser ? (
+                        <span className="text-sm text-muted-foreground">Waiting for your answer</span>
+                    ) : (
+                        <span className="shimmer-text text-sm text-shimmer-accent-80" key={loadingTools.length > 0 ? messageIndex : 'done'}>
+                            {liveElapsed >= 2 ? `Working for ${liveElapsed}s` : 'Working…'}{loadingTools.length > 0 && steps.length === 0 ? ` · ${thinkingMessages[messageIndex % thinkingMessages.length]}` : ''}
+                        </span>
+                    )}
+                </button>
+                {blockOpen && (
+                <div className="ml-[4px] border-l border-border/70 pl-3 min-w-0">
+                <ReasoningRow text={reasoningText} defaultOpen={steps.length === 0} />
                 {steps.length > 0 && <StepList steps={steps} />}
-                <ReasoningRow text={reasoningText} />
                 {groupImageToolCalls(withoutRepeatedTraceFiles(completedToolCalls)).map((group, gi) => (
                     group.length > 1 ? (
                         <div key={gi} className="flex flex-wrap gap-2">
@@ -314,6 +317,8 @@ export function LiveTrace({
                         />
                     )
                 ))}
+                </div>
+                )}
             </div>
         );
     }
