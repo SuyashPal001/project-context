@@ -234,6 +234,39 @@ describe('rollTvcVariations', () => {
   })
 })
 
+describe('normalizeTvcCategory', () => {
+  it('passes valid categories through unchanged', async () => {
+    const { normalizeTvcCategory } = await import('../rollAvatarVariations.js')
+    for (const category of ['beauty', 'jewellery', 'fashion', 'home', 'food', 'professional', 'premium']) {
+      expect(normalizeTvcCategory(category)).toBe(category)
+    }
+  })
+
+  it('maps an unknown category to the nearest valid one', async () => {
+    const { normalizeTvcCategory } = await import('../rollAvatarVariations.js')
+    expect(normalizeTvcCategory('beverage')).toBe('food')
+    expect(normalizeTvcCategory('drink')).toBe('food')
+    expect(normalizeTvcCategory('skincare')).toBe('beauty')
+    expect(normalizeTvcCategory('apparel')).toBe('fashion')
+    expect(normalizeTvcCategory('furniture')).toBe('home')
+    expect(normalizeTvcCategory('luxury')).toBe('premium')
+    expect(normalizeTvcCategory('tech')).toBe('professional')
+  })
+
+  it('is case-insensitive and tolerates whitespace', async () => {
+    const { normalizeTvcCategory } = await import('../rollAvatarVariations.js')
+    expect(normalizeTvcCategory(' Beverage ')).toBe('food')
+    expect(normalizeTvcCategory('BEAUTY')).toBe('beauty')
+  })
+
+  it('falls back to premium for anything unrecognised, and undefined for no input', async () => {
+    const { normalizeTvcCategory } = await import('../rollAvatarVariations.js')
+    expect(normalizeTvcCategory('spaceship')).toBe('premium')
+    expect(normalizeTvcCategory(undefined)).toBeUndefined()
+    expect(normalizeTvcCategory('')).toBeUndefined()
+  })
+})
+
 describe('rollToonVariations', () => {
   it('casts four different everyday people for the pixar, 2D flat and claymation styles', async () => {
     const { rollToonVariations } = await import('../rollAvatarVariations.js')

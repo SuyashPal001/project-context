@@ -858,6 +858,32 @@ function tvcPools(category: TvcCategory | undefined): TvcCategoryPools {
   return TVC_CATEGORIES[category]
 }
 
+const TVC_CATEGORY_VALUES: TvcCategory[] = ['beauty', 'jewellery', 'fashion', 'home', 'food', 'professional', 'premium']
+
+// Casting sees whatever word the brief or Director used for the product
+// category, not just the seven names above — "beverage" failed the old
+// enum outright and needed a retry. A small synonym table maps the common
+// near-misses onto the nearest valid category; anything still unrecognised
+// falls back to "premium", the existing default.
+const TVC_CATEGORY_SYNONYMS: Record<string, TvcCategory> = {
+  beverage: 'food', beverages: 'food', drink: 'food', drinks: 'food', snack: 'food', snacks: 'food', soda: 'food', beer: 'food', alcohol: 'food', fmcg: 'food',
+  skincare: 'beauty', cosmetics: 'beauty', makeup: 'beauty', haircare: 'beauty', grooming: 'beauty', wellness: 'beauty',
+  apparel: 'fashion', clothing: 'fashion', clothes: 'fashion', garments: 'fashion', accessories: 'fashion',
+  furniture: 'home', decor: 'home', appliance: 'home', appliances: 'home', cleaning: 'home', kitchenware: 'home',
+  luxury: 'premium', watches: 'premium', jewelry: 'jewellery',
+  business: 'professional', tech: 'professional', technology: 'professional', finance: 'professional', fintech: 'professional', insurance: 'professional', healthcare: 'professional', health: 'professional', services: 'professional', saas: 'professional', software: 'professional', bank: 'professional', banking: 'professional',
+}
+
+/** Any string the model sends for category, normalised to a TvcCategory. */
+export function normalizeTvcCategory(raw: string | undefined): TvcCategory | undefined {
+  if (!raw) return undefined
+  const trimmed = raw.trim().toLowerCase()
+  if (!trimmed) return undefined
+  if ((TVC_CATEGORY_VALUES as string[]).includes(trimmed)) return trimmed as TvcCategory
+  if (TVC_CATEGORY_SYNONYMS[trimmed]) return TVC_CATEGORY_SYNONYMS[trimmed]
+  return 'premium'
+}
+
 // One signature anchor per actor — the small detail that makes them
 // recognisable across every ad and is locked on the continuity bible. A
 // jewellery actor gets a facial anchor instead, so it never competes with the
@@ -943,8 +969,8 @@ export const rollTvcVariationsTool = createTool({
   description: 'Picks distinct details for TVC actor avatar variations so no two look alike: per variation an age, look, face shape, hair, styled wardrobe, commercial set, grooming and one signature anchor, all different across the set, within the look, gender and age range from the brief. Wardrobe, sets and grooming fit the product category. Call once before writing TVC variation prompts. Free.',
   inputSchema: z.object({
     count: z.number().int().min(1).max(6).default(4),
-    category: z.enum(['beauty', 'jewellery', 'fashion', 'home', 'food', 'professional', 'premium']).optional()
-      .describe('What the actor is for: beauty (skincare, makeup, haircare, personal care), jewellery, fashion (apparel), home (appliances, cleaning, home goods), food (food & beverages), professional (finance, insurance, health, tech, services); premium when nothing fits or nothing is named'),
+    category: z.string().optional()
+      .describe('What the actor is for, one of: beauty (skincare, makeup, haircare, personal care), jewellery, fashion (apparel), home (appliances, cleaning, home goods), food (food & beverages), professional (finance, insurance, health, tech, services), premium (when nothing fits or nothing is named). Any other word is mapped to the nearest one of these.'),
     look: z.string().describe('The look from the brief exactly as given: "a mix of 4 different looks", "Indian", or the user\'s own words'),
     gender: z.enum(['woman', 'man', 'any']).describe('From the brief; "any" alternates woman and man'),
     ageMin: z.number().int().min(18).max(90).describe('Youngest age the brief allows (18 or older)'),
@@ -953,7 +979,7 @@ export const rollTvcVariationsTool = createTool({
   execute: async (inputData, execContext) => {
     markCreatorFlow(execContext?.requestContext?.get('conversationId') as string | undefined)
     const { count, category, look, gender, ageMin, ageMax } = inputData
-    const variations = rollTvcVariations({ count, category, look, gender, ageMin: Math.min(ageMin, ageMax), ageMax: Math.max(ageMin, ageMax) })
+    const variations = rollTvcVariations({ count, category: normalizeTvcCategory(category), look, gender, ageMin: Math.min(ageMin, ageMax), ageMax: Math.max(ageMin, ageMax) })
     emitToolStatus(execContext, `Casting ${variations.length} actors`, variations.map(tvcLine))
     return { variations }
   },
