@@ -1,5 +1,6 @@
 import { spokenSoFar } from './spokenScript.js'
 import { mispronouncedWords } from './pronunciation.js'
+import { noteClipCheck } from './reviewGate.js'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { execFile as execFileCb } from 'node:child_process'
@@ -29,7 +30,27 @@ const NARROW_TIMEOUT_MS = 600_000
 const MAX_TOKENS = 4000
 const LINE_MATCH_THRESHOLD = 0.85
 
-const normalise = (s: string) => s.toLowerCase().replace(/<[^>]+>/g, ' ').replace(/[^\p{L}\p{N}\s']/gu, ' ').split(/\s+/).filter(Boolean)
+// Spoken numbers come back as digits and compounds lose their hyphen: the
+// approved "twenty shades and long-wear comfort" was heard as "20 shades and
+// longwear comfort" and the clip failed as a wrong line (2026-10-06).
+const UNITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen']
+const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety']
+function numbersToDigits(words: string[]): string[] {
+  const out: string[] = []
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]
+    const t = TENS.indexOf(w)
+    if (t >= 2) {
+      const u = UNITS.indexOf(words[i + 1] ?? '')
+      if (u >= 1 && u <= 9) { out.push(String(t * 10 + u)); i++; continue }
+      out.push(String(t * 10)); continue
+    }
+    const u = UNITS.indexOf(w)
+    out.push(u >= 0 && w !== 'one' ? String(u) : w)
+  }
+  return out
+}
+const normalise = (s: string) => numbersToDigits(s.toLowerCase().replace(/<[^>]+>/g, ' ').replace(/(\p{L})-(\p{L})/gu, '$1$2').replace(/[^\p{L}\p{N}\s']/gu, ' ').split(/\s+/).filter(Boolean))
 
 // Some models return a non-speech placeholder for "heard" on a silent shot
 // instead of an empty string — "[music]", "(no speech)", "none" — which must
@@ -50,7 +71,8 @@ export function lineMatchScore(expected: string, heard: string): number {
   let i = 0
   for (const word of got) if (i < want.length && word === want[i]) i++
   // Order-insensitive fallback so one misheard word does not block the rest.
-  const gotSet = new Set(got)
+  // Two heard words also count as one approved word ("long wear" = "longwear").
+  const gotSet = new Set([...got, ...got.slice(1).map((w, k) => got[k] + w)])
   const present = want.filter((w) => gotSet.has(w)).length
   return Math.max(i, present) / want.length
 }
@@ -74,7 +96,7 @@ export interface ClipVerdict { samePerson: boolean; productSame: boolean; glitch
 // outfit). A plain "same person?" question let gemini-3.6-flash pass a clip
 // with a different man in a different shirt at 10/10 (tested 2026-10-03); the
 // strict comparison caught it and still passed the good clip.
-export const STRICT_QUESTION = 'You are a strict continuity checker for a video ad. Image A is the master still of the presenter at the start of this ad; any further reference images show the same presenter. Then come frames from a later clip. Compare carefully, point by point: (1) clothing (garment type, colour, collar), (2) hair, (3) face shape and jaw, (4) eyes and brows, (5) nose, (6) age. (7) glitches: a duplicated or extra product, extra hands or fingers, or an object that jumps between hands or appears from nowhere. A different-looking person, the same-looking person in different clothes, or a visible glitch is a FAIL.'
+export const STRICT_QUESTION = 'You are a strict continuity checker for a video ad. Image A is the master still of the presenter at the start of this ad; any further reference images show the same presenter. Then come frames from a later clip. Compare carefully, point by point: (1) clothing (garment type, colour, collar), (2) hair, (3) face shape and jaw, (4) eyes and brows, (5) nose, (6) age. (7) glitches: a duplicated or extra product, extra hands, arms or fingers, or an object that appears from nowhere. (8) hands: note which hand holds the product in each frame — the product switching from one hand to the other between frames is a glitch. A different-looking person, the same-looking person in different clothes, or a visible glitch is a FAIL.'
 
 // A shot with nobody in it (a product macro, a "superpower" shot in a TVC ad):
 // there is no presenter to compare, so judge the scene and glitches instead.
@@ -287,10 +309,12 @@ export const checkClip = createTool({
       writeFileSync(clipPath, Buffer.from(clip.data, 'base64'))
       const { stdout } = await execFile('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', clipPath], { timeout: 30_000 })
       duration = Number(stdout.trim()) || 4
-      // Three frames: just after the start (Omni's glitches — a second bottle,
+      // Frames: just after the start (Omni's glitches — a second bottle,
       // a hand swap — show in the first second), the middle, and near the end,
       // where drift shows up.
-      for (const [i, t] of [Math.min(0.7, duration * 0.1), duration * 0.5, Math.max(0, duration - 0.3)].entries()) {
+      // Five frames, not three: a product passing from one hand to the other
+      // happened between the middle and the end and was missed (2026-10-06).
+      for (const [i, t] of [Math.min(0.7, duration * 0.1), duration * 0.3, duration * 0.5, duration * 0.75, Math.max(0, duration - 0.3)].entries()) {
         const out = join(workDir, `f${i}.jpg`)
         await execFile('ffmpeg', ['-y', '-ss', String(t), '-i', clipPath, '-frames:v', '1', '-q:v', '3', out], { timeout: 30_000 })
         frames.push({ data: readFileSync(out).toString('base64'), mime: 'image/jpeg' })
@@ -373,6 +397,7 @@ export const checkClip = createTool({
       const reason = !judged.passed ? judged.reason
         : !saidClearly ? `A word is said wrongly: ${misspoken!.map(m => `"${m.meant}" sounds like "${m.heard}"`).join(', ')}`
         : narrowResult && !narrowResult.passed ? narrowResult.reasons.join(' ') : judged.reason
+      noteClipCheck(clipFileId, passed, reason)
       if (!passed) {
         markCheckFailed(execContext?.requestContext, (execContext as unknown as { agent?: { messages?: unknown } })?.agent?.messages)
       }

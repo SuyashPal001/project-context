@@ -467,9 +467,11 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             emitStreamEvent('error');
             if (code === 'AGENT_TIMEOUT') { setAgentTimedOut(true); return; }
             if (code === 'WARMUP_TIMEOUT') { setWarmupMessage(message); return; }
+            // A run that broke mid-way saved what it made; show the saved copy.
+            if (code === 'STREAM_ERROR') queryClient.invalidateQueries({ queryKey: ['messages'] });
             setEventError(`[${code}] ${message}`);
             toast.error(message);
-        }, []),
+        }, [queryClient]),
 
         onToolCall: useCallback((toolName: string, toolCallId: string, args: Record<string, unknown>) => {
             emitStreamEvent('tool_call');
@@ -509,6 +511,22 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
         onToolDone: useCallback((toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => {
             emitStreamEvent('tool_done');
             handleToolDone(toolCallId, results, result);
+            // A delegate's picture or clip just landed. Its own card stops
+            // showing a generating placeholder until the next generation
+            // actually starts; otherwise it kept "Making the pictures… 94%"
+            // over a run that was paused on the next approval (2026-10-06).
+            if (toolCallId.startsWith('sub-')) {
+                setActiveToolCalls(prev => {
+                    let changed = false;
+                    const next = new Map(prev);
+                    for (const [id, call] of next) {
+                        if (!call.isLoading || !call.generationStarted || id.startsWith('sub-')) continue;
+                        next.set(id, { ...call, generationStarted: false, batchProgress: undefined, generationCount: undefined });
+                        changed = true;
+                    }
+                    return changed ? next : prev;
+                });
+            }
             if (!SAVE_TOOL_NAMES.has(toolName.toLowerCase().replace(/_/g, '-')) || !artifactToolActiveRef.current) return;
 
             const content = typeof result.content === 'string' ? result.content : '';

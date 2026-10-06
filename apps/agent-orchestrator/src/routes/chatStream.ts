@@ -26,6 +26,7 @@ import { GENERATION_APPROVAL_METADATA, detectSkillPii } from '../mastra/tools/ge
 import { saveGenerationConfirmRequest, updateGenerationConfirmRequest, saveConversationTitle, fetchConversationAllowMode } from '../persistence.js'
 import { isClientHiddenTool } from '../toolVisibility.js'
 import { relayedDelegateMedia } from './nestedMedia.js'
+import { AD_FLOW_KEY, briefIsReviewedAdFlow, noteBriefRefs } from '../mastra/tools/reviewGate.js'
 import { fileIdsIn, markWorkingFiles } from './workingFiles.js'
 import { stepStart, stepEnd, type StepEvent } from './stepEvents.js'
 import { buildCancelNotice, backgroundDeclineReason, trackBackgroundDecline, waitForBackgroundDecline } from './cancelNotice.js'
@@ -306,23 +307,41 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const turnInputFileIds = new Set<string>()
   // Live step list (stepEvents.ts): running steps by tool call id, Olmo's own and nested.
   const runningSteps = new Map<string, StepEvent>()
+  const runningStepKeys = new Map<string, string>()
+  // Mastra re-emits an approved call under a new id with the same tool and
+  // arguments; it is the same step, not a new one ("Pictures 1 of 4" for 3
+  // stills, 2026-10-06). The running step moves to the new id instead.
+  const stepArgsKey = (toolName: string, args: unknown) => `${toolName.replace(/-/g, '_')}:${JSON.stringify(args ?? {})}`
   const startStep = (toolName: string, toolCallId: string, args: unknown) => {
+    const key = stepArgsKey(toolName, args)
+    for (const [id, running] of runningSteps) {
+      if (id !== toolCallId && runningStepKeys.get(id) === key) {
+        runningSteps.delete(id)
+        runningStepKeys.delete(id)
+        runningSteps.set(toolCallId, running)
+        runningStepKeys.set(toolCallId, key)
+        sendEvent('step', { ...running, state: 'running', conversationId })
+        return
+      }
+    }
     const s = stepStart(toolName, toolCallId, (args ?? {}) as Record<string, unknown>)
     if (!s) return
     runningSteps.set(toolCallId, s)
+    runningStepKeys.set(toolCallId, key)
     sendEvent('step', { ...s, conversationId })
   }
   const endStep = (toolCallId: string, result: unknown) => {
     const s = runningSteps.get(toolCallId)
     if (!s) return
     runningSteps.delete(toolCallId)
+    runningStepKeys.delete(toolCallId)
     sendEvent('step', { ...stepEnd(s, result), conversationId })
   }
   // A step held on the user's OK shows as waiting, not as running.
   const holdStep = (toolName: string, toolCallId: string, args: unknown, state: 'waiting' | 'running') => {
-    const s = runningSteps.get(toolCallId) ?? stepStart(toolName, toolCallId, (args ?? {}) as Record<string, unknown>)
+    if (!runningSteps.has(toolCallId)) startStep(toolName, toolCallId, args)
+    const s = runningSteps.get(toolCallId)
     if (!s) return
-    runningSteps.set(toolCallId, s)
     sendEvent('step', { ...s, state, conversationId })
   }
   const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks', 'rendercanvas', 'render-canvas', 'render_canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video', 'generate-narration', 'lipsync', 'assemble-clips', 'mux-beat-audio', 'composite-end-card', 'burn-captions', 'overlay-text', 'stretch-clip', 'mix-music-bed', 'trim-clip', 'generate-videos', 'generate-images'])
@@ -361,6 +380,9 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       : ''
     console.log('[session] tenantId:', tenantId, 'folderId:', folderId ?? '(none)')
     const sessionCtx = `<session_context>\ntenant_id: ${tenantId}${folderId ? `\nfolder_id: ${folderId}` : ''}${folderScopeLine(folderPrefix)}\n</session_context>\n\n`
+    // Remember the brief's product photo and avatar so review_shots can check
+    // the stills against them in a later turn.
+    noteBriefRefs(conversationId, message, attachments)
     const mastraMessage = await buildMastraMessage(attachments, memPreamble, sessionCtx, message, sessionId)
     mark('message built')
 
@@ -725,6 +747,9 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           if (toolCallId && toolName) toolCallNames.set(toolCallId, toolName)
           fileIdsIn(args, turnInputFileIds)
           startStep(toolName, toolCallId, args)
+          // The Director's tools learn they are in a reviewed ad flow before
+          // any approval card is shown (see reviewGate.ts).
+          if (/^agent[-_]director$/.test(toolName) && briefIsReviewedAdFlow(args.prompt)) requestContext.set(AD_FLOW_KEY as never, true as never)
           toolCallCount++
           if (!isClientHiddenTool(toolName)) sendEvent('tool_call', { toolName, toolCallId, args, conversationId })
           onToolCallStart()

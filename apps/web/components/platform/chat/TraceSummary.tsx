@@ -64,7 +64,7 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
                 <div className="flex flex-col gap-1 normal-case">
                     {groupImageToolCalls(mediaCalls).map((group, gi) => (
                         group.length > 1 ? (
-                            <div key={gi} className="flex flex-wrap gap-2">
+                            <div key={gi} className="flex flex-col gap-2">
                                 {group.map(tc => (
                                     <ToolCallCard key={tc.id} toolName={tc.toolName} query={tc.query} status="done" results={tc.results} result={tc.result} freshUrls={freshUrls} />
                                 ))}
@@ -89,12 +89,12 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
                 <span>Worked for {elapsedSec}s{stepCount > 0 ? ` · ${stepCount} step${stepCount === 1 ? '' : 's'}` : ''}</span>
             </button>
             {!collapsed && ((steps && steps.length > 0) || stepCalls.length > 0 || reasoningText) && (
-                <div className="ml-[4px] border-l border-foreground/25 pl-3 flex flex-col gap-1 normal-case">
+                <div className="ml-[4px] border-l border-foreground/20 pl-3 flex flex-col gap-1 normal-case">
                     {reasoningText && <ReasoningRow text={reasoningText} completed elapsedSec={reasoningElapsedSec} />}
                     {steps && steps.length > 0 && <StepList steps={steps} live={false} />}
                     {groupImageToolCalls(stepCalls).map((group, gi) => (
                         group.length > 1 ? (
-                            <div key={gi} className="flex flex-wrap gap-2">
+                            <div key={gi} className="flex flex-col gap-2">
                                 {group.map(tc => (
                                     <ToolCallCard key={tc.id} toolName={tc.toolName} query={tc.query} status="done" results={tc.results} result={tc.result} freshUrls={freshUrls} />
                                 ))}

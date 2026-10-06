@@ -4,6 +4,7 @@ import type {
 import { getSpecByAgentId } from './sources.js'
 import { checkDelegationBudget } from './budget.js'
 import { recordDelegation } from './link.js'
+import { AD_FLOW_KEY, briefIsReviewedAdFlow } from '../tools/reviewGate.js'
 
 export interface HookDeps {
   budget?: typeof checkDelegationBudget
@@ -80,6 +81,9 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
 
     onDelegationStart: async (context: DelegationStartContext) => {
       const ctx = context.requestContext
+      // The delegate's own tools read this before showing an approval card
+      // (reviewGate.ts): a batch waits until the user has seen the first one.
+      if (briefIsReviewedAdFlow(context.prompt)) ctx.set(AD_FLOW_KEY as never, true as never)
       const spec = lookup(context.primitiveId)
       const tenantId = host.tenantId || (ctx.get('tenantId') as string | undefined) || ''
       const agentId = host.agentId ?? (ctx.get('agentId') as string | undefined) ?? null

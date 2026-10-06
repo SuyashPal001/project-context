@@ -215,6 +215,11 @@
 }
 
 /* Shimmer animation for file upload skeleton */
+/* PixelLoader (chat media rows): a cell lights up and fades. */
+@keyframes pixel-on {
+  0%, 100% { opacity: 0.2; }
+  18%, 42% { opacity: 1; }
+}
 @keyframes shimmer {
   0%   { transform: translateX(-100%); }
   100% { transform: translateX(100%); }

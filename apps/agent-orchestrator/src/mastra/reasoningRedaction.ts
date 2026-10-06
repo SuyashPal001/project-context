@@ -26,6 +26,7 @@ const REDACTIONS: Array<[RegExp, string]> = [
   [/\binternet_search\b/gi, 'searching the web'],
   [/\bweb_fetch\b/gi, 'reading that page'],
   [/\bask_clarifying_questions\b/gi, 'asking a clarifying question'],
+  [/\breview_shots\b/gi, 'checking the scenes with the user'],
   [/\brequest_upload\b/gi, 'requesting a file upload'],
   [/\brender[-_]canvas\b/gi, 'preparing the canvas view'],
   [/\banalyze_audio\b/gi, 'analyzing the audio'],

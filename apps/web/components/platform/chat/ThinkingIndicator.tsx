@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AgentOrb } from "./AgentOrb";
 import { ToolCall, CompletedToolCall, LiveStep } from "./types";
 import { StepList } from "./StepList";
-import { ToolCallCard, groupImageToolCalls, withoutRepeatedTraceFiles } from "./ToolCallCard";
+import { AwaitingApprovalContext, ToolCallCard, groupImageToolCalls, withoutRepeatedTraceFiles } from "./ToolCallCard";
 import type { PersonaSummary } from "../personas/types";
 
 // Live extended-thinking trace, streamed via the 'reasoning' SSE event (see
@@ -52,11 +52,14 @@ export function ReasoningRow({ text, completed = false, elapsedSec, defaultOpen 
                     // rose that reads as unreadably faint (and fails WCAG AA) on this theme's
                     // near-white background — --shimmer-accent is the same hue family, darkened,
                     // and only overridden in light theme. See globals.css.
-                    <span className="shimmer-text text-sm flex-1 truncate text-shimmer-accent-60">Thinking…</span>
+                    // Sized to the word, not flex-1: the shimmer band is as wide as the
+                    // span, and across a full-width span it crossed the short word as one
+                    // quick flash (a blink) instead of a sweep.
+                    <span className="shimmer-text text-sm min-w-0 truncate text-shimmer-accent-60">Thinking…</span>
                 )}
             </button>
             {expanded && (
-                <div className="mt-1 ml-[4px] border-l border-foreground/25 pl-3 text-sm text-muted-foreground min-w-0 [&>*]:mb-2 [&>*:last-child]:mb-0">
+                <div className="mt-1 ml-[4px] border-l border-foreground/20 pl-3 text-sm text-muted-foreground min-w-0 [&>*]:mb-2 [&>*:last-child]:mb-0">
                     <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{
@@ -85,7 +88,7 @@ const WARMUP_STEP_INTERVAL_MS = 8_000;
 // Tools that pause the turn on the user, not on the agent: while only these
 // are loading, the agent is waiting for an answer, so the live line stops
 // reading "Working for Ns" and its timer stops counting.
-const AWAITING_USER_TOOLS = new Set(['ask_clarifying_questions']);
+const AWAITING_USER_TOOLS = new Set(['ask_clarifying_questions', 'review_shots']);
 
 export function isAwaitingUser(activeToolCalls: ToolCall[]): boolean {
     const loading = activeToolCalls.filter(t => t.isLoading);
@@ -150,7 +153,9 @@ export function LiveTrace({
     const [blockOpen, setBlockOpen] = useState(true);
     // Seconds spent waiting on the user, excluded from "Working for Ns".
     const [pausedMs, setPausedMs] = useState(0);
-    const awaitingUser = isAwaitingUser(activeToolCalls);
+    // An open approval card pauses the run as much as a question does.
+    const awaitingApproval = useContext(AwaitingApprovalContext);
+    const awaitingUser = isAwaitingUser(activeToolCalls) || awaitingApproval;
 
     const isRAG = activeToolCalls.some(tc => tc.toolName === 'retrieve_documents');
     const isPRD = activeToolCalls.some(tc =>
@@ -256,20 +261,21 @@ export function LiveTrace({
                 <button type="button" onClick={() => setBlockOpen(o => !o)} className="flex items-center gap-2 text-left mb-1">
                     <Chevron open={blockOpen} />
                     {awaitingUser ? (
-                        <span className="text-sm text-muted-foreground">Waiting for your answer</span>
+                        <span className="text-sm text-muted-foreground">{awaitingApproval ? 'Waiting for your OK' : 'Waiting for your answer'}</span>
                     ) : (
                         <span className="shimmer-text text-sm text-shimmer-accent-80" key={loadingTools.length > 0 ? messageIndex : 'done'}>
-                            {liveElapsed >= 2 ? `Working for ${liveElapsed}s` : 'Working…'}{loadingTools.length > 0 && steps.length === 0 ? ` · ${thinkingMessages[messageIndex % thinkingMessages.length]}` : ''}
+                            {liveElapsed >= 2 ? `Working for ${liveElapsed}s` : 'Working…'}{loadingTools.length > 0 && steps.length === 0 && !reasoningText ? ` · ${thinkingMessages[messageIndex % thinkingMessages.length]}` : ''}
                         </span>
                     )}
                 </button>
                 {blockOpen && (
-                <div className="ml-[4px] border-l border-foreground/25 pl-3 min-w-0">
-                <ReasoningRow text={reasoningText} defaultOpen={steps.length === 0} />
+                <div className="ml-[4px] border-l border-foreground/20 pl-3 min-w-0">
+                {/* While the run waits on the user nothing is thinking: the row settles. */}
+                <ReasoningRow text={reasoningText} completed={awaitingUser} defaultOpen={steps.length === 0} />
                 {steps.length > 0 && <StepList steps={steps} />}
                 {groupImageToolCalls(withoutRepeatedTraceFiles(completedToolCalls)).map((group, gi) => (
                     group.length > 1 ? (
-                        <div key={gi} className="flex flex-wrap gap-2">
+                        <div key={gi} className="flex flex-col gap-2">
                             {group.map(tc => (
                                 <ToolCallCard
                                     key={tc.id}
@@ -296,7 +302,7 @@ export function LiveTrace({
                 ))}
                 {groupImageToolCalls(loadingTools).map((group, gi) => (
                     group.length > 1 ? (
-                        <div key={gi} className="flex flex-wrap gap-2">
+                        <div key={gi} className="flex flex-col gap-2">
                             {group.map(tool => (
                                 <ToolCallCard
                                     key={tool.id}
@@ -390,6 +396,7 @@ export function ThinkingIndicator({
     freshUrls,
 }: ThinkingIndicatorProps) {
     const [stepIndex, setStepIndex] = useState(0);
+    const awaitingApprovalCtx = useContext(AwaitingApprovalContext);
 
     useEffect(() => {
         if (!isRetrying) {
@@ -429,7 +436,7 @@ export function ThinkingIndicator({
     if (!isStreaming) return null;
 
     const hasToolActivity = activeToolCalls.some(t => t.isLoading) || completedToolCalls.length > 0;
-    const awaitingUser = isAwaitingUser(activeToolCalls);
+    const awaitingUser = isAwaitingUser(activeToolCalls) || awaitingApprovalCtx;
 
     return (
         <div className="flex items-start gap-4">

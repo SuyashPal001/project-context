@@ -227,6 +227,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             signal: controller.signal,
         });
 
+        let sawEvent = false;
         try {
             let response = await fetch(CHAT_ENDPOINT, buildRequest(token, idToken));
 
@@ -280,6 +281,12 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             let authExpired = false;
             // The message `done` settled, so a later follow_ups event can find it.
             let lastDoneMessageId: string | null = null;
+            // Once the run has sent anything, an error must not re-send the
+            // message: that starts a new turn, which throws away the running
+            // one (2026-10-06, Lakmē: a stream error re-sent "approve" and
+            // clip 1 was paid for and made twice, the first never shown).
+            // Retrying is only for a cold start that never answered.
+            sawEvent = false;
 
             // eslint-disable-next-line no-constant-condition
             while (true) {
@@ -290,6 +297,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                 const events = parserRef.current.push(chunk);
 
                 for (const event of events) {
+                    sawEvent = true;
                     let payload: Record<string, unknown> = {};
                     try {
                         payload = JSON.parse(event.data);
@@ -359,7 +367,12 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                             }
 
                             setIsStreaming(false);
-                            scheduleRetry();
+                            if (sawEvent) {
+                                clearRetry();
+                                onErrorRef.current?.('STREAM_ERROR', 'Something went wrong mid-run. Everything made so far is saved; reply to carry on.');
+                            } else {
+                                scheduleRetry();
+                            }
                             break;
                         }
 
@@ -515,7 +528,12 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             const message = err instanceof Error ? err.message : 'Stream failed';
             console.error('[useChat] stream error:', message);
             setIsStreaming(false);
-            scheduleRetry();
+            if (sawEvent) {
+                clearRetry();
+                onErrorRef.current?.('STREAM_ERROR', 'The connection dropped mid-run. Everything made so far is saved; reply to carry on.');
+            } else {
+                scheduleRetry();
+            }
             return;
         } finally {
             if (abortControllerRef.current === controller) {

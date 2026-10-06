@@ -198,6 +198,16 @@ function toGeminiContents(messages: OpenAIMessage[]): {
         if (signature) part.thoughtSignature = signature;
         return part;
       });
+      // A replayed tool-call turn whose calls carry no signature at all — the
+      // model sent the call without one (the gateway then named it `call_…`),
+      // or Mastra split a parallel set so an unsigned call stands alone — is
+      // refused outright: "function call … is missing a thought_signature"
+      // (HTTP 400, tested 2026-10-07). It broke every resume after an approval
+      // whose Director call was unsigned (Lakmē ad runs, 2026-10-06). Google's
+      // documented placeholder for history it cannot sign lets it through.
+      if (!parts.some((pt) => (pt as { thoughtSignature?: string }).thoughtSignature)) {
+        (parts[0] as { thoughtSignature?: string }).thoughtSignature = 'skip_thought_signature_validator';
+      }
       if (msg.content) {
         parts.unshift({ text: typeof msg.content === 'string' ? msg.content : '' });
       }

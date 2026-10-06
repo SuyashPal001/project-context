@@ -452,7 +452,11 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     );
                 })}
 
-                {awaitingReply ? (
+                {/* A question mid-run keeps the live trace (the stills and clips
+                    made so far) on screen; the plain waiting row is only for a
+                    turn with nothing to show. It used to replace the trace, so
+                    clips the agent asked about were hidden (2026-10-06). */}
+                {awaitingReply && !((activeToolCalls?.length || completedToolCalls?.length) && !hasStreamingMessage) ? (
                     <WaitingForReplyIndicator avatarUrl={agentAvatarUrl} persona={agentPersona} isDefault={agentIsDefault} />
                 ) : (isStreaming || isRetrying) && !hasStreamingMessage ? (
                     <ThinkingIndicator

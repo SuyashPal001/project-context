@@ -88,9 +88,18 @@ function extractQuotedSpans(prompt: string): string[] {
 // mid-sentence. Natural Omni speech ran 2.1-2.9 words a second, so a line is
 // given at least words / 2.5 seconds (numbers count as two words, "%" as
 // one more), within generate_video's 3-10s range.
+// A number is said as several words: "319" is "three hundred nineteen".
+// Counting it as two made a 6s clip for a line that needs 7, and the speaker
+// stopped at "honestly you" (Lakmē scene 3, 2026-10-06).
+function numberWords(word: string): number {
+  const digits = word.replace(/\D/g, '').length
+  if (digits === 0) return 1
+  return digits <= 2 ? 2 : Math.max(4, digits)
+}
+
 export function spokenSecondsFloor(line: string): number {
   const words = line.replace(/<[^>]+>/g, ' ').split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w))
-  const count = words.reduce((n, w) => n + (/\d/.test(w) ? 2 : 1) + (w.includes('%') ? 1 : 0), 0)
+  const count = words.reduce((n, w) => n + numberWords(w) + (w.includes('%') ? 1 : 0), 0)
   return Math.min(10, Math.max(3, Math.ceil(count / 2.5)))
 }
 

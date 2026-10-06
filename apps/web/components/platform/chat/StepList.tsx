@@ -1,23 +1,14 @@
 'use client';
 
-import { ThinkingOrb } from 'thinking-orbs';
+import { PixelLoader } from './PixelLoader';
 import type { LiveStep } from './types';
 
 // The live step list for a long job ("Storyboard ✓ · Video clips ✓ · Voice ◐").
 // Pattern after beautiful-ui's TaskRows / ThinkingState "Steps" (MIT, Shane
 // Levine): a running row shows its work, a finished one settles to a quiet
-// check. Rewritten in our own Tailwind and colours; the orb is the
-// thinking-orbs package (MIT, Jakub Antalik), one animation per kind of work.
-
-const ORB_FOR_KIND: Record<LiveStep['kind'], 'shaping' | 'working' | 'listening' | 'weaving' | 'composing' | 'solving' | 'connecting'> = {
-    image: 'shaping',
-    video: 'working',
-    voice: 'listening',
-    join: 'weaving',
-    finish: 'composing',
-    check: 'solving',
-    cast: 'connecting',
-};
+// check. Rewritten in our own Tailwind and colours. A running row shows the
+// rose pixel loader in its own ripple motion, so the stage never looks the same
+// as the tool row (driving / orbiting / metering) working under it.
 
 export interface StepRow {
     key: string;
@@ -70,7 +61,7 @@ const amberMark = (
 );
 
 function RowIcon({ row, live }: { row: StepRow; live: boolean }) {
-    if (row.running && live) return <ThinkingOrb state={ORB_FOR_KIND[row.kind]} size={20} aria-label={`${row.label} in progress`} />;
+    if (row.running && live) return <PixelLoader kind="step" label={`${row.label} in progress`} />;
     if (row.waiting) return (
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-muted-foreground" aria-label="waiting for your OK">
             <path d="M5 3.5v7M9 3.5v7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -99,9 +90,9 @@ export function StepList({ steps, live = true }: { steps: LiveStep[]; live?: boo
                     <span className="h-5 w-5 shrink-0 flex items-center justify-center">
                         <RowIcon row={row} live={live} />
                     </span>
-                    {/* A running step shimmers like the header and "Thinking…": live work
-                        reads the same everywhere; finished rows are quiet. */}
-                    <span className={row.running && live ? 'shimmer-text text-shimmer-accent-80 truncate' : row.skipped && !row.done && !row.failed ? 'text-muted-foreground/70 truncate' : 'text-muted-foreground truncate'}>{row.label}</span>
+                    {/* A running step reads like a running tool row: plain foreground
+                        text with the shimmer passing over it; finished rows are quiet. */}
+                    <span className={row.running && live ? 'shimmer-text text-foreground truncate' : row.skipped && !row.done && !row.failed ? 'text-muted-foreground/70 truncate' : 'text-muted-foreground truncate'}>{row.label}</span>
                     {rowMeta(row) && <span className={`text-xs tabular-nums shrink-0 ${row.credits && !row.running ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>{rowMeta(row)}</span>}
                 </li>
             ))}
