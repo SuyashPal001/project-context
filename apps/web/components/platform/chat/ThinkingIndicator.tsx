@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm';
 import { AgentOrb } from "./AgentOrb";
 import { ToolCall, CompletedToolCall, LiveStep } from "./types";
 import { StepList } from "./StepList";
-import { AwaitingApprovalContext, ToolCallCard, groupImageToolCalls, withoutRepeatedTraceFiles } from "./ToolCallCard";
+import { AwaitingApprovalContext, ToolCallCard, groupImageToolCalls, isMediaDelegateTool, withoutRepeatedTraceFiles } from "./ToolCallCard";
 import type { PersonaSummary } from "../personas/types";
 
 // Live extended-thinking trace, streamed via the 'reasoning' SSE event (see
@@ -300,7 +300,10 @@ export function LiveTrace({
                         />
                     )
                 ))}
-                {groupImageToolCalls(loadingTools).map((group, gi) => (
+                {/* The Director's own row repeated the running step ("Pictures" and
+                    "Preparing your image…" side by side, 2026-10-07); with step rows
+                    on screen it is left out. */}
+                {groupImageToolCalls(steps.length > 0 ? loadingTools.filter(t => !isMediaDelegateTool(t.toolName)) : loadingTools).map((group, gi) => (
                     group.length > 1 ? (
                         <div key={gi} className="flex flex-col gap-2">
                             {group.map(tool => (

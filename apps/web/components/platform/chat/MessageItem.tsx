@@ -42,6 +42,11 @@ export function messageHasDisplayedContent(message: Message): boolean {
         message.artifactRef ||
         message.planResult ||
         (message.toolCalls && message.toolCalls.length > 0) ||
+        // A part of a turn where the Director worked without Olmo writing
+        // anything still has its steps and the stills or clip it made
+        // (see useChatStream onTurnPause); it was hidden as empty (2026-10-07).
+        !!message.completedTrace ||
+        (message.attachments ?? []).length > 0 ||
         (message.clarificationRequests ?? []).some(r => r.status !== 'pending') ||
         (!!message.generationConfirmRequest && message.generationConfirmRequest.status !== 'pending') ||
         (message.uploadRequests ?? []).some(r => r.status !== 'pending')

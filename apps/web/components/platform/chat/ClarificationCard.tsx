@@ -416,14 +416,7 @@ export function ClarificationCard({ request, onAnswer, promptOnly }: Clarificati
                                             : "border-transparent hover:bg-accent"
                             )}
                         >
-                            {multiSelect && (
-                                <span className={cn(
-                                    "mt-0.5 h-4 w-4 shrink-0 rounded border flex items-center justify-center",
-                                    isChecked ? "border-primary bg-primary" : "border-border",
-                                )}>
-                                    {isChecked && <span className="h-1.5 w-1.5 rounded-[1px] bg-primary-foreground" />}
-                                </span>
-                            )}
+                            {/* No checkbox: a picked row shows by its border and tint, single or multi (2026-10-07). */}
                             {opt.imageFileId && (
                                 <span className="h-16 w-12 shrink-0 rounded-lg overflow-hidden bg-muted/30">
                                     <FileThumbnail fileId={opt.imageFileId} alt={opt.label} fallbackToLibraryAsset anchorTop />

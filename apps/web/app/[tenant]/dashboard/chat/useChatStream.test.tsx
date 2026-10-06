@@ -462,6 +462,21 @@ describe('useChatStream turn pause and resume', () => {
         expect(hook.result.current.completedToolCalls).toHaveLength(0);
     });
 
+    it('closes the question that ended a part inside that part, never carrying it into the next', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(3_000_000);
+        const { client, hook } = setup();
+        act(() => {
+            opts().onToolCall('agent-director', 'dir-1', { prompt: 'clip 1' });
+            opts().onToolCall('review_shots', 'rev-1', { kind: 'clip' });
+            opts().onTurnPause(null, { text: '' });
+        });
+        const part = messages(client)[0];
+        expect(part.completedTrace.toolCalls.map((c: { toolName: string }) => c.toolName)).toEqual(['review_shots']);
+        // The Director is still working on the answer, so it carries on; the question does not.
+        expect([...hook.result.current.activeToolCalls.values()].map(c => c.toolName)).toEqual(['agent-director']);
+    });
+
     it('gives a part that streamed no text its own message, placed before the card', () => {
         vi.useFakeTimers();
         vi.setSystemTime(2_000_000);

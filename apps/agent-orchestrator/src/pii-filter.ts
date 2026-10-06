@@ -157,3 +157,19 @@ export function restorePII(text: string, map: Record<string, string>): string {
   }
   return result
 }
+
+// Starts the creative brief's data block (web: creativeBrief.ts CREATIVE_BRIEF_UI_PREFIX).
+const CREATIVE_BRIEF_MARKER = '<!-- olmo-creative-brief:v1:'
+
+/**
+ * filterPII over what the user typed only. The creative brief's hidden data
+ * block (file ids and sizes, URI-encoded) is made by the app: the filter read
+ * '%22' + a digit-led file id as a bank account and broke the block, so the
+ * brief printed raw in the chat (2026-10-07).
+ */
+export function filterTypedPII(text: string): PiiFilterResult {
+  const at = text.lastIndexOf(CREATIVE_BRIEF_MARKER)
+  if (at < 0) return filterPII(text)
+  const typed = filterPII(text.slice(0, at))
+  return { ...typed, sanitized: typed.sanitized + text.slice(at) }
+}
