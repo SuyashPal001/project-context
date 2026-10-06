@@ -89,6 +89,8 @@ describe('OFFICIAL_SKILLS', () => {
     expect(director).toContain('signoffStartSeconds')
     expect(director).toContain('fadeOutAtSeconds')
     expect(director).toContain('JINGLE_LINE_NOT_SUNG')
+    // F1: plan-check-time refusal before any jingle generation money is spent.
+    expect(director).toMatch(/When plan_tvc check returns JINGLE_WONT_FIT, move the voiceover earlier or shorten the sung line as it says, then check again, before making any jingle\./)
     expect(card).toContain('Jingle: <the line to sing>')
     expect(card).toMatch(/default is no jingle/)
   });

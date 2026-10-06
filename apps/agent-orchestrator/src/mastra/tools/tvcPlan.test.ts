@@ -402,6 +402,21 @@ describe('jingle (J5)', () => {
   it('refuses a sign-off longer than the packshot plus 2s', () => {
     expect(jingleErrors(withJingle(), 5.5)).toContain('JINGLE_TOO_LONG: the sung sign-off is 5.5s; at most 5s (the packshot plus 2s); shorten the line')
   })
+  // F1: the sung line must be known to fit at plan-check time, before any money is spent.
+  it('JINGLE_WONT_FIT when the estimated sign-off would overlap the voiceover', () => {
+    const p = withJingle()
+    p.brief.jingle!.line = 'Soft all day long' // 4 words: estimate 2.6s, deadline 11.7s
+    p.voiceover[0].startSeconds = 8.05 // ends at 11.8, within VO_TAIL and before the packshot, but after the 11.7s deadline
+    expect(validateTvcPlan(p).errors).toEqual([
+      'JINGLE_WONT_FIT: the sung line needs about 2.6s at the end, but speech runs until 11.8s; end the voiceover by 11.7s or shorten the line',
+    ])
+  })
+  it('passes when the voiceover ends early enough for the estimated sign-off', () => {
+    expect(validateTvcPlan(withJingle()).errors).toEqual([])
+  })
+  it('a no-jingle plan is unchanged by the F1 check', () => {
+    expect(validateTvcPlan(goodPlan()).errors).toEqual([])
+  })
   it('the sign-off ends with the ad, and the bed clears 0.3s before it', () => {
     expect(signoffTiming(withJingle())).toBeUndefined()
     expect(signoffTiming({ ...withJingle(), signoffSeconds: 2.4 })).toEqual({ signoffStartSeconds: 12.6, musicFadeOutAtSeconds: 12.3 })

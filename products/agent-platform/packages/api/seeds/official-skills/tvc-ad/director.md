@@ -67,3 +67,4 @@ Sung sign-off (supersedes the Music line above when the finish slice has a jingl
 - mix_voiceover: add the sign-off as one more block with kind "jingle", audioFileId = signoffFileId, startSeconds = the finish slice's signoffStartSeconds.
 - mix_music_bed: pass fadeOutAtSeconds = the finish slice's musicFadeOutAtSeconds.
 - generate_jingle refused with JINGLE_LINE_NOT_SUNG: it was refunded. Call it once more with the same inputs; if it refuses again, return the reason to Olmo so the user can shorten the line.
+- When plan_tvc check returns JINGLE_WONT_FIT, move the voiceover earlier or shorten the sung line as it says, then check again, before making any jingle.

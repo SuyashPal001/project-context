@@ -210,6 +210,17 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
   // The packshot's moment belongs to the end card and its tagline (spec §1).
   const packIdx = shots.findIndex((s) => s.type === 'packshot')
   if (packIdx >= 0 && lastVo > starts[packIdx] + EPS) errors.push(`the voiceover ends at ${lastVo}s; it must end by the packshot's start (${starts[packIdx]}s)`)
+  // F1: a jingle's sung sign-off must be known to fit before any money is
+  // spent on it — estimated here from the line's word count, not measured.
+  if (brief.jingle) {
+    const packSeconds = packIdx >= 0 ? shots[packIdx].durationSeconds : 0
+    const estimate = estimateSignoffSeconds(brief.jingle.line, packSeconds)
+    const speechEnd = lastSpeechEnd(plan)
+    const deadline = r1(length - estimate - 0.75)
+    if (speechEnd > length - estimate - 0.75 + EPS) {
+      errors.push(`JINGLE_WONT_FIT: the sung line needs about ${r1(estimate)}s at the end, but speech runs until ${r1(speechEnd)}s; end the voiceover by ${deadline}s or shorten the line`)
+    }
+  }
   // Blocks never talk over each other.
   const byStart = plan.voiceover.map((v, i) => ({ i, start: v.startSeconds, end: voEnds[i] })).sort((a, b) => a.start - b.start)
   for (let k = 1; k < byStart.length; k++) {
@@ -338,6 +349,11 @@ export function lastSpeechEnd(plan: TvcPlan): number {
   const vo = plan.voiceover.map((v) => r1(v.startSeconds + countWords(v.text) / WORDS_PER_SECOND))
   const lines = plan.shots.map((s, i) => (s.audio === 'line' && s.line ? r1(starts[i] + countWords(s.line) / WORDS_PER_SECOND) : 0))
   return Math.max(0, ...vo, ...lines)
+}
+
+/** F1: estimates the sung sign-off's length from its word count, before it is ever generated or measured. */
+export function estimateSignoffSeconds(line: string, packshotSeconds: number): number {
+  return Math.min(countWords(line) / 2.0 + 0.6, packshotSeconds + 2)
 }
 
 /** The sign-off ends with the ad; it must start 0.75s after the last word and fit the packshot plus 2s. */
