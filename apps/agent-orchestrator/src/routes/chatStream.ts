@@ -306,23 +306,41 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const turnInputFileIds = new Set<string>()
   // Live step list (stepEvents.ts): running steps by tool call id, Olmo's own and nested.
   const runningSteps = new Map<string, StepEvent>()
+  const runningStepKeys = new Map<string, string>()
+  // Mastra re-emits an approved call under a new id with the same tool and
+  // arguments; it is the same step, not a new one ("Pictures 1 of 4" for 3
+  // stills, 2026-10-06). The running step moves to the new id instead.
+  const stepArgsKey = (toolName: string, args: unknown) => `${toolName.replace(/-/g, '_')}:${JSON.stringify(args ?? {})}`
   const startStep = (toolName: string, toolCallId: string, args: unknown) => {
+    const key = stepArgsKey(toolName, args)
+    for (const [id, running] of runningSteps) {
+      if (id !== toolCallId && runningStepKeys.get(id) === key) {
+        runningSteps.delete(id)
+        runningStepKeys.delete(id)
+        runningSteps.set(toolCallId, running)
+        runningStepKeys.set(toolCallId, key)
+        sendEvent('step', { ...running, state: 'running', conversationId })
+        return
+      }
+    }
     const s = stepStart(toolName, toolCallId, (args ?? {}) as Record<string, unknown>)
     if (!s) return
     runningSteps.set(toolCallId, s)
+    runningStepKeys.set(toolCallId, key)
     sendEvent('step', { ...s, conversationId })
   }
   const endStep = (toolCallId: string, result: unknown) => {
     const s = runningSteps.get(toolCallId)
     if (!s) return
     runningSteps.delete(toolCallId)
+    runningStepKeys.delete(toolCallId)
     sendEvent('step', { ...stepEnd(s, result), conversationId })
   }
   // A step held on the user's OK shows as waiting, not as running.
   const holdStep = (toolName: string, toolCallId: string, args: unknown, state: 'waiting' | 'running') => {
-    const s = runningSteps.get(toolCallId) ?? stepStart(toolName, toolCallId, (args ?? {}) as Record<string, unknown>)
+    if (!runningSteps.has(toolCallId)) startStep(toolName, toolCallId, args)
+    const s = runningSteps.get(toolCallId)
     if (!s) return
-    runningSteps.set(toolCallId, s)
     sendEvent('step', { ...s, state, conversationId })
   }
   const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks', 'rendercanvas', 'render-canvas', 'render_canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video', 'generate-narration', 'lipsync', 'assemble-clips', 'mux-beat-audio', 'composite-end-card', 'burn-captions', 'overlay-text', 'stretch-clip', 'mix-music-bed', 'trim-clip', 'generate-videos', 'generate-images'])
