@@ -261,7 +261,7 @@ export function LiveTrace({
                         <span className="text-sm text-muted-foreground">{awaitingApproval ? 'Waiting for your OK' : 'Waiting for your answer'}</span>
                     ) : (
                         <span className="shimmer-text text-sm text-shimmer-accent-80" key={loadingTools.length > 0 ? messageIndex : 'done'}>
-                            {liveElapsed >= 2 ? `Working for ${liveElapsed}s` : 'Working…'}{loadingTools.length > 0 && steps.length === 0 ? ` · ${thinkingMessages[messageIndex % thinkingMessages.length]}` : ''}
+                            {liveElapsed >= 2 ? `Working for ${liveElapsed}s` : 'Working…'}{loadingTools.length > 0 && steps.length === 0 && !reasoningText ? ` · ${thinkingMessages[messageIndex % thinkingMessages.length]}` : ''}
                         </span>
                     )}
                 </button>

@@ -699,7 +699,9 @@ export function ToolCallCard({ toolName, query, prompt, status, results, result,
             </svg>
           )}
         </span>
-        <ToolIcon toolName={toolName} />
+        {/* The pixel loader already says what is being made; the tool icon
+            beside it would say it twice. It comes back once the row settles. */}
+        {!(status === 'loading' && pixelKind && !awaitingApproval) && <ToolIcon toolName={toolName} />}
 
         <span className={`text-sm font-semibold truncate ${status === 'loading' ? 'shimmer-text' : ''}`}>
           {prefix}
