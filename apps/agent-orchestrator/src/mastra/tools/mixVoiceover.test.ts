@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildVoiceoverFilter, inputSchema, loudnessProbeArgs, voiceoverFitsVideo, jingleGainDb, jingleWindow, speechInWindow } from './mixVoiceover.js'
+import { buildVoiceoverFilter, inputSchema, loudnessProbeArgs, voiceoverFitsVideo, jingleGainDb, jingleWindow, speechInWindow, jingleOverlapErrors, clampJingleToVideo } from './mixVoiceover.js'
 
 describe('mixVoiceover inputSchema', () => {
   it('needs a video and 1-5 blocks with non-negative starts', () => {
@@ -90,6 +90,36 @@ describe('jingle blocks (J6)', () => {
     expect(jingleGainDb(-30, -10, true)).toBe(-12)
     expect(jingleGainDb(null, -12, true)).toBe(0)
     expect(jingleGainDb(-70, -12, false)).toBe(0)
+  })
+  // F2: mix_voiceover checks the real measured speech against the jingle.
+  it('refuses when a measured voice block ends too close to the jingle start', () => {
+    const blocks = [{ start: 10, duration: 2 }, { start: 12.6, duration: 2.4, kind: 'jingle' as const }]
+    expect(jingleOverlapErrors(blocks)).toEqual([
+      'JINGLE_OVERLAPS_SPEECH: the voiceover ends 0.15s after the sung line starts; end the voiceover earlier',
+    ])
+  })
+  it('passes when the measured voice block clears the jingle by 0.75s or more', () => {
+    const blocks = [{ start: 10, duration: 1.85 }, { start: 12.6, duration: 2.4, kind: 'jingle' as const }]
+    expect(jingleOverlapErrors(blocks)).toEqual([])
+  })
+  it('a mix with no jingle block is unchanged', () => {
+    expect(jingleOverlapErrors([{ start: 2, duration: 3.5 }])).toEqual([])
+  })
+  // F3: no end-slack refusal for the jingle — it is laid to end with the video.
+  it('clamps a jingle that would end past the video, so it ends with the video instead', () => {
+    const blocks = [{ start: 12.6, duration: 2.4, kind: 'jingle' as const }]
+    const [clamped] = clampJingleToVideo(blocks, 14.95)
+    expect(clamped.start).toBeCloseTo(12.55, 5)
+    expect(clamped.duration).toBe(2.4)
+    expect(voiceoverFitsVideo(clampJingleToVideo(blocks, 14.95), 14.95)).toBe(true)
+  })
+  it('leaves a voice block alone — only the jingle is clamped', () => {
+    const blocks = [{ start: 10, duration: 6 }]
+    expect(clampJingleToVideo(blocks, 15)).toEqual(blocks)
+  })
+  it('leaves a jingle that already fits untouched', () => {
+    const blocks = [{ start: 12.6, duration: 2.4, kind: 'jingle' as const }]
+    expect(clampJingleToVideo(blocks, 15)).toEqual(blocks)
   })
   it('accepts kind and up to 5 blocks; a legacy block still parses', () => {
     expect(inputSchema.safeParse({ videoFileId: 'v', blocks: [{ audioFileId: 'a', startSeconds: 2 }] }).success).toBe(true)

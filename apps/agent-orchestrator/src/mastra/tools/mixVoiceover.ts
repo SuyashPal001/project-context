@@ -111,6 +111,29 @@ export const loudnessProbeArgs = (path: string): string[] => ['-i', path, '-af',
 export const voiceoverFitsVideo = (blocks: Array<{ start: number; duration: number }>, videoSeconds: number): boolean =>
   blocks.every((b) => b.start + b.duration <= videoSeconds + 0.05)
 
+// F3: a sign-off that would end a hair past a slightly short video is laid
+// to end with the video instead of refusing VOICEOVER_TOO_LONG. Only the
+// jingle block is clamped — a voice block running past the video is still a
+// real refusal.
+export function clampJingleToVideo(blocks: MixBlock[], videoSeconds: number): MixBlock[] {
+  return blocks.map((b) => (b.kind === 'jingle' ? { ...b, start: Math.min(b.start, videoSeconds - b.duration) } : b))
+}
+
+// F2: checked against the MEASURED duration of each voice block, before the
+// charge — the plan-time estimate (tvcPlan's JINGLE_WONT_FIT) is a guess;
+// this is the real audio.
+export function jingleOverlapErrors(blocks: MixBlock[]): string[] {
+  const jingle = blocks.find((b) => b.kind === 'jingle')
+  if (!jingle) return []
+  const errors: string[] = []
+  for (const b of blocks) {
+    if (b.kind === 'jingle') continue
+    const over = r2(b.start + b.duration + 0.75 - jingle.start)
+    if (over > 0) errors.push(`JINGLE_OVERLAPS_SPEECH: the voiceover ends ${over}s after the sung line starts; end the voiceover earlier`)
+  }
+  return errors
+}
+
 const outputSchema = z.object({
   fileId: z.string().optional(),
   name: z.string().optional(),
@@ -174,6 +197,7 @@ export const mixVoiceover = createTool({
         start: blocks[i].startSeconds, duration: await durationOf(p),
         ...(blocks[i].kind === 'jingle' ? { kind: 'jingle' as const } : {}),
       })))
+      timed = clampJingleToVideo(timed, videoSeconds)
       const { stdout: streams } = await execFile('ffprobe', ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', videoPath], { timeout: FFMPEG_TIMEOUT_MS })
       baseHasAudio = streams.trim().length > 0
       for (const p of voPaths) {
@@ -187,6 +211,8 @@ export const mixVoiceover = createTool({
       return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE', jobId }
     }
     if (!voiceoverFitsVideo(timed, videoSeconds)) return { refused: true, refusalReason: 'VOICEOVER_TOO_LONG', jobId }
+    const jingleOverlap = jingleOverlapErrors(timed)
+    if (jingleOverlap.length) return { refused: true, refusalReason: jingleOverlap.join(' '), jobId }
     if (timed.some((b) => b.kind === 'jingle')) timed = await levelMatchJingles([videoPath, ...voPaths], timed, blockLufs, baseHasAudio)
 
     const chargeKey = `mix-voiceover:${jobId}:0`
