@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ToolCallSearchResult, MessageAttachment } from './types';
 import { TYPE_STYLES, TYPE_BADGES } from '@/components/platform/canvas/assetTypeStyles';
+import { PixelLoader, useElapsedLabel } from './PixelLoader';
 import { InlineAttachmentCard } from './InlineAttachmentCard';
 
 // True while a generation approval card is waiting on the user. The delegate's
@@ -654,6 +655,11 @@ export function ToolCallCard({ toolName, query, prompt, status, results, result,
   // this row, not only once the whole turn finishes as a message.attachment (see
   // extractResultFiles above). Never shown for a cancelled/failed result.
   const resultFiles = status === 'done' && !cancelled && !failureReason ? extractResultFiles(toolName, result) : [];
+  // Which pixel loader a running media row shows: pictures, video or audio.
+  const pixelKind = status === 'loading' ? (mediaSkeletonType ?? null) : null;
+  const elapsed = useElapsedLabel(status === 'loading' && !!pixelKind);
+  // A real detail (a search query, a file name) reads as a chip beside the label.
+  const chipText = highlight && highlight.trim() && !/^\.+$/.test(highlight.trim()) ? highlight.trim() : '';
 
   // A batch's tiles need the full row: next to another card in a wrapping
   // group they were squeezed into one tall column.
@@ -665,48 +671,59 @@ export function ToolCallCard({ toolName, query, prompt, status, results, result,
         style={{ cursor: hasResults ? 'pointer' : 'default' }}
         onClick={() => hasResults && setExpanded(e => !e)}
       >
+        {/* Status first, on the left: the pixel loader while media is being
+            made, then a check, a cross or a warning. The detail (a query, a
+            file name) sits beside the label as a chip. */}
+        <span className="h-4 w-4 shrink-0 flex items-center justify-center">
+          {status === 'loading' ? (
+            pixelKind && !awaitingApproval ? <PixelLoader kind={pixelKind} label={prefix} /> : (
+              <span className="flex gap-[2px] items-center">
+                <span className="h-[3px] w-[3px] rounded-full bg-muted-foreground animate-bounce [animation-delay:-0.3s]" />
+                <span className="h-[3px] w-[3px] rounded-full bg-muted-foreground opacity-60 animate-bounce [animation-delay:-0.15s]" />
+                <span className="h-[3px] w-[3px] rounded-full bg-muted-foreground opacity-30 animate-bounce" />
+              </span>
+            )
+          ) : cancelled ? (
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-muted-foreground" aria-label="cancelled">
+              <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+            </svg>
+          ) : failureReason ? (
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-amber-600 dark:text-amber-400" aria-label="needs a look">
+              <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.3"/>
+              <path d="M7 4v3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+              <circle cx="7" cy="9.6" r="0.7" fill="currentColor"/>
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-muted-foreground" aria-label="done">
+              <path d="M2.5 7L5.5 10L11.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          )}
+        </span>
         <ToolIcon toolName={toolName} />
 
-        <span className={`text-sm font-semibold flex-1 truncate ${status === 'loading' ? 'shimmer-text' : ''}`}>
+        <span className={`text-sm font-semibold truncate ${status === 'loading' ? 'shimmer-text' : ''}`}>
           {prefix}
-          {highlight && !awaitingApproval && !preparing && !cancelled && (
+          {highlight && !chipText && !awaitingApproval && !preparing && !cancelled && (
             <span className="font-medium" style={{ color: 'var(--color-text-primary, inherit)' }}>
               {highlight}
             </span>
           )}
         </span>
-
-        {status === 'loading' ? (
-          <span className="flex gap-[3px] items-center shrink-0">
-            <span className="h-[4px] w-[4px] rounded-full bg-muted-foreground animate-bounce [animation-delay:-0.3s]" />
-            <span className="h-[4px] w-[4px] rounded-full bg-muted-foreground opacity-60 animate-bounce [animation-delay:-0.15s]" />
-            <span className="h-[4px] w-[4px] rounded-full bg-muted-foreground opacity-30 animate-bounce" />
-          </span>
-        ) : cancelled ? (
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-muted-foreground">
-            <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-          </svg>
-        ) : failureReason ? (
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-amber-500">
-            <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.3"/>
-            <path d="M7 4v3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-            <circle cx="7" cy="9.6" r="0.7" fill="currentColor"/>
-          </svg>
-        ) : (
-          <>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-green-500">
-              <path d="M2.5 7L5.5 10L11.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            {hasResults && (
-              <svg
-                width="10" height="10" viewBox="0 0 10 10" fill="none"
-                className={`shrink-0 transition-transform text-foreground ${expanded ? "rotate-90" : ""}`}
-              >
-                <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            )}
-          </>
+        {chipText && !awaitingApproval && !preparing && !cancelled && (
+          <span className="min-w-0 max-w-[50%] truncate font-mono text-xs text-muted-foreground bg-muted/60 rounded-md px-2 py-0.5" data-testid="tool-detail-chip">{chipText}</span>
         )}
+        {status === 'loading' && pixelKind && !awaitingApproval && (
+          <span className="font-mono text-xs text-muted-foreground tabular-nums shrink-0">{elapsed}</span>
+        )}
+        {status === 'done' && hasResults && (
+          <svg
+            width="10" height="10" viewBox="0 0 10 10" fill="none"
+            className={`shrink-0 transition-transform text-muted-foreground ${expanded ? "rotate-90" : ""}`}
+          >
+            <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+
       </div>
 
       {showStatusDetails && (
