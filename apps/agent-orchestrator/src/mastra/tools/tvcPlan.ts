@@ -217,7 +217,10 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
     const estimate = estimateSignoffSeconds(brief.jingle.line, packSeconds)
     const speechEnd = lastSpeechEnd(plan)
     const deadline = r1(length - estimate - 0.75)
-    if (speechEnd > length - estimate - 0.75 + EPS) {
+    // No + EPS slack here: jingleErrors (the record-time check, run against the
+    // measured signoff) uses `gap < JINGLE_GAP` with no slack either. A plan that
+    // passes this estimate-time check must not then fail record on the same number.
+    if (speechEnd > length - estimate - 0.75) {
       errors.push(`JINGLE_WONT_FIT: the sung line needs about ${r1(estimate)}s at the end, but speech runs until ${r1(speechEnd)}s; end the voiceover by ${deadline}s or shorten the line`)
     }
   }

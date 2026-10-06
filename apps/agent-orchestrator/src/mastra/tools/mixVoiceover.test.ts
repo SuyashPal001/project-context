@@ -95,7 +95,7 @@ describe('jingle blocks (J6)', () => {
   it('refuses when a measured voice block ends too close to the jingle start', () => {
     const blocks = [{ start: 10, duration: 2 }, { start: 12.6, duration: 2.4, kind: 'jingle' as const }]
     expect(jingleOverlapErrors(blocks)).toEqual([
-      'JINGLE_OVERLAPS_SPEECH: the voiceover ends 0.15s after the sung line starts; end the voiceover earlier',
+      'JINGLE_OVERLAPS_SPEECH: the voiceover ends 0.15s too close to the sung line; end the voiceover earlier',
     ])
   })
   it('passes when the measured voice block clears the jingle by 0.75s or more', () => {
@@ -120,6 +120,11 @@ describe('jingle blocks (J6)', () => {
   it('leaves a jingle that already fits untouched', () => {
     const blocks = [{ start: 12.6, duration: 2.4, kind: 'jingle' as const }]
     expect(clampJingleToVideo(blocks, 15)).toEqual(blocks)
+  })
+  it('never clamps a jingle to a negative start, even if its duration exceeds the video', () => {
+    const blocks = [{ start: 12.6, duration: 2.4, kind: 'jingle' as const }]
+    const [clamped] = clampJingleToVideo(blocks, 1)
+    expect(clamped.start).toBe(0)
   })
   it('accepts kind and up to 5 blocks; a legacy block still parses', () => {
     expect(inputSchema.safeParse({ videoFileId: 'v', blocks: [{ audioFileId: 'a', startSeconds: 2 }] }).success).toBe(true)

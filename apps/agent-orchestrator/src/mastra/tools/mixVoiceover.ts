@@ -116,7 +116,7 @@ export const voiceoverFitsVideo = (blocks: Array<{ start: number; duration: numb
 // jingle block is clamped — a voice block running past the video is still a
 // real refusal.
 export function clampJingleToVideo(blocks: MixBlock[], videoSeconds: number): MixBlock[] {
-  return blocks.map((b) => (b.kind === 'jingle' ? { ...b, start: Math.min(b.start, videoSeconds - b.duration) } : b))
+  return blocks.map((b) => (b.kind === 'jingle' ? { ...b, start: Math.max(0, Math.min(b.start, videoSeconds - b.duration)) } : b))
 }
 
 // F2: checked against the MEASURED duration of each voice block, before the
@@ -128,8 +128,10 @@ export function jingleOverlapErrors(blocks: MixBlock[]): string[] {
   const errors: string[] = []
   for (const b of blocks) {
     if (b.kind === 'jingle') continue
+    // `over` is the shortfall against the required 0.75s gap, not the true overlap
+    // (the voiceover may still end before the jingle starts and still fail this).
     const over = r2(b.start + b.duration + 0.75 - jingle.start)
-    if (over > 0) errors.push(`JINGLE_OVERLAPS_SPEECH: the voiceover ends ${over}s after the sung line starts; end the voiceover earlier`)
+    if (over > 0) errors.push(`JINGLE_OVERLAPS_SPEECH: the voiceover ends ${over}s too close to the sung line; end the voiceover earlier`)
   }
   return errors
 }

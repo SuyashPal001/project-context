@@ -417,6 +417,19 @@ describe('jingle (J5)', () => {
   it('a no-jingle plan is unchanged by the F1 check', () => {
     expect(validateTvcPlan(goodPlan()).errors).toEqual([])
   })
+  // Boundary: JINGLE_WONT_FIT must be at least as strict as jingleErrors on the
+  // same estimate, so a plan that passes here never fails record afterwards.
+  it('JINGLE_WONT_FIT at the exact gap boundary agrees with jingleErrors (no EPS slack)', () => {
+    const p = withJingle()
+    p.brief.jingle!.line = 'Soft all day long' // 4 words: estimate 2.6s
+    p.voiceover[0].startSeconds = 8.0 // lastSpeechEnd rounds to 11.7s; true gap to the 12.4s sign-off start is 0.7s (< 0.75s)
+    expect(jingleErrors(p, 2.6)).toEqual([
+      'JINGLE_OVERLAPS_SPEECH: the sung line would start 0.7s after the last word; shorten the line or end the voiceover earlier',
+    ])
+    expect(validateTvcPlan(p).errors).toEqual([
+      'JINGLE_WONT_FIT: the sung line needs about 2.6s at the end, but speech runs until 11.7s; end the voiceover by 11.7s or shorten the line',
+    ])
+  })
   it('the sign-off ends with the ad, and the bed clears 0.3s before it', () => {
     expect(signoffTiming(withJingle())).toBeUndefined()
     expect(signoffTiming({ ...withJingle(), signoffSeconds: 2.4 })).toEqual({ signoffStartSeconds: 12.6, musicFadeOutAtSeconds: 12.3 })
