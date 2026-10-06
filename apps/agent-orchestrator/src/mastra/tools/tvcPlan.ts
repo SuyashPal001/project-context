@@ -61,7 +61,9 @@ export const tvcPlanSchema = z.object({
     tier: z.enum(['mass', 'premium', 'luxury']),
     objective: z.enum(['launch', 'brand', 'feature', 'seasonal']),
     market: z.enum(['india', 'generic']),
-    lengthSeconds: z.union([z.literal(6), z.literal(15), z.literal(20)]).describe('6, 15 or 20 seconds; word cap across voiceover and lines: 6s 8, 15s 22, 20s 30'),
+    // A plain number, not z.union of literals: Gemini's function declarations
+    // only accept STRING enums, and a numeric enum 400s every Director call.
+    lengthSeconds: z.number().refine((n) => n === 6 || n === 15 || n === 20, { message: 'lengthSeconds must be 6, 15 or 20' }).describe('6, 15 or 20 seconds; word cap across voiceover and lines: 6s 8, 15s 22, 20s 30'),
     aspectRatio: z.enum(['16:9', '9:16']),
     productPhotoFileId: z.string().min(1),
     actorAvatarId: z.string().optional(),

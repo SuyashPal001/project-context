@@ -465,3 +465,14 @@ describe('a plan without a jingle slices and prices exactly as before', () => {
     expect(JSON.stringify(tvcPlanSchema.parse(p))).not.toMatch(/jingle|signoff/i)
   })
 })
+
+describe('lengthSeconds reaches Gemini without a numeric enum', () => {
+  it('is a plain number (no literal union, which Gemini rejects) and still refuses lengths other than 6, 15, 20', async () => {
+    const { tvcPlanSchema } = await import('./tvcPlan.js')
+    const json = JSON.stringify(tvcPlanSchema, (_k, v) => (v && typeof v === 'object' && v.typeName === 'ZodLiteral' && typeof v.value === 'number' ? '__NUMERIC_LITERAL__' : v))
+    expect(json).not.toContain('__NUMERIC_LITERAL__')
+    const bad = { ...goodPlan(), brief: { ...goodPlan().brief, lengthSeconds: 12 } }
+    expect(tvcPlanSchema.safeParse(bad).success).toBe(false)
+    expect(tvcPlanSchema.safeParse(goodPlan()).success).toBe(true)
+  })
+})
