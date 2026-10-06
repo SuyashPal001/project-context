@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { droppedCheckInputsFallback as droppedCheckInputs, lineMatchScore, parseVerdict, buildCheckQuestion, judgeVerdict, narrowWanted, droppedCheckInputsFallback as dropped2 } from './checkClip.js'
+import { droppedCheckInputsFallback as droppedCheckInputs, lineMatchScore, extraWordCount, parseVerdict, buildCheckQuestion, judgeVerdict, narrowWanted, droppedCheckInputsFallback as dropped2 } from './checkClip.js'
 
 describe('lineMatchScore', () => {
   it('passes the exact line and small transcription differences', () => {
@@ -173,5 +173,16 @@ describe('extraWordCount', () => {
     expect(extraWordCount(line, 'Ever feel too tired to start? One tap and you are ready. And you are ready.')).toBe(4)
     expect(extraWordCount(line, 'Ever feel too tired to start? One tap and you are ready.')).toBe(0)
     expect(extraWordCount('it actually tastes like a light crispy wafer', 'No, it actually tastes like a light crispy wafer')).toBe(1)
+  })
+})
+
+describe('spoken numbers and compounds', () => {
+  it('passes "20" for "twenty" and "longwear" for "long-wear"', () => {
+    const line = 'Plus with twenty shades and long-wear comfort, this is definitely my new go-to. Trust me.'
+    const heard = 'Plus with 20 shades and longwear comfort, this is definitely my new go-to. Trust me.'
+    expect(lineMatchScore(line, heard)).toBe(1)
+    expect(extraWordCount(line, heard)).toBe(0)
+    expect(lineMatchScore('a long-wear look', 'a long wear look')).toBe(1)
+    expect(lineMatchScore('twenty five shades', '25 shades')).toBe(1)
   })
 })
