@@ -481,7 +481,7 @@ export function MessageItem({
                     <div className="w-full mt-2">
                         {groupImageToolCalls(message.toolCalls).map((group, gi) => (
                             group.length > 1 ? (
-                                <div key={gi} className="flex flex-wrap gap-2">
+                                <div key={gi} className="flex flex-col gap-2">
                                     {group.map(tool => (
                                         <ToolCallCard
                                             key={tool.id}

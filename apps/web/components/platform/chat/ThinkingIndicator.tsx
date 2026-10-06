@@ -271,7 +271,7 @@ export function LiveTrace({
                 {steps.length > 0 && <StepList steps={steps} />}
                 {groupImageToolCalls(withoutRepeatedTraceFiles(completedToolCalls)).map((group, gi) => (
                     group.length > 1 ? (
-                        <div key={gi} className="flex flex-wrap gap-2">
+                        <div key={gi} className="flex flex-col gap-2">
                             {group.map(tc => (
                                 <ToolCallCard
                                     key={tc.id}
@@ -298,7 +298,7 @@ export function LiveTrace({
                 ))}
                 {groupImageToolCalls(loadingTools).map((group, gi) => (
                     group.length > 1 ? (
-                        <div key={gi} className="flex flex-wrap gap-2">
+                        <div key={gi} className="flex flex-col gap-2">
                             {group.map(tool => (
                                 <ToolCallCard
                                     key={tool.id}

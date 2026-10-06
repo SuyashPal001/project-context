@@ -64,7 +64,7 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
                 <div className="flex flex-col gap-1 normal-case">
                     {groupImageToolCalls(mediaCalls).map((group, gi) => (
                         group.length > 1 ? (
-                            <div key={gi} className="flex flex-wrap gap-2">
+                            <div key={gi} className="flex flex-col gap-2">
                                 {group.map(tc => (
                                     <ToolCallCard key={tc.id} toolName={tc.toolName} query={tc.query} status="done" results={tc.results} result={tc.result} freshUrls={freshUrls} />
                                 ))}
@@ -94,7 +94,7 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
                     {steps && steps.length > 0 && <StepList steps={steps} live={false} />}
                     {groupImageToolCalls(stepCalls).map((group, gi) => (
                         group.length > 1 ? (
-                            <div key={gi} className="flex flex-wrap gap-2">
+                            <div key={gi} className="flex flex-col gap-2">
                                 {group.map(tc => (
                                     <ToolCallCard key={tc.id} toolName={tc.toolName} query={tc.query} status="done" results={tc.results} result={tc.result} freshUrls={freshUrls} />
                                 ))}
