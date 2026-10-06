@@ -26,6 +26,8 @@ export interface TraceSummaryProps {
     made?: { pictures: number; clips: number };
 }
 
+const SEARCH_TOOLS = new Set(['web_search', 'browser', 'internet_search']);
+
 const madeLabel = (made?: { pictures: number; clips: number }) => [
     made?.pictures ? `${made.pictures} picture${made.pictures === 1 ? '' : 's'}` : '',
     made?.clips ? `${made.clips} clip${made.clips === 1 ? '' : 's'}` : '',
@@ -51,6 +53,19 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
     const stepCalls = toolCalls.filter(tc => extractResultFiles(tc.toolName, tc.result).length === 0);
     const stepCount = steps && steps.length > 0 ? new Set(steps.map(s => s.key)).size : toolCalls.length;
     const mediaFileCount = mediaCalls.reduce((n, tc) => n + extractResultFiles(tc.toolName, tc.result).length, 0);
+    // Each part of a turn is headed by what it did (after beautiful-ui's
+    // thinking states, 2026-10-07): a part that only thought says how long it
+    // thought; one that only searched says how many sources it read; a part
+    // that made things keeps "Worked for" with its steps.
+    const hasSteps = !!steps?.length;
+    const onlyThought = !!reasoningText && !hasSteps && toolCalls.length === 0;
+    const onlySearched = !hasSteps && mediaCalls.length === 0 && stepCalls.length > 0 && stepCalls.every(tc => SEARCH_TOOLS.has(tc.toolName));
+    const sourceCount = onlySearched ? stepCalls.reduce((n, tc) => n + (tc.results?.length ?? 0), 0) : 0;
+    const header = onlyThought
+        ? `Thought for ${reasoningElapsedSec ?? Math.max(1, elapsedSec)}s`
+        : onlySearched
+            ? `Searched the web${sourceCount ? ` · ${sourceCount} source${sourceCount === 1 ? '' : 's'}` : ''}`
+            : `Worked for ${elapsedSec}s${stepCount > 0 ? ` · ${stepCount} step${stepCount === 1 ? '' : 's'}` : ''}${madeLabel(made) ? ` · ${madeLabel(made)}` : ''}`;
 
     return (
         <div className="flex flex-col w-full min-w-0">
@@ -93,11 +108,13 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
                 >
                     <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-                <span>Worked for {elapsedSec}s{stepCount > 0 ? ` · ${stepCount} step${stepCount === 1 ? '' : 's'}` : ''}{madeLabel(made) ? ` · ${madeLabel(made)}` : ''}</span>
+                <span>{header}</span>
             </button>
             {!collapsed && ((steps && steps.length > 0) || stepCalls.length > 0 || reasoningText) && (
                 <div className="ml-[4px] border-l border-foreground/20 pl-3 flex flex-col gap-1 normal-case">
-                    {reasoningText && <ReasoningRow text={reasoningText} completed elapsedSec={reasoningElapsedSec} />}
+                    {reasoningText && (onlyThought
+                        ? <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{reasoningText}</p>
+                        : <ReasoningRow text={reasoningText} completed elapsedSec={reasoningElapsedSec} />)}
                     {steps && steps.length > 0 && <StepList steps={steps} live={false} />}
                     {groupImageToolCalls(stepCalls).map((group, gi) => (
                         group.length > 1 ? (

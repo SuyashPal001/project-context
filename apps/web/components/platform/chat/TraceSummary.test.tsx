@@ -26,8 +26,24 @@ describe('TraceSummary collapse', () => {
     });
 
     it('uses the singular "step" for exactly one tool call', () => {
-        render(<TraceSummary elapsedSec={3} toolCalls={[searchCall]} />);
+        render(<TraceSummary elapsedSec={3} toolCalls={[imageCall]} />);
         expect(screen.getByText('Worked for 3s · 1 step')).toBeTruthy();
+    });
+
+    it('heads a part that only searched by the sources it read', () => {
+        const withSources = { ...searchCall, results: [{ title: 'a', domain: 'a.com' }, { title: 'b', domain: 'b.com' }] };
+        render(<TraceSummary elapsedSec={3} toolCalls={[withSources]} />);
+        expect(screen.getByText('Searched the web · 2 sources')).toBeTruthy();
+    });
+
+    it('heads a part that only thought by how long it thought', () => {
+        render(<TraceSummary elapsedSec={6} toolCalls={[]} reasoningText="Plan the scenes." reasoningElapsedSec={4} />);
+        expect(screen.getByText('Thought for 4s')).toBeTruthy();
+    });
+
+    it('names what a part made', () => {
+        render(<TraceSummary elapsedSec={40} toolCalls={[imageCall]} made={{ pictures: 1, clips: 2 }} />);
+        expect(screen.getByText('Worked for 40s · 1 step · 1 picture, 2 clips')).toBeTruthy();
     });
 
     it('keeps a completed generation visible even while the rest of the trace is collapsed', () => {
