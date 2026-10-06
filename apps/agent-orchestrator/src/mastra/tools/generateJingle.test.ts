@@ -15,6 +15,13 @@ const { shouldRequireApproval } = vi.hoisted(() => ({ shouldRequireApproval: vi.
 vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 const { cutSignoff } = vi.hoisted(() => ({ cutSignoff: vi.fn() }))
 vi.mock('./jingleCut.js', () => ({ cutSignoff }))
+const { mkdtempSync, realMkdtempSync } = vi.hoisted(() => ({ mkdtempSync: vi.fn(), realMkdtempSync: { fn: undefined as unknown as (...a: unknown[]) => string } }))
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  realMkdtempSync.fn = actual.mkdtempSync as unknown as (...a: unknown[]) => string
+  mkdtempSync.mockImplementation(actual.mkdtempSync)
+  return { ...actual, mkdtempSync }
+})
 
 import { generateJingle, JINGLE_MODEL } from './generateJingle.js'
 import { uploadGeneratedFile } from '../../persistence.js'
@@ -40,6 +47,7 @@ beforeEach(() => {
   shouldRequireApproval.mockResolvedValue(false)
   getPool.mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-4000000', expires_at: null }] }) })
   cutSignoff.mockResolvedValue({ audio: Buffer.from('cut'), seconds: 3.4 })
+  mkdtempSync.mockImplementation(realMkdtempSync.fn)
   upload
     .mockResolvedValueOnce({ fileId: 'full-1', name: 'Jingle.mp3', type: 'audio/mpeg', size: 3 })
     .mockResolvedValueOnce({ fileId: 'cut-1', name: 'Jingle sign-off.m4a', type: 'audio/mp4', size: 3 })
@@ -119,6 +127,7 @@ describe('generate_jingle refunds on every failure path', () => {
     ['no audio comes back', () => { global.fetch = gatewayOk({ mimeType: 'audio/mpeg', lyricsText: LYRICS }) }, /^GENERATION_FAILED$/],
     ['the line was not sung', () => { global.fetch = gatewayOk({ audioBase64: 'TVAz', mimeType: 'audio/mpeg', lyricsText: '[0.0:6.2] Every bubble, every sip' }) }, /^JINGLE_LINE_NOT_SUNG: Lyria did not sing "Bubbli, feel the magic"; try once more or shorten the line$/],
     ['the cut fails', () => { global.fetch = gatewayOk(); cutSignoff.mockRejectedValue(new Error('ffmpeg died')) }, /^JINGLE_CUT_FAILED$/],
+    ['mkdtempSync throws before the cut', () => { global.fetch = gatewayOk(); mkdtempSync.mockImplementation(() => { throw new Error('ENOSPC') }) }, /^JINGLE_CUT_FAILED$/],
     ['the full clip upload fails', () => { global.fetch = gatewayOk(); upload.mockReset(); upload.mockResolvedValueOnce(null) }, /^STORAGE_FAILED$/],
     ['the sign-off upload fails', () => { global.fetch = gatewayOk(); upload.mockReset(); upload.mockResolvedValueOnce({ fileId: 'full-1', name: 'J.mp3', type: 'audio/mpeg', size: 3 }).mockResolvedValueOnce(null) }, /^STORAGE_FAILED$/],
   ])('%s', async (_name, arrange, reason) => {

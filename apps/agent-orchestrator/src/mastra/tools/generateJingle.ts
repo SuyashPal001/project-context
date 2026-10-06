@@ -136,8 +136,9 @@ export const generateJingle = createTool({
     const full = Buffer.from(gen.audioBase64, 'base64')
     const mimeType = gen.mimeType ?? 'audio/mpeg'
     let cut: { audio: Buffer; seconds: number }
-    const workDir = mkdtempSync(join(tmpdir(), 'jingle-'))
+    let workDir: string | undefined
     try {
+      workDir = mkdtempSync(join(tmpdir(), 'jingle-'))
       const fullPath = join(workDir, 'full.mp3')
       writeFileSync(fullPath, full)
       cut = await cutSignoff(fullPath, sung, workDir)
@@ -146,7 +147,10 @@ export const generateJingle = createTool({
       await refund()
       return { refused: true, refusalReason: 'JINGLE_CUT_FAILED' }
     } finally {
-      rmSync(workDir, { recursive: true, force: true })
+      // A cleanup error here must never mask a successful cut or skip the
+      // refund on a failed one — mkdtempSync/writeFileSync/cutSignoff errors
+      // are already handled above; this is best-effort tidy-up only.
+      if (workDir) { try { rmSync(workDir, { recursive: true, force: true }) } catch { /* best effort */ } }
     }
 
     const name = fileTitle(title, 'Jingle')

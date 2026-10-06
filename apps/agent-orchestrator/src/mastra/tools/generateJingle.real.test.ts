@@ -1,7 +1,7 @@
 // One real Lyria 3 call ($0.04) on the test project, then the real cut.
 // Tagged: runs only with RUN_JINGLE_REAL=1. Never fitnearn-devops.
 import { describe, it, expect } from 'vitest'
-import { execSync, execFileSync } from 'node:child_process'
+import { execSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -40,10 +40,10 @@ describe.skipIf(!process.env.RUN_JINGLE_REAL)('Lyria 3 sings the sign-off and th
     expect(seconds).toBeGreaterThanOrEqual(1.5)
     expect(seconds).toBeLessThanOrEqual(8)
 
-    // Ends in silence: the last 0.1s of the cut is quiet.
-    let stderr = ''
-    try { execFileSync('ffmpeg', ['-nostats', '-sseof', '-0.1', '-i', cutPath, '-af', 'volumedetect', '-f', 'null', '-'], { stdio: ['ignore', 'pipe', 'pipe'] }) } catch (e) { stderr = String((e as { stderr?: Buffer }).stderr ?? '') }
-    stderr ||= execFileSync('ffmpeg', ['-nostats', '-sseof', '-0.1', '-i', cutPath, '-af', 'volumedetect', '-f', 'null', '-'], { stdio: ['ignore', 'ignore', 'pipe'] })?.toString() ?? ''
+    // Ends in silence: the last 0.1s of the cut is quiet. ffmpeg writes
+    // volumedetect to stderr and exits 0, so execFileSync (stdout only)
+    // can never see it; spawnSync captures stderr directly.
+    const stderr = spawnSync('ffmpeg', ['-nostats', '-sseof', '-0.1', '-i', cutPath, '-af', 'volumedetect', '-f', 'null', '-'], { encoding: 'utf8' }).stderr
     const mean = Number(/mean_volume: (-?[0-9.]+) dB/.exec(stderr)?.[1] ?? NaN)
     expect(mean).toBeLessThan(-30)
   }, 180_000)
