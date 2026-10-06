@@ -244,6 +244,14 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
     const hasImageOptions = question.options.some(o => !!o.imageFileId);
     const freeText = currentFreeText;
     const isLast = pageIndex === total - 1;
+    // Clicking the chosen option again clears it, so a pick can be undone
+    // (it could only be swapped before, 2026-10-06).
+    const pickSingle = (i: number) => setSelectedByQuestion(prev => {
+        const next = { ...prev };
+        if (next[pageIndex] === i) delete next[pageIndex];
+        else next[pageIndex] = i;
+        return next;
+    });
     const hasAnswer = multiSelect ? multiSelectSatisfied : selectedIndex !== undefined;
 
     // Check whether accepting `pageIndex` would complete the full
@@ -344,7 +352,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                                         key={opt.label}
                                         type="button"
                                         disabled={atCapUnselected}
-                                        onClick={() => multiSelect ? toggleOption(i) : setSelectedByQuestion(prev => ({ ...prev, [pageIndex]: i }))}
+                                        onClick={() => multiSelect ? toggleOption(i) : pickSingle(i)}
                                         className="flex flex-col gap-1.5 w-[140px] shrink-0 text-left group"
                                     >
                                         <div className={cn(
@@ -375,7 +383,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                             key={opt.label}
                             type="button"
                             disabled={atCapUnselected}
-                            onClick={() => multiSelect ? toggleOption(i) : setSelectedByQuestion(prev => ({ ...prev, [pageIndex]: i }))}
+                            onClick={() => multiSelect ? toggleOption(i) : pickSingle(i)}
                             className={cn(
                                 "w-full text-left rounded-xl px-3 py-2.5 border transition-colors flex items-start gap-2.5",
                             opt.voiceId && "pr-12",
@@ -496,6 +504,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                         <button
                             type="button"
                             onClick={commitCurrent}
+                            aria-label={isLast ? 'Submit' : 'Continue'}
                             disabled={(!hasAnswer && !freeText.trim() && !files.length) || busy}
                             className={cn(
                                 "bg-primary text-primary-foreground disabled:opacity-40 flex items-center justify-center",

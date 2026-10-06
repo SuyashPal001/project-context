@@ -133,3 +133,19 @@ describe('image-backed options (avatar/casting picks)', () => {
         await waitFor(() => expect(onAnswer).toHaveBeenCalledWith({ questionIndex: 0, selectedIndex: 2 }, true));
     });
 });
+
+describe('single choice', () => {
+    const single = { id: 'q3', status: 'pending' as const, questions: [
+        { prompt: 'Approve the stills?', options: [{ label: 'Approve' }, { label: 'Regenerate' }], allowSkip: true },
+    ] };
+    it('clears a chosen option on a second click, so a typed answer can go alone', async () => {
+        const onAnswer = vi.fn().mockResolvedValue(true);
+        render(<ClarificationCard request={single} onAnswer={onAnswer} />);
+        fireEvent.click(screen.getByText('2. Regenerate'));
+        fireEvent.click(screen.getByText('2. Regenerate'));
+        fireEvent.change(screen.getByPlaceholderText('Type an answer or attach files'), { target: { value: 'wait' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+        await waitFor(() => expect(onAnswer).toHaveBeenCalledWith(expect.not.objectContaining({ selectedIndex: expect.anything() }), true));
+        expect(onAnswer.mock.calls[0][0]).toMatchObject({ freeText: 'wait' });
+    });
+});
