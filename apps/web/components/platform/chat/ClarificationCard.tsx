@@ -241,7 +241,10 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
             return { ...prev, [pageIndex]: current };
         });
     };
-    const hasImageOptions = question.options.some(o => !!o.imageFileId);
+    // Two or more pictured options read as a gallery of tiles. A lone pictured
+    // option among text rows is a full-width row with its picture beside the
+    // label (a narrow tile next to the rows looked broken, 2026-10-06).
+    const hasImageOptions = question.options.filter(o => !!o.imageFileId).length >= 2;
     const freeText = currentFreeText;
     const isLast = pageIndex === total - 1;
     // Clicking the chosen option again clears it, so a pick can be undone
@@ -375,7 +378,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                         </div>
                     )}
                     {question.options.map((opt, i) => {
-                        if (opt.imageFileId) return null;
+                        if (opt.imageFileId && hasImageOptions) return null;
                         const isChecked = multiSelect ? selectedIndices.has(i) : selectedIndex === i;
                         const atCapUnselected = !!multiSelect && !isChecked && selectedIndices.size >= multiSelect.max;
                         const row = (
@@ -406,6 +409,11 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                                     isChecked ? "border-primary bg-primary" : "border-border",
                                 )}>
                                     {isChecked && <span className="h-1.5 w-1.5 rounded-[1px] bg-primary-foreground" />}
+                                </span>
+                            )}
+                            {opt.imageFileId && (
+                                <span className="h-16 w-12 shrink-0 rounded-lg overflow-hidden bg-muted/30">
+                                    <FileThumbnail fileId={opt.imageFileId} alt={opt.label} fallbackToLibraryAsset anchorTop />
                                 </span>
                             )}
                             <div className="min-w-0">
