@@ -267,7 +267,8 @@ export function LiveTrace({
                 </button>
                 {blockOpen && (
                 <div className="ml-[4px] border-l border-foreground/20 pl-3 min-w-0">
-                <ReasoningRow text={reasoningText} defaultOpen={steps.length === 0} />
+                {/* While the run waits on the user nothing is thinking: the row settles. */}
+                <ReasoningRow text={reasoningText} completed={awaitingUser} defaultOpen={steps.length === 0} />
                 {steps.length > 0 && <StepList steps={steps} />}
                 {groupImageToolCalls(withoutRepeatedTraceFiles(completedToolCalls)).map((group, gi) => (
                     group.length > 1 ? (
