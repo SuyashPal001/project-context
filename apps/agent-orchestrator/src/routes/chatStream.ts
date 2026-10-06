@@ -319,6 +319,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   // Live step list (stepEvents.ts): running steps by tool call id, Olmo's own and nested.
   const runningSteps = new Map<string, StepEvent>()
   const runningStepKeys = new Map<string, string>()
+  const runningStepTools = new Map<string, string>()
   // Mastra re-emits an approved call under a new id with the same tool and
   // arguments; it is the same step, not a new one ("Pictures 1 of 4" for 3
   // stills, 2026-10-06). The running step moves to the new id instead.
@@ -331,6 +332,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         runningStepKeys.delete(id)
         runningSteps.set(toolCallId, running)
         runningStepKeys.set(toolCallId, key)
+        runningStepTools.set(toolCallId, toolName)
         sendEvent('step', { ...running, state: 'running', conversationId })
         return
       }
@@ -339,14 +341,22 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     if (!s) return
     runningSteps.set(toolCallId, s)
     runningStepKeys.set(toolCallId, key)
+    runningStepTools.set(toolCallId, toolName)
     sendEvent('step', { ...s, conversationId })
   }
   const endStep = (toolCallId: string, result: unknown) => {
     const s = runningSteps.get(toolCallId)
     if (!s) return
+    const toolName = runningStepTools.get(toolCallId) ?? ''
     runningSteps.delete(toolCallId)
     runningStepKeys.delete(toolCallId)
-    sendEvent('step', { ...stepEnd(s, result), conversationId })
+    runningStepTools.delete(toolCallId)
+    // The files a step made ride on its done event, so the chat hangs them
+    // under that step's row (branch style, 2026-10-07).
+    const files = result && typeof result === 'object'
+      ? attachmentsFromToolResult(toolName.toLowerCase().replace(/_/g, '-'), result as Record<string, unknown>).map(f => ({ fileId: f.fileId, name: f.name, type: f.type }))
+      : []
+    sendEvent('step', { ...stepEnd(s, result), ...(files.length ? { files } : {}), conversationId })
   }
   // A step held on the user's OK shows as waiting, not as running.
   const holdStep = (toolName: string, toolCallId: string, args: unknown, state: 'waiting' | 'running') => {
@@ -747,6 +757,21 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
       // TEMP INSTRUMENTATION — task 8 delegate approval test
       console.log(`[task8:${sessionId}] +${Date.now() - startTime}ms chunk type=${part.type}${part.payload?.toolName ? ` toolName=${part.payload.toolName}` : ''}${part.payload?.toolCallId ? ` toolCallId=${part.payload.toolCallId}` : ''}${part.payload?.agentId ? ` agentId=${part.payload.agentId}` : ''}`)
+
+      // The Director's own thinking, while it works for Olmo, shows in the same
+      // live thinking row as Olmo's (2026-10-07: long silent waits).
+      const delegateReasoning = part.type === 'agent-execution-event-reasoning-delta'
+        ? (part.payload?.payload?.text ?? part.payload?.text ?? part.payload?.delta ?? '')
+        : part.type === 'tool-output' && part.payload?.output?.type === 'reasoning-delta'
+          ? (part.payload.output.payload?.text ?? part.payload.output.text ?? part.payload.output.delta ?? '')
+          : ''
+      if (delegateReasoning) {
+        const text = redactReasoningText(delegateReasoning as string)
+        reasoningText += text
+        if (reasoningStartMs === null) reasoningStartMs = Date.now()
+        reasoningLastMs = Date.now()
+        sendEvent('reasoning', { text, conversationId })
+      }
 
       if (part.type === 'tool-output') {
         const nested = part.payload?.output

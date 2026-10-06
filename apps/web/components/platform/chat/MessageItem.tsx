@@ -11,6 +11,7 @@ import remarkGfm from 'remark-gfm';
 import { chatMarkdownComponents } from './markdownComponents';
 import { ToolCallCard, groupImageToolCalls, extractResultFiles } from "./ToolCallCard";
 import { TraceSummary } from "./TraceSummary";
+import { stepTileFileIds } from "./StepList";
 import { LiveTrace } from "./ThinkingIndicator";
 import { ApprovalCard } from "./ApprovalCard";
 import { ClarificationCard } from "./ClarificationCard";
@@ -23,6 +24,7 @@ import { GeneratedAssetCard } from "./GeneratedAssetCard";
 import { assetTypeForFile } from "@/lib/assetType";
 import { TYPE_ICONS, TYPE_STYLES, typeBadge } from "@/components/platform/canvas/assetTypeStyles";
 import { FollowUpChips } from "./FollowUpChips";
+import { FileTile } from "./Branch";
 import { SkillIcon } from "@/components/platform/skills/SkillIcon";
 import { CreativeBriefChips } from "./creative-library/CreativeBriefChips";
 import { creativeBriefAttachmentIds, parseCreativeBriefPresentation } from "./creative-library/creativeBrief";
@@ -122,7 +124,10 @@ export function MessageItem({
     // and its close-up, in that order) is not repeated as an attachment below
     // it, so the full still reads first and the close-up second.
     const traceFileIds = new Set((message.completedTrace?.toolCalls ?? []).flatMap(tc => extractResultFiles(tc.toolName, tc.result)).map(f => f.fileId));
-    const visibleAttachments = message.attachments?.filter(file => !file.fileId || (!hiddenCreativeAttachmentIds.has(file.fileId) && !traceFileIds.has(file.fileId)));
+    // Pictures and clips that hang under a step in the trace are not repeated
+    // as big cards (branch style); the finished ad stays one.
+    const stepFileIds = stepTileFileIds(message.completedTrace?.steps ?? []);
+    const visibleAttachments = message.attachments?.filter(file => !file.fileId || (!hiddenCreativeAttachmentIds.has(file.fileId) && !traceFileIds.has(file.fileId) && !stepFileIds.has(file.fileId)));
     // Working files (inputs to a later step this turn) fold behind one row, so
     // the finished result is what the reply shows (see workingFiles.ts).
     const resultAttachments = (visibleAttachments ?? []).filter(file => !file.working);
@@ -307,8 +312,8 @@ export function MessageItem({
                     <TraceSummary
                         foldMedia={hasFinalVideo}
                         made={{
-                            pictures: (visibleAttachments ?? []).filter(f => f.generation && f.type.startsWith('image/')).length,
-                            clips: (visibleAttachments ?? []).filter(f => f.generation && f.type.startsWith('video/')).length,
+                            pictures: (message.attachments ?? []).filter(f => f.generation && f.type.startsWith('image/')).length,
+                            clips: (message.attachments ?? []).filter(f => f.generation && f.type.startsWith('video/')).length,
                         }}
                         steps={message.completedTrace.steps}
                         elapsedSec={message.completedTrace.elapsedSec}
@@ -547,23 +552,6 @@ function ResultFileCard({ file, url, createdAt }: { file: MessageAttachment; url
 // and clips that led to the result, not a second gallery of full cards. Its
 // link loads only once the row is opened. Click opens it on the canvas.
 function WorkingFileTile({ file }: { file: MessageAttachment }) {
-    const url = useThumbnailUrl(file.fileId ?? '', !!file.fileId) ?? file.previewUrl ?? null;
-    const type = assetTypeForFile(file.type, file.name);
-    const Icon = TYPE_ICONS[type];
-    const open = () => {
-        if (!file.fileId) return;
-        const w = window as unknown as { __openCanvas?: () => void; __canvasUpdate?: (action: string, data: unknown) => void };
-        w.__openCanvas?.();
-        w.__canvasUpdate?.('asset_open', { asset: { id: file.fileId, type, filename: file.name, mimeType: file.type, thumbnailUrl: url, size: file.size, createdAt: new Date().toISOString(), sourceMessageId: '', fileId: file.fileId } });
-    };
-    return (
-        <button type="button" onClick={open} title={file.name} aria-label={file.name}
-            className={cn("relative h-20 w-[45px] shrink-0 rounded-md overflow-hidden ring-1 ring-border/60 hover:ring-foreground/40 transition-shadow", TYPE_STYLES[type].bg)}>
-            {url && type === 'image' ? <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" />
-                : url && type === 'video' ? <video src={url} preload="metadata" muted className="absolute inset-0 h-full w-full object-cover" />
-                : <Icon className={cn("absolute inset-0 m-auto h-4 w-4", TYPE_STYLES[type].icon)} />}
-            {type !== 'image' && <span className="absolute bottom-0.5 left-0.5 rounded bg-black/70 px-1 text-[8px] font-semibold text-white">{typeBadge(type, file.name)}</span>}
-        </button>
-    );
+    return <FileTile file={file} size="sm" />;
 }
 

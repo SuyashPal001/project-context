@@ -192,4 +192,8 @@ export const directorAgentDelegate = new Agent({
   skills: directorSkills,
   inputProcessors: [new DirectorSkillLoader()],
   errorProcessors: [streamErrorRetry()],
+  // Its thought summaries come back so the chat can show what it is thinking
+  // during the long stretches it works alone (2026-10-07). No budget is set:
+  // how much it thinks stays the model's own default.
+  defaultOptions: { providerOptions: { 'inference-gateway': { includeThoughts: true } } },
 })

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { CompletedToolCall, LiveStep } from "./types";
-import { StepList } from "./StepList";
+import { StepList, stepTileFiles, withoutStepOwned } from "./StepList";
+import { Branch, FileTile } from "./Branch";
 import { ToolCallCard, groupImageToolCalls, extractResultFiles, withoutRepeatedTraceFiles } from "./ToolCallCard";
 import { ReasoningRow } from "./ThinkingIndicator";
 
@@ -40,7 +41,9 @@ const madeLabel = (made?: { pictures: number; clips: number }) => [
 // clicking a tool card also fire the outer collapse toggle, leaving the
 // inner disclosure unusable. The tool call list is rendered as a sibling
 // <div>, shown/hidden off the same `collapsed` state instead.
-export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningElapsedSec, defaultCollapsed = true, freshUrls, foldMedia = false, steps, made }: TraceSummaryProps) {
+export function TraceSummary({ elapsedSec, toolCalls: allToolCalls, reasoningText, reasoningElapsedSec, defaultCollapsed = true, freshUrls, foldMedia = false, steps, made }: TraceSummaryProps) {
+    // Pictures and clips hang under their step row; the rows repeating them stay out.
+    const toolCalls = withoutStepOwned(allToolCalls, steps);
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const [mediaOpen, setMediaOpen] = useState(false);
 
@@ -110,6 +113,15 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
                 </svg>
                 <span>{header}</span>
             </button>
+            {/* Folded, the part still shows what it made: its pictures and clips
+                hang under the header; opened, each sits under its own step. */}
+            {collapsed && steps && stepTileFiles(steps).length > 0 && (
+                <Branch>
+                    <div className="flex flex-wrap gap-1.5" data-testid="part-files">
+                        {stepTileFiles(steps).map(f => <FileTile key={f.fileId} file={f} />)}
+                    </div>
+                </Branch>
+            )}
             {!collapsed && ((steps && steps.length > 0) || stepCalls.length > 0 || reasoningText) && (
                 <div className="ml-[4px] border-l border-foreground/20 pl-3 flex flex-col gap-1 normal-case">
                     {reasoningText && (onlyThought

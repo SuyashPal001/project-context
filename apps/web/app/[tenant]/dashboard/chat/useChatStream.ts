@@ -596,6 +596,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 state: (['waiting', 'done', 'failed', 'skipped', 'credits'] as const).find(s => s === raw.state) ?? 'running',
                 count: typeof raw.count === 'number' ? raw.count : 1,
                 ...(typeof raw.detail === 'string' && raw.detail ? { detail: raw.detail } : {}),
+                ...(Array.isArray(raw.files) && raw.files.length ? { files: raw.files as NonNullable<LiveStep['files']> } : {}),
             };
             const prev = liveStepsRef.current;
             const i = prev.findIndex(s => s.id === step.id);

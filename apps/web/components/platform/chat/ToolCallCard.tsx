@@ -569,7 +569,7 @@ export function groupImageToolCalls<T extends { toolName: string }>(items: T[]):
   return groups;
 }
 
-function isMediaGenDelegateOrTool(toolName: string): boolean {
+export function isMediaGenDelegateOrTool(toolName: string): boolean {
   return isImageGenTool(toolName) || isSongGenTool(toolName) || isVideoGenTool(toolName)
     || isDirectorDelegateTool(toolName) || isProducerDelegateTool(toolName);
 }

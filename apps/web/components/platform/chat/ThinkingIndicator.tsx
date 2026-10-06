@@ -5,8 +5,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AgentOrb } from "./AgentOrb";
 import { ToolCall, CompletedToolCall, LiveStep } from "./types";
-import { StepList } from "./StepList";
-import { AwaitingApprovalContext, ToolCallCard, groupImageToolCalls, isMediaDelegateTool, withoutRepeatedTraceFiles } from "./ToolCallCard";
+import { StepList, withoutStepOwned } from "./StepList";
+import { Branch } from "./Branch";
+import { AwaitingApprovalContext, ToolCallCard, groupImageToolCalls, isMediaGenDelegateOrTool, withoutRepeatedTraceFiles } from "./ToolCallCard";
 import type { PersonaSummary } from "../personas/types";
 
 // Live extended-thinking trace, streamed via the 'reasoning' SSE event (see
@@ -59,7 +60,8 @@ export function ReasoningRow({ text, completed = false, elapsedSec, defaultOpen 
                 )}
             </button>
             {expanded && (
-                <div className="mt-1 ml-[4px] border-l border-foreground/20 pl-3 text-sm text-muted-foreground min-w-0 [&>*]:mb-2 [&>*:last-child]:mb-0">
+                <Branch>
+                <div className="text-sm text-muted-foreground min-w-0 [&>*]:mb-2 [&>*:last-child]:mb-0">
                     <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{
@@ -72,6 +74,7 @@ export function ReasoningRow({ text, completed = false, elapsedSec, defaultOpen 
                         {text}
                     </ReactMarkdown>
                 </div>
+                </Branch>
             )}
         </div>
     );
@@ -270,10 +273,16 @@ export function LiveTrace({
                 </button>
                 {blockOpen && (
                 <div className="ml-[4px] border-l border-foreground/20 pl-3 min-w-0">
-                {/* While the run waits on the user nothing is thinking: the row settles. */}
-                <ReasoningRow text={reasoningText} completed={awaitingUser} defaultOpen={steps.length === 0} />
+                {/* The thinking is what fills the long waits, so it is on screen and
+                    open from the start, steps or not (2026-10-07). While the run
+                    waits on the user nothing is thinking: the row settles. */}
+                {reasoningText
+                    ? <ReasoningRow text={reasoningText} completed={awaitingUser} defaultOpen />
+                    : !awaitingUser && <div className="my-1 flex items-center gap-2"><Chevron open /><span className="shimmer-text text-sm text-shimmer-accent-60">Thinking…</span></div>}
                 {steps.length > 0 && <StepList steps={steps} />}
-                {groupImageToolCalls(withoutRepeatedTraceFiles(completedToolCalls)).map((group, gi) => (
+                {/* Pictures and clips hang under their step (branch style); the
+                    Director's own row and the media rows that repeat them stay out. */}
+                {groupImageToolCalls(withoutStepOwned(withoutRepeatedTraceFiles(completedToolCalls), steps)).map((group, gi) => (
                     group.length > 1 ? (
                         <div key={gi} className="flex flex-col gap-2">
                             {group.map(tc => (
@@ -303,7 +312,7 @@ export function LiveTrace({
                 {/* The Director's own row repeated the running step ("Pictures" and
                     "Preparing your image…" side by side, 2026-10-07); with step rows
                     on screen it is left out. */}
-                {groupImageToolCalls(steps.length > 0 ? loadingTools.filter(t => !isMediaDelegateTool(t.toolName)) : loadingTools).map((group, gi) => (
+                {groupImageToolCalls(steps.length > 0 ? loadingTools.filter(t => !isMediaGenDelegateOrTool(t.toolName)) : loadingTools).map((group, gi) => (
                     group.length > 1 ? (
                         <div key={gi} className="flex flex-col gap-2">
                             {group.map(tool => (

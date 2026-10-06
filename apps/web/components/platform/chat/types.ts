@@ -182,6 +182,8 @@ export interface LiveStep {
     count: number;
     /** What the call makes, shown as a chip beside the row ("Scene 1 — mirror"). */
     detail?: string;
+    /** The files the call made, hung under its row (sent with the done event). */
+    files?: Array<{ fileId: string; name: string; type: string }>;
 }
 
 export interface CompletedTrace {
