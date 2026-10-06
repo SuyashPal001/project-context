@@ -52,7 +52,10 @@ export function ReasoningRow({ text, completed = false, elapsedSec, defaultOpen 
                     // rose that reads as unreadably faint (and fails WCAG AA) on this theme's
                     // near-white background — --shimmer-accent is the same hue family, darkened,
                     // and only overridden in light theme. See globals.css.
-                    <span className="shimmer-text text-sm flex-1 truncate text-shimmer-accent-60">Thinking…</span>
+                    // Sized to the word, not flex-1: the shimmer band is as wide as the
+                    // span, and across a full-width span it crossed the short word as one
+                    // quick flash (a blink) instead of a sweep.
+                    <span className="shimmer-text text-sm min-w-0 truncate text-shimmer-accent-60">Thinking…</span>
                 )}
             </button>
             {expanded && (
