@@ -25,6 +25,8 @@ import { olmoDelegationOptions } from './mastra/subagents/streamOptions.js'
 import { getMCPClientForTenant } from './mastra/tools.js'
 import { getThinkingBudget } from './mastra/thinking.js'
 import { loadRates } from './mastra/cost.js'
+import { getMastraStore } from './mastra/memory.js'
+import { scheduleTraceRetention } from './mastra/retention.js'
 
 // WebSocket server — noServer mode; upgrade events wired below
 const wss = new WebSocketServer({ noServer: true })
@@ -298,6 +300,13 @@ const port = Number(process.env.PORT ?? 3001)
 await loadRates().catch((err) => {
   console.warn('[cost] loadRates() failed at startup, continuing with fallback pricing:', (err as Error).message)
 })
+
+// Daily trace retention — see mastra/retention.ts. Drops aged
+// mastra.mastra_span_events partitions via @mastra/pg's native prune() so the
+// table that previously filled Supabase (~1GB, forced read-only on 2026-10-06)
+// cannot grow unbounded again. Failures are logged inside runTraceRetentionPrune
+// and never thrown, so this can never take the orchestrator down.
+scheduleTraceRetention(getMastraStore())
 
 const server = serve({ fetch: app.fetch, port }, () => {
   console.log(`agent-orchestrator listening on port ${port}`)
