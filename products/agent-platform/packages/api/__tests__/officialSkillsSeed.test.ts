@@ -82,6 +82,15 @@ describe('OFFICIAL_SKILLS', () => {
     expect(director).toMatch(/roomTone true/)
     expect(director).toMatch(/one direction and complete/)
     expect(card).toMatch(/Reference video: <fileId>/)
+    // Part B: the sung sign-off (additive section).
+    expect(director).toMatch(/Sung sign-off \(supersedes the Music line above when the finish slice has a jingle\)/)
+    expect(director).toContain('generate_jingle')
+    expect(director).toContain('kind "jingle"')
+    expect(director).toContain('signoffStartSeconds')
+    expect(director).toContain('fadeOutAtSeconds')
+    expect(director).toContain('JINGLE_LINE_NOT_SUNG')
+    expect(card).toContain('Jingle: <the line to sing>')
+    expect(card).toMatch(/default is no jingle/)
   });
 
   it('each entry file exists and is non-empty', () => {

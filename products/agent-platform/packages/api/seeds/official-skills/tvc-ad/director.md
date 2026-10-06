@@ -59,3 +59,11 @@ Quality tools (supersede the matching lines above):
 - This overrides the productFileId bullet above: Pass productFileId to generate_video only for a shot whose slice has productAnchor true. Never pass it for a continuing shot, even when the product is visible in it — its start still must stay the literal previous clip's last frame, not a product-anchored render.
 - A video refused with CONTENT_BLOCKED: rewrite that shot without ages or minors' activities ("a young woman", not "a high-school girl") and try it once more; that refused attempt was refunded.
 - step finish: assemble_clips with roomTone true. overlay_text with avoidFaces true. composite_end_card with avoidFaces true.
+
+Sung sign-off (supersedes the Music line above when the finish slice has a jingle):
+- step plan: write brief.jingle {line, style, lyrics, language} only when Olmo's brief has "Jingle: <line>". End the voiceover early enough for it (at least 3.5 seconds before the end) and make the packshot 3–4 seconds.
+- step finish, music: when the finish slice has jingle but no jingleFileId, call generate_jingle once with line, lyrics, style and language from it, alongside generate_song for the bed. Then plan_tvc record jingleFileId (its fileId), signoffFileId and signoffSeconds, and get the finish slice again. When the finish slice already has jingleFileId, reuse it.
+- If plan_tvc record refuses with JINGLE_OVERLAPS_SPEECH or JINGLE_TOO_LONG, return the reason to Olmo and finish without the jingle only if Olmo says so.
+- mix_voiceover: add the sign-off as one more block with kind "jingle", audioFileId = signoffFileId, startSeconds = the finish slice's signoffStartSeconds.
+- mix_music_bed: pass fadeOutAtSeconds = the finish slice's musicFadeOutAtSeconds.
+- generate_jingle refused with JINGLE_LINE_NOT_SUNG: it was refunded. Call it once more with the same inputs; if it refuses again, return the reason to Olmo so the user can shorten the line.
