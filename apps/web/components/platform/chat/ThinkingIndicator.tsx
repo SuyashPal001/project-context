@@ -56,7 +56,7 @@ export function ReasoningRow({ text, completed = false, elapsedSec, defaultOpen 
                 )}
             </button>
             {expanded && (
-                <div className="mt-1 ml-[4px] border-l border-foreground/15 pl-3 text-sm text-muted-foreground min-w-0 [&>*]:mb-2 [&>*:last-child]:mb-0">
+                <div className="mt-1 ml-[4px] border-l border-foreground/20 pl-3 text-sm text-muted-foreground min-w-0 [&>*]:mb-2 [&>*:last-child]:mb-0">
                     <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{
@@ -266,7 +266,7 @@ export function LiveTrace({
                     )}
                 </button>
                 {blockOpen && (
-                <div className="ml-[4px] border-l border-foreground/15 pl-3 min-w-0">
+                <div className="ml-[4px] border-l border-foreground/20 pl-3 min-w-0">
                 <ReasoningRow text={reasoningText} defaultOpen={steps.length === 0} />
                 {steps.length > 0 && <StepList steps={steps} />}
                 {groupImageToolCalls(withoutRepeatedTraceFiles(completedToolCalls)).map((group, gi) => (
