@@ -76,7 +76,7 @@ export async function runTraceRetentionPrune(
       )
     }
   } catch (err) {
-    logger.error('[trace-retention] prune failed:', (err as Error).message)
+    logger.error('[trace-retention] prune failed:', String((err as Error)?.message ?? err))
   }
 }
 
@@ -91,7 +91,9 @@ export function scheduleTraceRetention(
   logger: RetentionLogger = console,
 ): NodeJS.Timeout {
   void runTraceRetentionPrune(store, days, logger)
-  return setInterval(() => {
+  const handle = setInterval(() => {
     void runTraceRetentionPrune(store, days, logger)
   }, ONE_DAY_MS)
+  handle.unref?.()
+  return handle
 }

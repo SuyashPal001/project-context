@@ -103,6 +103,26 @@ describe('runTraceRetentionPrune', () => {
     await expect(runTraceRetentionPrune(store, 3, logger)).resolves.toBeUndefined()
     expect(logger.error).toHaveBeenCalledTimes(1)
   })
+
+  // F5: prune() can reject with something that isn't an Error at all (a
+  // plain string, or null/undefined) — `(err as Error).message` on a
+  // non-Error throws its own TypeError, which used to escape the catch
+  // block's own error log entirely.
+  it('never throws when prune() rejects with a non-Error value', async () => {
+    const store: PrunableStore = { prune: vi.fn().mockRejectedValue('plain string rejection') }
+
+    await expect(runTraceRetentionPrune(store, 3, logger)).resolves.toBeUndefined()
+    expect(logger.error).toHaveBeenCalledTimes(1)
+    expect(logger.error.mock.calls[0].join(' ')).toContain('plain string rejection')
+  })
+
+  it('never throws when prune() rejects with undefined', async () => {
+    const store: PrunableStore = { prune: vi.fn().mockRejectedValue(undefined) }
+
+    await expect(runTraceRetentionPrune(store, 3, logger)).resolves.toBeUndefined()
+    expect(logger.error).toHaveBeenCalledTimes(1)
+    expect(logger.error.mock.calls[0].join(' ')).toContain('undefined')
+  })
 })
 
 describe('scheduleTraceRetention', () => {
@@ -148,5 +168,20 @@ describe('scheduleTraceRetention', () => {
     await vi.waitFor(() => expect(logger.error).toHaveBeenCalledTimes(2))
 
     clearInterval(handle)
+  })
+
+  // F5: the interval must not keep the orchestrator process alive on its own.
+  it('calls unref() on the interval handle', () => {
+    const prune = vi.fn().mockResolvedValue([])
+    const store: PrunableStore = { prune }
+    const unref = vi.fn()
+    const fakeHandle = { unref } as unknown as NodeJS.Timeout
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval').mockReturnValue(fakeHandle)
+
+    const handle = scheduleTraceRetention(store, 3, logger)
+
+    expect(unref).toHaveBeenCalledTimes(1)
+    expect(handle).toBe(fakeHandle)
+    setIntervalSpy.mockRestore()
   })
 })
