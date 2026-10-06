@@ -33,6 +33,7 @@ import { showFilesTool } from '../tools/showFiles.js'
 import { cropImage } from '../tools/cropImage.js'
 import { platformCapabilityTools } from '../tools/platform-capabilities.js'
 import { askClarifyingQuestionsTool } from '../tools/askClarifyingQuestions.js'
+import { reviewShotsTool } from '../tools/reviewShots.js'
 import { requestUploadTool } from '../tools/requestUpload.js'
 import { renderCanvas } from '../tools/renderCanvas.js'
 import { analyzeAudioTool } from '../tools/analyzeAudio.js'
@@ -189,6 +190,7 @@ export const SERVER_TOOLS = {
     },
   }),
   ask_clarifying_questions: askClarifyingQuestionsTool,
+  review_shots: reviewShotsTool,
   request_upload: requestUploadTool,
   render_canvas: renderCanvas,
   analyze_audio: analyzeAudioTool,

@@ -7,6 +7,7 @@ import { shouldRequireApproval } from './generationApproval.js'
 import { markVideoMade, videoBlockedThisTurn, SHOW_FIRST_REFUSAL } from './oneVideoPerTurn.js'
 import { MAX_BATCH_ITEMS, runBatch, batchProgressEmitter, type MediaExecContext } from './batchRunner.js'
 import { emitGenerationStarted } from './generationStarted.js'
+import { firstShotUnreviewed, firstShotRefusal } from './reviewGate.js'
 
 export const generateVideos = createTool({
   id: 'generate-videos',
@@ -18,10 +19,11 @@ export const generateVideos = createTool({
     failed: z.number(),
   }),
   requireApproval: async (_input, ctx) =>
-    !videoBlockedThisTurn(ctx?.requestContext) && shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx),
+    !videoBlockedThisTurn(ctx?.requestContext) && !firstShotUnreviewed(ctx?.requestContext, 'clip', (_input as { items?: unknown[] }).items?.length ?? 0) && shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx),
   execute: async (inputData, execContext) => {
     if (videoBlockedThisTurn(execContext?.requestContext)) return { ...SHOW_FIRST_REFUSAL, results: [], succeeded: 0, failed: 0 }
     const { items } = inputData as { items: VideoItemInput[] }
+    if (firstShotUnreviewed(execContext?.requestContext, 'clip', items.length)) return { ...firstShotRefusal('clip'), results: [], succeeded: 0, failed: 0 }
     emitGenerationStarted(execContext, { aspectRatio: (inputData as { items?: Array<{ aspectRatio?: unknown }> }).items?.[0]?.aspectRatio, count: items.length })
     const sendEvent = execContext?.requestContext?.get('sendEvent') as ((event: string, data: object) => void) | undefined
     const toolCallId = (execContext as unknown as MediaExecContext)?.agent?.toolCallId

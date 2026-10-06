@@ -179,6 +179,7 @@ const HELPER_TOOLS: Record<string, { loading: string; done: string; icon: Helper
   skill: { loading: 'Loading skill', done: 'Loaded skill', icon: 'skill' },
   check_credit_plan: { loading: 'Checking your credits', done: 'Checked your credits', icon: 'credits' },
   ask_clarifying_questions: { loading: 'Preparing a few questions', done: 'Asked a few questions', icon: 'question' },
+  review_shots: { loading: 'Asking how the scenes look', done: 'Checked the scenes with you', icon: 'question' },
   list_casting_assets: { loading: 'Browsing avatars', done: 'Browsed avatars', icon: 'people' },
   show_files: { loading: 'Bringing up your files', done: 'Showed your files', icon: 'folder' },
   list_folder: { loading: 'Looking in your Drive', done: 'Looked in your Drive', icon: 'folder' },

@@ -85,7 +85,7 @@ const WARMUP_STEP_INTERVAL_MS = 8_000;
 // Tools that pause the turn on the user, not on the agent: while only these
 // are loading, the agent is waiting for an answer, so the live line stops
 // reading "Working for Ns" and its timer stops counting.
-const AWAITING_USER_TOOLS = new Set(['ask_clarifying_questions']);
+const AWAITING_USER_TOOLS = new Set(['ask_clarifying_questions', 'review_shots']);
 
 export function isAwaitingUser(activeToolCalls: ToolCall[]): boolean {
     const loading = activeToolCalls.filter(t => t.isLoading);

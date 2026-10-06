@@ -26,6 +26,7 @@ import { GENERATION_APPROVAL_METADATA, detectSkillPii } from '../mastra/tools/ge
 import { saveGenerationConfirmRequest, updateGenerationConfirmRequest, saveConversationTitle, fetchConversationAllowMode } from '../persistence.js'
 import { isClientHiddenTool } from '../toolVisibility.js'
 import { relayedDelegateMedia } from './nestedMedia.js'
+import { AD_FLOW_KEY, briefIsReviewedAdFlow } from '../mastra/tools/reviewGate.js'
 import { fileIdsIn, markWorkingFiles } from './workingFiles.js'
 import { stepStart, stepEnd, type StepEvent } from './stepEvents.js'
 import { buildCancelNotice, backgroundDeclineReason, trackBackgroundDecline, waitForBackgroundDecline } from './cancelNotice.js'
@@ -743,6 +744,9 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           if (toolCallId && toolName) toolCallNames.set(toolCallId, toolName)
           fileIdsIn(args, turnInputFileIds)
           startStep(toolName, toolCallId, args)
+          // The Director's tools learn they are in a reviewed ad flow before
+          // any approval card is shown (see reviewGate.ts).
+          if (/^agent[-_]director$/.test(toolName) && briefIsReviewedAdFlow(args.prompt)) requestContext.set(AD_FLOW_KEY as never, true as never)
           toolCallCount++
           if (!isClientHiddenTool(toolName)) sendEvent('tool_call', { toolName, toolCallId, args, conversationId })
           onToolCallStart()

@@ -80,6 +80,7 @@ describe('SERVER_TOOLS', () => {
       'request_upload',
       'retrieve_documents',
       'retrieve_template',
+      'review_shots',
       'save_skill',
       'show_files',
       'start_task',
