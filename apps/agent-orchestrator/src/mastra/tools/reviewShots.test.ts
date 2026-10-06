@@ -4,7 +4,7 @@ vi.mock('./checkClip.js', () => ({ checkClip: { execute: vi.fn() } }))
 import { reviewOutcome, reviewShotsTool, shotLabel } from './reviewShots.js'
 import { checkClip } from './checkClip.js'
 import { askClarifyingQuestionsTool } from './askClarifyingQuestions.js'
-import { firstShotUnreviewed, markShotReviewed, briefIsReviewedAdFlow, noteClipCheck, noteBriefRefs, briefRefsFor, AD_FLOW_KEY } from './reviewGate.js'
+import { firstShotUnreviewed, markShotReviewed, briefIsReviewedAdFlow, noteClipCheck, noteBriefRefs, briefRefsFor, noteMadeFile, AD_FLOW_KEY } from './reviewGate.js'
 
 const shots = [
   { fileId: '11111111-1111-4111-8111-111111111111', label: 'Scene 1' },
@@ -114,5 +114,18 @@ describe('stills are checked against the brief before the user sees them', () =>
     expect(shotLabel('Scene 3 — Look & CTA Still')).toBe('Scene 3 — Look & CTA')
     expect(shotLabel('Scene 1 clip')).toBe('Scene 1')
     expect(shotLabel('Still')).toBe('Still')
+  })
+})
+
+describe('a picture that was never made', () => {
+  it('is never put to the user', async () => {
+    noteMadeFile('conv-made', shots[1].fileId)
+    const ask = askClarifyingQuestionsTool.execute as unknown as ReturnType<typeof vi.fn>
+    ask.mockReset()
+    const out = await (reviewShotsTool as unknown as { execute: (i: unknown, c: unknown) => Promise<{ decision: string; nextStep: string }> })
+      .execute({ kind: 'still', shots: [shots[0]] }, { requestContext: new Map([['conversationId', 'conv-made']]) })
+    expect(ask).not.toHaveBeenCalled()
+    expect(out.decision).toBe('skipped')
+    expect(out.nextStep).toContain('NOT_MADE')
   })
 })

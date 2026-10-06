@@ -245,6 +245,17 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
         }
       }
 
+      // Loaded its skills, then stopped with no reply and no work done. Olmo
+      // read the silence as success and asked the user to review a scene-1
+      // still that was never made (2026-10-07). Only skill loads and notes
+      // count as no work; anything else it ran is real output.
+      const did = (context.result.subAgentToolResults ?? []).filter((r) => !/^(skill|updateWorkingMemory)$/.test(r.toolName))
+      if (!context.result.text?.trim() && did.length === 0) {
+        return {
+          resultText: `"${name}" made nothing: it loaded its instructions and stopped without a reply or a file. Nothing was generated and nothing was charged. Send it the same brief once more; if it comes back empty again, tell the user this step failed. Never show or review a file from this step.`,
+        }
+      }
+
       return undefined
     },
   }

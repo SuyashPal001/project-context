@@ -1,7 +1,7 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { askClarifyingQuestionsTool } from './askClarifyingQuestions.js'
-import { briefRefsFor, clipCheckFailure, markShotReviewed, type ShotKind } from './reviewGate.js'
+import { briefRefsFor, clipCheckFailure, markShotReviewed, notMadeHere, type ShotKind } from './reviewGate.js'
 import { checkClip } from './checkClip.js'
 
 // The one way an ad's stills and clips are put to the user, built here rather
@@ -112,9 +112,17 @@ export const reviewShotsTool = createTool({
     const { kind, question } = given
     const shots = given.shots.map((s) => ({ ...s, label: shotLabel(s.label) }))
     const noun = kind === 'still' ? 'picture' : 'clip'
+    const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
+    const missing = notMadeHere(conversationId, shots.map((s) => s.fileId))
+    if (missing.length) {
+      return {
+        decision: 'skipped' as const, fix: [],
+        nextStep: `NOT_MADE: ${missing.join(', ')} was never generated in this chat (the Director came back with nothing). Do not ask the user about it. Delegate the ${noun} to agent-director again, then call review_shots with the file it returns.`,
+      }
+    }
     // Stills are checked here, so a wrong product (scene 1 held a pink tube,
     // not the Lakmē bullet, 2026-10-06) is flagged before it is animated.
-    const brief = briefRefsFor(execContext?.requestContext?.get('conversationId') as string | undefined)
+    const brief = briefRefsFor(conversationId)
     const failed = kind === 'clip'
       ? shots.map((s) => clipCheckFailure(s.fileId))
       : await stillFaults(shots, given.productFileId ?? brief.productFileId, brief.avatarFileId, execContext)
@@ -145,7 +153,7 @@ export const reviewShotsTool = createTool({
     if (asked.error) return { decision: 'skipped', fix: [], nextStep: `Could not ask (${asked.error}). Ask the user in one plain sentence whether the ${noun}s look right.` }
     const outcome = reviewOutcome(kind, shots, asked.answers?.[0])
     if (outcome.decision === 'continue') {
-      markShotReviewed(execContext?.requestContext?.get('conversationId') as string | undefined, kind)
+      markShotReviewed(conversationId, kind)
     }
     return outcome
   },

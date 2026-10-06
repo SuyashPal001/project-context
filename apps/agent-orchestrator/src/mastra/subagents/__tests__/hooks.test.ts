@@ -252,6 +252,18 @@ describe('onDelegationComplete', () => {
     expect(ctx.bail).not.toHaveBeenCalled()
   })
 
+  it('says a delegate that only loaded its skills made nothing', async () => {
+    const ctx = completeContext({ result: { text: '', finishReason: 'stop', subAgentToolResults: [{ toolName: 'skill', toolCallId: 'a' }, { toolName: 'updateWorkingMemory', toolCallId: 'b' }] } })
+    const result = await buildDelegationConfig(host, { record: noopRecord }).onDelegationComplete!(ctx as never)
+    expect(result?.resultText).toMatch(/made nothing/)
+  })
+
+  it('leaves a silent delegate that did make something alone', async () => {
+    const ctx = completeContext({ result: { text: '', finishReason: 'stop', subAgentToolResults: [{ toolName: 'skill', toolCallId: 'a' }, { toolName: 'generate_image', toolCallId: 'b' }] } })
+    const result = await buildDelegationConfig(host, { record: noopRecord }).onDelegationComplete!(ctx as never)
+    expect(result?.resultText).toBeUndefined()
+  })
+
   it('leaves a normal result untouched', async () => {
     const result = await buildDelegationConfig(host, { record: noopRecord }).onDelegationComplete!(completeContext() as never)
     expect(result?.resultText).toBeUndefined()

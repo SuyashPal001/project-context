@@ -26,7 +26,7 @@ import { GENERATION_APPROVAL_METADATA, detectSkillPii } from '../mastra/tools/ge
 import { saveGenerationConfirmRequest, updateGenerationConfirmRequest, saveConversationTitle, fetchConversationAllowMode } from '../persistence.js'
 import { isClientHiddenTool } from '../toolVisibility.js'
 import { relayedDelegateMedia } from './nestedMedia.js'
-import { AD_FLOW_KEY, briefIsReviewedAdFlow, noteBriefRefs } from '../mastra/tools/reviewGate.js'
+import { AD_FLOW_KEY, briefIsReviewedAdFlow, noteBriefRefs, noteMadeFile } from '../mastra/tools/reviewGate.js'
 import { fileIdsIn, markWorkingFiles } from './workingFiles.js'
 import { stepStart, stepEnd, type StepEvent } from './stepEvents.js'
 import { buildCancelNotice, backgroundDeclineReason, trackBackgroundDecline, waitForBackgroundDecline } from './cancelNotice.js'
@@ -301,7 +301,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   // One card per file: a delegate's media are relayed as each finishes and
   // then come back again inside the delegate's own result.
   const addAttachments = (list: AttachmentPayload[]): void => {
-    for (const a of list) if (!pendingAttachments.some(p => p.fileId === a.fileId)) pendingAttachments.push(a)
+    for (const a of list) {
+      // Only tool results come through here, so this is what was really made.
+      noteMadeFile(conversationId, a.fileId)
+      if (!pendingAttachments.some(p => p.fileId === a.fileId)) pendingAttachments.push(a)
+    }
   }
   // File ids this turn's tool calls took as inputs (see workingFiles.ts).
   const turnInputFileIds = new Set<string>()
