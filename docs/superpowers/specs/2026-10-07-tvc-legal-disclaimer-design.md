@@ -26,9 +26,9 @@ The source of the rules is ASCI, "Guidelines for Disclaimers", amended 13 July 2
 
 ### L1: a `legal` style in `overlay_text`, enforced in code
 - **New size value `legal`.** Its use is reserved for the disclaimer style.
-- **Font size is worked out from the real video height:** font px = ceil(0.046 × H). That gives a lowercase x-height of at least 2.4% of H, which is ≥26 px at 1080, ≥14 px at 576 and ≥57 px at 2160. Implement it as an ASS style scaled to the PlayRes canvas, so the result lands at that px after libass scaling for any aspect ratio. A unit test checks portrait 1080×1920, landscape 1920×1080 and square 1080×1080.
+- **Font size is worked out from the real video frame:** font px = ceil(0.046 × S), where S is the frame's shorter side (see E2). That gives a lowercase x-height of at least 2.4% of S, which is ≥26 px at 1080, ≥14 px at 576 and ≥57 px at 2160. Implement it as an ASS style scaled to the PlayRes canvas, so the result lands at that px after libass scaling for any aspect ratio. A unit test checks portrait 1080×1920, landscape 1920×1080 and square 1080×1080.
 - **Box:** an opaque single-colour block, ASS `BorderStyle=3`, dark (`#000000` at 0 transparency), white text. Contrast is guaranteed by the fixed pair.
-- **Font:** the same sans-serif as the other overlays. Italic is off and bold is off.
+- **Font:** a sans-serif that covers Latin and Devanagari (see E1). Italic is off and bold is off.
 - **Lines:** wrap to the safe width. If the text needs more than 2 lines at the legal size, `overlay_text` refuses with `LEGAL_TOO_LONG: the disclaimer "<first words…>" needs <n> lines; ASCI allows 2. Shorten it`. Text is never shrunk to fit.
 - **Position:** always bottom, inside the safe margin. Face avoidance from Part A still applies (`avoidFaces`): when it moves the line it moves the box with it, and never makes it smaller.
 - **Callers that never use `legal` see no change at all;** their filter graphs are pinned by tests.
