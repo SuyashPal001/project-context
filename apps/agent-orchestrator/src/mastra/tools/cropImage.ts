@@ -80,10 +80,16 @@ export function parseHeadBox(raw: string): HeadBox | null {
   return parseBox2dList(raw)[0] ?? parseFractionBox(raw)
 }
 
+// crop_image's own question (unchanged since before K2): one box for the
+// main person, not every head — a larger background face must never win.
+const FIND_HEAD_QUESTION = 'Find the main person\'s (or character\'s) head, from the top of the hair to the chin. Return ONLY JSON {"x":..,"y":..,"w":..,"h":..} with the head\'s bounding box as fractions of the image width and height (0 to 1, x and y are the top-left corner).'
+const FIND_HEAD_MAX_TOKENS = 120
+
 async function findHead(base64: string, mimeType: string, tenantId: string | undefined, signal: AbortSignal): Promise<HeadBox | null> {
-  // The shared finder (K2); the main person is the largest head.
+  // The shared finder (K2) parsing, crop_image's own question: it still asks
+  // for the main person only, so largestBox is just taking the one box back.
   try {
-    return largestBox(await findFaces({ data: base64, mime: mimeType }, { tenantId, agentId: 'crop-image', signal }))
+    return largestBox(await findFaces({ data: base64, mime: mimeType }, { tenantId, agentId: 'crop-image', signal, question: FIND_HEAD_QUESTION, maxTokens: FIND_HEAD_MAX_TOKENS }))
   } catch {
     return null
   }

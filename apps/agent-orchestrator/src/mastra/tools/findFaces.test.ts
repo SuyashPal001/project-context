@@ -44,4 +44,11 @@ describe('findFaces (K2)', () => {
     expect(parseFractionBox('{"x":400,"y":80,"w":150,"h":110}')).toBeNull()
     expect(parseFractionBox('{"x":0.9,"y":0.1,"w":0.3,"h":0.1}')).toBeNull()
   })
+  it('a custom question and maxTokens are sent verbatim (crop_image keeps its own question)', async () => {
+    const f = reply('{"x":0.4,"y":0.08,"w":0.15,"h":0.11}')
+    await findFaces(img, { agentId: 'crop-image', fetchImpl: f, question: 'Find the main head only.', maxTokens: 120 })
+    const body = JSON.parse(((f as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit])[1].body as string)
+    expect(body.max_tokens).toBe(120)
+    expect(body.messages[0].content[1].text).toBe('Find the main head only.')
+  })
 })

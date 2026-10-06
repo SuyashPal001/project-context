@@ -49,16 +49,16 @@ export function largestBox(boxes: HeadBox[]): HeadBox | null {
 
 export async function findFaces(
   image: { data: string; mime: string },
-  opts: { tenantId?: string; agentId: string; signal?: AbortSignal; fetchImpl?: typeof fetch },
+  opts: { tenantId?: string; agentId: string; signal?: AbortSignal; fetchImpl?: typeof fetch; question?: string; maxTokens?: number },
 ): Promise<HeadBox[]> {
   const res = await (opts.fetchImpl ?? fetch)(`${INFERENCE_GATEWAY_URL}/v1/chat/completions`, {
     method: 'POST', signal: opts.signal,
     headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
     body: JSON.stringify({
-      model: FACE_MODEL, temperature: 0, max_tokens: 600,
+      model: FACE_MODEL, temperature: 0, max_tokens: opts.maxTokens ?? 600,
       messages: [{ role: 'user', content: [
         { type: 'image_url', image_url: { url: `data:${image.mime};base64,${image.data}` } },
-        { type: 'text', text: FIND_FACES_QUESTION },
+        { type: 'text', text: opts.question ?? FIND_FACES_QUESTION },
       ] }],
     }),
   })
