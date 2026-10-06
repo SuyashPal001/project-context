@@ -102,3 +102,24 @@ export function briefRefsFor(conversationId: string | undefined): { productFileI
   const r = conversationId ? briefRefs.get(conversationId) : undefined
   return r && Date.now() - r.at < REVIEW_TTL_MS * 4 ? r : {}
 }
+
+// Every picture and clip actually made in a conversation (fed from the
+// stream's attachments). review_shots only shows these: 2026-10-07 the Director
+// returned nothing and Olmo still asked "Does Scene 1 look right?" about a
+// still that did not exist.
+const made = new Map<string, Set<string>>()
+
+export function noteMadeFile(conversationId: string | undefined, fileId: string | undefined): void {
+  if (!conversationId || !fileId) return
+  const set = made.get(conversationId) ?? new Set<string>()
+  set.add(fileId.toLowerCase())
+  made.set(conversationId, set)
+  if (made.size > 5000) made.delete(made.keys().next().value as string)
+}
+
+/** Ids among these that were not made in this conversation (none when nothing is known about it, e.g. after a restart). */
+export function notMadeHere(conversationId: string | undefined, fileIds: string[]): string[] {
+  const set = conversationId ? made.get(conversationId) : undefined
+  if (!set) return []
+  return fileIds.filter((id) => !set.has(id.toLowerCase()))
+}
