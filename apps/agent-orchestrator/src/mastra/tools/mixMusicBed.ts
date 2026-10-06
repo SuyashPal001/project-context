@@ -53,7 +53,20 @@ const outputSchema = z.object({
 export const inputSchema = z.object({
   videoFileId: z.string().describe('The captioned master — already has the mixed voice track. Music is applied LAST, after captions.'),
   musicFileId: z.string().describe('The music bed from generate_song.'),
+  fadeOutAtSeconds: z.number().positive().optional().describe('TVC with a sung sign-off: the finish slice\'s musicFadeOutAtSeconds. The bed fades out over 0.5s ending here, so it clears before the sung line.'),
 })
+
+const BED_FADE_SECONDS = 0.5
+const r2 = (x: number) => Math.round(x * 100) / 100
+
+/** Without fadeOutAtSeconds the graph is the same as before, byte for byte. */
+export function buildMusicBedFilter(fadeOutAtSeconds?: number): string {
+  const fade = fadeOutAtSeconds === undefined ? '' : `,afade=t=out:st=${r2(Math.max(0, fadeOutAtSeconds - BED_FADE_SECONDS))}:d=${BED_FADE_SECONDS}`
+  return `[1:a]volume=${BED_VOLUME}${fade}[bedvol];` +
+    `[bedvol][0:a]sidechaincompress=threshold=0.05:ratio=8:attack=5:release=300[duckedbed];` +
+    `[0:a][duckedbed]amix=inputs=2:duration=longest:normalize=0[premaster];` +
+    `[premaster]loudnorm=I=-14:TP=-1.5:LRA=11[outa]`
+}
 
 export const mixMusicBed = createTool({
   id: 'mix-music-bed',
@@ -63,7 +76,7 @@ export const mixMusicBed = createTool({
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'clip_assembly', subject: MIX_SUBJECT }, ctx),
   execute: async (inputData, execContext) => {
-    const { videoFileId, musicFileId } = inputData as z.infer<typeof inputSchema>
+    const { videoFileId, musicFileId, fadeOutAtSeconds } = inputData as z.infer<typeof inputSchema>
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined
@@ -158,11 +171,7 @@ export const mixMusicBed = createTool({
       // for the bed to be "ducked under the voice", not just quiet
       // throughout) — [bedvol][0:a]sidechaincompress compresses the first
       // input (the bed) using the second (the voice) as the trigger.
-      const filterComplex =
-        `[1:a]volume=${BED_VOLUME}[bedvol];` +
-        `[bedvol][0:a]sidechaincompress=threshold=0.05:ratio=8:attack=5:release=300[duckedbed];` +
-        `[0:a][duckedbed]amix=inputs=2:duration=longest:normalize=0[premaster];` +
-        `[premaster]loudnorm=I=-14:TP=-1.5:LRA=11[outa]`
+      const filterComplex = buildMusicBedFilter(fadeOutAtSeconds)
       await execFile('ffmpeg', [
         '-y', '-i', videoPath, '-i', musicPath,
         '-filter_complex', filterComplex,

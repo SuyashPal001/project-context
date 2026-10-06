@@ -29,28 +29,79 @@ const r2 = (x: number) => Math.round(x * 100) / 100
 export const inputSchema = z.object({
   videoFileId: z.string().describe('The joined TVC video, with its clips\' own sound kept (assemble_clips preserveAudio true).'),
   blocks: z.array(z.object({
-    audioFileId: z.string().describe('One voiceover block from generate_narration'),
+    audioFileId: z.string().describe('One voiceover block from generate_narration, or the sign-off from generate_jingle'),
     startSeconds: z.number().min(0).describe('Where this block starts in the video, from the TVC plan'),
-  })).min(1).max(4),
+    kind: z.enum(['voice', 'jingle']).optional().describe('jingle = the sung sign-off (signoffFileId at the finish slice\'s signoffStartSeconds): level-matched to the speech before it instead of ducking. Default voice'),
+  })).min(1).max(5),
 })
 
-export function buildVoiceoverFilter(blocks: Array<{ start: number; duration: number }>, baseHasAudio: boolean): string {
+export type MixBlock = { start: number; duration: number; kind?: 'voice' | 'jingle'; gainDb?: number }
+
+// tail replaces the master on the probe graph (a window measurement);
+// muteJingles silences jingle blocks there so the window holds only what
+// the jingle has to match. A call without kind builds the same graph as
+// before, byte for byte.
+export function buildVoiceoverFilter(blocks: MixBlock[], baseHasAudio: boolean, tail: string = MASTER, muteJingles = false): string {
   const parts = blocks.map((b, i) => {
     const ms = Math.round(b.start * 1000)
-    return `[${i + 1}:a]adelay=${ms}|${ms}[vo${i}]`
+    const gain = b.kind !== 'jingle' ? '' : muteJingles ? 'volume=0,' : b.gainDb !== undefined ? `volume=${b.gainDb}dB,` : ''
+    return `[${i + 1}:a]${gain}adelay=${ms}|${ms}[vo${i}]`
   })
   parts.push(blocks.length === 1
     ? '[vo0]anull[vo]'
     : `${blocks.map((_, i) => `[vo${i}]`).join('')}amix=inputs=${blocks.length}:duration=longest:normalize=0[vo]`)
   if (!baseHasAudio) {
-    parts.push(`[vo]apad,${MASTER}[outa]`)
+    parts.push(`[vo]apad,${tail}[outa]`)
     return parts.join(';')
   }
-  const windows = blocks.map((b) => `between(t,${r2(b.start)},${r2(b.start + b.duration)})`).join('+')
-  parts.push(`[0:a]volume=${DUCK_VOLUME}:enable='${windows}'[base]`)
+  // A jingle neither ducks the base nor is ducked: only voice blocks open a window.
+  const voiced = blocks.filter((b) => b.kind !== 'jingle')
+  const windows = voiced.map((b) => `between(t,${r2(b.start)},${r2(b.start + b.duration)})`).join('+')
+  parts.push(voiced.length ? `[0:a]volume=${DUCK_VOLUME}:enable='${windows}'[base]` : '[0:a]anull[base]')
   parts.push('[base][vo]amix=inputs=2:duration=first:normalize=0[pre]')
-  parts.push(`[pre]${MASTER}[outa]`)
+  parts.push(`[pre]${tail}[outa]`)
   return parts.join(';')
+}
+
+// J6: a sung sign-off came out about 8 LU louder than the speech when not
+// matched (2026-10-05). It is set to the loudness of the 5s before it: the
+// speech level when someone speaks there, otherwise the base + 2 LU.
+export const JINGLE_WINDOW_SECONDS = 5
+const JINGLE_OVER_BASE_LU = 2
+const JINGLE_MAX_GAIN_DB = 12
+
+export function jingleWindow(start: number): { from: number; to: number } | null {
+  const from = Math.max(0, start - JINGLE_WINDOW_SECONDS)
+  return start - from >= 0.5 ? { from: r2(from), to: r2(start) } : null
+}
+
+export const speechInWindow = (blocks: MixBlock[], from: number, to: number): boolean =>
+  blocks.some((b) => b.kind !== 'jingle' && b.start < to && b.start + b.duration > from)
+
+export function jingleGainDb(windowLufs: number | null, jingleLufs: number, speech: boolean): number {
+  if (windowLufs === null || windowLufs <= -60) return 0
+  const target = windowLufs + (speech ? 0 : JINGLE_OVER_BASE_LU)
+  const gain = Math.min(JINGLE_MAX_GAIN_DB, Math.max(-JINGLE_MAX_GAIN_DB, target - jingleLufs))
+  return Math.round(gain * 10) / 10
+}
+
+/** inputs = [video, ...block audio], in the same order as blocks. Never throws: an unmeasurable window leaves the jingle at 0 dB. */
+export async function levelMatchJingles(inputs: string[], blocks: MixBlock[], blockLufs: number[], baseHasAudio: boolean): Promise<MixBlock[]> {
+  return Promise.all(blocks.map(async (b, i) => {
+    if (b.kind !== 'jingle') return b
+    const win = jingleWindow(b.start)
+    let windowLufs: number | null = null
+    if (win) {
+      try {
+        const probe = buildVoiceoverFilter(blocks, baseHasAudio, `atrim=start=${win.from}:end=${win.to},ebur128=framelog=verbose`, true)
+        const { stderr } = await execFile('ffmpeg', ['-nostats', ...inputs.flatMap((p) => ['-i', p]), '-filter_complex', probe, '-map', '[outa]', '-f', 'null', '-'], { timeout: FFMPEG_TIMEOUT_MS })
+        windowLufs = parseIntegratedLoudness(stderr)
+      } catch (err) {
+        console.warn('[mixVoiceover] jingle window probe failed, leaving the jingle at 0 dB:', (err as Error).message)
+      }
+    }
+    return { ...b, gainDb: jingleGainDb(windowLufs, blockLufs[i], win ? speechInWindow(blocks, win.from, win.to) : false) }
+  }))
 }
 
 // framelog=verbose, not quiet: the VM's ffmpeg 5.1 rejects quiet, which made
@@ -81,7 +132,7 @@ async function durationOf(path: string): Promise<number> {
 
 export const mixVoiceover = createTool({
   id: 'mix-voiceover',
-  description: 'Lays one or more voiceover blocks over a joined video at their planned start times, keeping the video\'s own sound (on-camera lines, sound effects) and dipping it under the voice, then masters the mix. Refuses a voiceover that runs past the end of the video or is too quiet to hear. Used in the TVC ad finish, after assemble_clips and before overlay_text and mix_music_bed.',
+  description: 'Lays one or more voiceover blocks over a joined video at their planned start times, keeping the video\'s own sound (on-camera lines, sound effects) and dipping it under the voice, then masters the mix. Refuses a voiceover that runs past the end of the video or is too quiet to hear. Used in the TVC ad finish, after assemble_clips and before overlay_text and mix_music_bed. A block with kind "jingle" (the sung sign-off) is level-matched to the speech before it and never ducks the sound.',
   inputSchema,
   outputSchema,
   requireApproval: async (_input, ctx) =>
@@ -114,23 +165,29 @@ export const mixVoiceover = createTool({
 
     // Free checks before charging: lengths, fit, and each block audible on its own.
     let videoSeconds: number
-    let timed: Array<{ start: number; duration: number }>
+    let timed: MixBlock[]
     let baseHasAudio: boolean
+    const blockLufs: number[] = []
     try {
       videoSeconds = await durationOf(videoPath)
-      timed = await Promise.all(voPaths.map(async (p, i) => ({ start: blocks[i].startSeconds, duration: await durationOf(p) })))
+      timed = await Promise.all(voPaths.map(async (p, i) => ({
+        start: blocks[i].startSeconds, duration: await durationOf(p),
+        ...(blocks[i].kind === 'jingle' ? { kind: 'jingle' as const } : {}),
+      })))
       const { stdout: streams } = await execFile('ffprobe', ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', videoPath], { timeout: FFMPEG_TIMEOUT_MS })
       baseHasAudio = streams.trim().length > 0
       for (const p of voPaths) {
         const { stderr } = await execFile('ffmpeg', loudnessProbeArgs(p), { timeout: FFMPEG_TIMEOUT_MS })
         const lufs = parseIntegratedLoudness(stderr)
         if (lufs === null || lufs < MIN_ACCEPTABLE_VO_LUFS) return { refused: true, refusalReason: 'VOICEOVER_INAUDIBLE', jobId }
+        blockLufs.push(lufs)
       }
     } catch (err) {
       console.error(`[session:${sessionId}] mixVoiceover: probe failed:`, (err as Error).message)
       return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE', jobId }
     }
     if (!voiceoverFitsVideo(timed, videoSeconds)) return { refused: true, refusalReason: 'VOICEOVER_TOO_LONG', jobId }
+    if (timed.some((b) => b.kind === 'jingle')) timed = await levelMatchJingles([videoPath, ...voPaths], timed, blockLufs, baseHasAudio)
 
     const chargeKey = `mix-voiceover:${jobId}:0`
     let charged = false

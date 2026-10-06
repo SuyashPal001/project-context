@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { inputSchema, parseIntegratedLoudness } from './mixMusicBed.js'
+import { buildMusicBedFilter, inputSchema, parseIntegratedLoudness } from './mixMusicBed.js'
 
 describe('mixMusicBed inputSchema', () => {
   it('requires videoFileId and musicFileId', () => {
@@ -25,5 +25,18 @@ describe('parseIntegratedLoudness', () => {
 
   it('returns null when no Integrated loudness line is present', () => {
     expect(parseIntegratedLoudness('garbage output with no match')).toBeNull()
+  })
+})
+
+describe('buildMusicBedFilter (J6)', () => {
+  it('is byte-identical without fadeOutAtSeconds (Review Focus 2)', () => {
+    expect(buildMusicBedFilter()).toBe('[1:a]volume=0.35[bedvol];[bedvol][0:a]sidechaincompress=threshold=0.05:ratio=8:attack=5:release=300[duckedbed];[0:a][duckedbed]amix=inputs=2:duration=longest:normalize=0[premaster];[premaster]loudnorm=I=-14:TP=-1.5:LRA=11[outa]')
+  })
+  it('fades the bed out over 0.5s ending at fadeOutAtSeconds', () => {
+    expect(buildMusicBedFilter(12.3)).toContain('[1:a]volume=0.35,afade=t=out:st=11.8:d=0.5[bedvol]')
+  })
+  it('accepts fadeOutAtSeconds as optional', () => {
+    expect(inputSchema.safeParse({ videoFileId: 'v', musicFileId: 'm', fadeOutAtSeconds: 12.3 }).success).toBe(true)
+    expect(inputSchema.safeParse({ videoFileId: 'v', musicFileId: 'm', fadeOutAtSeconds: -1 }).success).toBe(false)
   })
 })
