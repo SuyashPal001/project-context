@@ -185,6 +185,8 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
         // user message yet (e.g. an assistant-initiated thread).
         const anchorToLastUserMessage = (behavior: ScrollBehavior) => {
             const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+            anchorIdRef.current = lastUserMessage?.id ?? null;
+            followRef.current = true;
             const target = lastUserMessage ? document.getElementById(`message-${lastUserMessage.id}`) : null;
             if (target) el.scrollTo({ top: Math.max(0, target.offsetTop - 16), behavior });
             else el.scrollTo({ top: el.scrollHeight, behavior });
@@ -210,27 +212,44 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
         }
     }, [messages]);
 
-    // Follow the newest content while a reply is live (long thinking, the step
-    // list, a growing answer) — the anchor above leaves the reply to grow below
-    // the fold, and live thinking ran off the bottom unseen (2026-10-06). Only
-    // while you are at the bottom: scrolling up yourself stops the follow, and
-    // coming back down resumes it.
+    // One rule while a reply is live, re-checked every time the content
+    // changes size: keep your last message pinned near the top, and once the
+    // reply is taller than the screen keep its newest line in view. The
+    // send-time anchor above runs once; if the reply area was not ready yet it
+    // was cut short and never retried, and long live thinking ran off the
+    // bottom unseen (2026-10-06). Scrolling up yourself (wheel, touch, keys)
+    // stops it; reaching the bottom again turns it back on.
     const followRef = useRef(true);
     const liveRef = useRef(false);
     liveRef.current = !!(isTyping || isStreaming);
+    const anchorIdRef = useRef<string | null>(null);
     const contentRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         const el = scrollRef.current;
         const inner = contentRef.current;
         if (!el || !inner || typeof ResizeObserver === 'undefined') return;
-        const ro = new ResizeObserver(() => {
+        const keep = () => {
             if (!followRef.current || !liveRef.current) return;
+            const anchorEl = anchorIdRef.current ? document.getElementById(`message-${anchorIdRef.current}`) : null;
+            const anchorTop = anchorEl ? Math.max(0, anchorEl.offsetTop - 16) : 0;
             const contentEnd = contentEndRef.current?.offsetTop ?? el.scrollHeight;
-            const overflow = contentEnd + 24 - (el.scrollTop + el.clientHeight);
-            if (overflow > 0) el.scrollTop += overflow;
-        });
+            const target = Math.max(anchorTop, contentEnd + 24 - el.clientHeight);
+            if (Math.abs(el.scrollTop - target) > 2) el.scrollTop = target;
+        };
+        const ro = new ResizeObserver(keep);
         ro.observe(inner);
-        return () => ro.disconnect();
+        const stop = () => { followRef.current = false; };
+        const onWheel = (e: WheelEvent) => { if (e.deltaY < 0) stop(); };
+        const onKey = (e: KeyboardEvent) => { if (['ArrowUp', 'PageUp', 'Home'].includes(e.key)) stop(); };
+        el.addEventListener('wheel', onWheel, { passive: true });
+        el.addEventListener('touchmove', stop, { passive: true });
+        el.addEventListener('keydown', onKey);
+        return () => {
+            ro.disconnect();
+            el.removeEventListener('wheel', onWheel);
+            el.removeEventListener('touchmove', stop);
+            el.removeEventListener('keydown', onKey);
+        };
     }, []);
 
     useEffect(() => {
@@ -240,7 +259,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
             const contentEnd = contentEndRef.current?.offsetTop ?? el.scrollHeight;
             const distanceFromBottom = contentEnd - el.scrollTop - el.clientHeight;
             setShowScrollToBottom(distanceFromBottom > 200);
-            followRef.current = distanceFromBottom < 80;
+            if (distanceFromBottom < 80) followRef.current = true;
         };
         // Runs once immediately, not just on the next native 'scroll' event.
         // The anchor-to-last-user-message effect above scrolls synchronously
