@@ -301,6 +301,10 @@ export function MessageItem({
                 ) : isAssistant && !message.isStreaming && message.completedTrace && (
                     <TraceSummary
                         foldMedia={hasFinalVideo}
+                        made={{
+                            pictures: (visibleAttachments ?? []).filter(f => f.generation && f.type.startsWith('image/')).length,
+                            clips: (visibleAttachments ?? []).filter(f => f.generation && f.type.startsWith('video/')).length,
+                        }}
                         steps={message.completedTrace.steps}
                         elapsedSec={message.completedTrace.elapsedSec}
                         toolCalls={message.completedTrace.toolCalls ?? []}

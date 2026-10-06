@@ -180,6 +180,8 @@ export interface LiveStep {
     /** waiting = held on your OK; skipped = cancelled or stopped; credits = not enough credits. */
     state: 'running' | 'waiting' | 'done' | 'failed' | 'skipped' | 'credits';
     count: number;
+    /** What the call makes, shown as a chip beside the row ("Scene 1 — mirror"). */
+    detail?: string;
 }
 
 export interface CompletedTrace {

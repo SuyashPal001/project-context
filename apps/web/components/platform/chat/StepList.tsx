@@ -36,6 +36,8 @@ export interface StepRow {
     /** Refused for want of credits. */
     credits: number;
     running: boolean;
+    /** Chip beside the label: what the running call makes, else the latest one's. */
+    detail?: string;
 }
 
 /** One row per step key, in the order each step first started. */
@@ -50,6 +52,7 @@ export function groupSteps(steps: LiveStep[]): StepRow[] {
         else if (s.state === 'skipped') row.skipped += s.count;
         else if (s.state === 'credits') row.credits += s.count;
         else row.running = true;
+        if (s.detail && (s.state === 'running' || s.state === 'waiting' || !row.running)) row.detail = s.detail;
         rows.set(s.key, row);
     }
     return [...rows.values()];
@@ -108,6 +111,7 @@ export function StepList({ steps, live = true }: { steps: LiveStep[]; live?: boo
                     {/* A running step reads like a running tool row: plain foreground
                         text with the shimmer passing over it; finished rows are quiet. */}
                     <span className={row.running && live ? 'shimmer-text text-foreground truncate' : row.skipped && !row.done && !row.failed ? 'text-muted-foreground/70 truncate' : 'text-muted-foreground truncate'}>{row.label}</span>
+                    {row.detail && <span className="min-w-0 max-w-[50%] truncate font-mono text-xs text-muted-foreground bg-muted/60 rounded-md px-2 py-0.5" data-testid="step-detail-chip">{row.detail}</span>}
                     {rowMeta(row) && <span className={`text-xs tabular-nums shrink-0 ${row.credits && !row.running ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>{rowMeta(row)}</span>}
                 </li>
             ))}

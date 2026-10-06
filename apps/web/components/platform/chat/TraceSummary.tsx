@@ -22,7 +22,14 @@ export interface TraceSummaryProps {
     foldMedia?: boolean;
     /** The step list as the turn ended, shown when the row is opened. */
     steps?: LiveStep[];
+    /** What this part of the turn made, named in the header ("1 picture, 2 clips"). */
+    made?: { pictures: number; clips: number };
 }
+
+const madeLabel = (made?: { pictures: number; clips: number }) => [
+    made?.pictures ? `${made.pictures} picture${made.pictures === 1 ? '' : 's'}` : '',
+    made?.clips ? `${made.clips} clip${made.clips === 1 ? '' : 's'}` : '',
+].filter(Boolean).join(', ');
 
 // Collapsed "Worked for Ns" row shown after a turn finishes. The outer
 // <button> wraps ONLY the chevron + label — never the ToolCallCard list.
@@ -31,7 +38,7 @@ export interface TraceSummaryProps {
 // clicking a tool card also fire the outer collapse toggle, leaving the
 // inner disclosure unusable. The tool call list is rendered as a sibling
 // <div>, shown/hidden off the same `collapsed` state instead.
-export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningElapsedSec, defaultCollapsed = true, freshUrls, foldMedia = false, steps }: TraceSummaryProps) {
+export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningElapsedSec, defaultCollapsed = true, freshUrls, foldMedia = false, steps, made }: TraceSummaryProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const [mediaOpen, setMediaOpen] = useState(false);
 
@@ -86,7 +93,7 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
                 >
                     <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-                <span>Worked for {elapsedSec}s{stepCount > 0 ? ` · ${stepCount} step${stepCount === 1 ? '' : 's'}` : ''}</span>
+                <span>Worked for {elapsedSec}s{stepCount > 0 ? ` · ${stepCount} step${stepCount === 1 ? '' : 's'}` : ''}{madeLabel(made) ? ` · ${madeLabel(made)}` : ''}</span>
             </button>
             {!collapsed && ((steps && steps.length > 0) || stepCalls.length > 0 || reasoningText) && (
                 <div className="ml-[4px] border-l border-foreground/20 pl-3 flex flex-col gap-1 normal-case">
