@@ -48,7 +48,9 @@ export function typeBadge(type: AssetType, name?: string): string {
 // wherever it is listed. Record, not Partial: a new AssetType has to declare
 // its own styling rather than silently falling back to grey.
 export const TYPE_STYLES: Record<AssetType, { bg: string; icon: string }> = {
-  audio: { bg: 'bg-gradient-to-br from-violet-500/20 via-fuchsia-500/10 to-muted', icon: 'text-violet-400' },
+  // Media cards (image, video, audio) share the rose theme; documents keep
+  // their file-type colours.
+  audio: { bg: 'bg-gradient-to-br from-[#E69DB8]/20 via-[#C9A0DC]/10 to-muted', icon: 'text-[#D9849F] dark:text-[#E69DB8]' },
   pdf: { bg: 'bg-gradient-to-br from-red-500/20 via-orange-500/10 to-muted', icon: 'text-red-400' },
   docx: { bg: 'bg-gradient-to-br from-blue-500/20 via-sky-500/10 to-muted', icon: 'text-blue-400' },
   csv: { bg: 'bg-gradient-to-br from-teal-500/20 via-cyan-500/10 to-muted', icon: 'text-teal-400' },

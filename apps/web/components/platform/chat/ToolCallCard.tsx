@@ -463,7 +463,8 @@ function MediaProgressSkeleton({ type, aspectRatio, complete }: { type: 'image' 
       <span className="absolute top-1.5 left-1.5 z-10 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
         {TYPE_BADGES[type]}
       </span>
-      {!complete && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer" />}
+      {/* Rose sweep: the white one was invisible on the light theme. */}
+      {!complete && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#E69DB8]/25 to-transparent animate-shimmer" />}
       <span data-testid="media-progress-pct" className="relative z-10 text-xs font-medium tabular-nums text-muted-foreground">
         {pct}%
       </span>
