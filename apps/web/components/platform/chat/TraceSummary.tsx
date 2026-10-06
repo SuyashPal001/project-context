@@ -89,7 +89,7 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
                 <span>Worked for {elapsedSec}s{stepCount > 0 ? ` · ${stepCount} step${stepCount === 1 ? '' : 's'}` : ''}</span>
             </button>
             {!collapsed && ((steps && steps.length > 0) || stepCalls.length > 0 || reasoningText) && (
-                <div className="ml-[4px] border-l border-foreground/25 pl-3 flex flex-col gap-1 normal-case">
+                <div className="ml-[4px] border-l border-foreground/15 pl-3 flex flex-col gap-1 normal-case">
                     {reasoningText && <ReasoningRow text={reasoningText} completed elapsedSec={reasoningElapsedSec} />}
                     {steps && steps.length > 0 && <StepList steps={steps} live={false} />}
                     {groupImageToolCalls(stepCalls).map((group, gi) => (
