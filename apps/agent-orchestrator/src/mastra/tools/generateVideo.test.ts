@@ -489,6 +489,13 @@ describe('spokenSecondsFloor', () => {
   })
 })
 
+describe('spokenSecondsFloor counts numbers as spoken', () => {
+  it('gives a price line the time it needs', () => {
+    // "319" is "three hundred nineteen"; at 6s the speaker stopped at "honestly you".
+    expect(spokenSecondsFloor('With twenty gorgeous shades for just 319 rupees, honestly you need to try it.')).toBe(7)
+  })
+})
+
 describe('spokenSeconds', () => {
   it('trims a part asked for far more time than its line needs (8s for a 5s line left a mid-line pause)', () => {
     expect(spokenSeconds('Super stable, non-sticky, aur skin instant bright lagti hai. Pure glow in a bottle!', 8)).toBe(7)

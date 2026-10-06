@@ -1,5 +1,6 @@
 import { spokenSoFar } from './spokenScript.js'
 import { mispronouncedWords } from './pronunciation.js'
+import { noteClipCheck } from './reviewGate.js'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { execFile as execFileCb } from 'node:child_process'
@@ -396,6 +397,7 @@ export const checkClip = createTool({
       const reason = !judged.passed ? judged.reason
         : !saidClearly ? `A word is said wrongly: ${misspoken!.map(m => `"${m.meant}" sounds like "${m.heard}"`).join(', ')}`
         : narrowResult && !narrowResult.passed ? narrowResult.reasons.join(' ') : judged.reason
+      noteClipCheck(clipFileId, passed, reason)
       if (!passed) {
         markCheckFailed(execContext?.requestContext, (execContext as unknown as { agent?: { messages?: unknown } })?.agent?.messages)
       }

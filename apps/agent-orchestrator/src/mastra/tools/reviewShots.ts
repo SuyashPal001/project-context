@@ -1,7 +1,7 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { askClarifyingQuestionsTool } from './askClarifyingQuestions.js'
-import { markShotReviewed, type ShotKind } from './reviewGate.js'
+import { clipCheckFailure, markShotReviewed, type ShotKind } from './reviewGate.js'
 
 // The one way an ad's stills and clips are put to the user, built here rather
 // than written freely each time. 2026-10-06 (Lakmē ad): the free-form review
@@ -14,10 +14,17 @@ import { markShotReviewed, type ShotKind } from './reviewGate.js'
 const LOOKS_GOOD = 'Looks good — continue (Recommended)'
 const FIX_IT = 'Fix it'
 const ALL_GOOD = 'All good — continue (Recommended)'
+// When the check already failed a clip, continuing is not the safe pick.
+const LOOKS_GOOD_PLAIN = 'Looks good — continue'
+const FIX_IT_RECOMMENDED = 'Fix it (Recommended)'
+const ALL_GOOD_PLAIN = 'All good — continue'
+const wantsContinue = (picked: string[]) => picked.some((l) => l === LOOKS_GOOD || l === LOOKS_GOOD_PLAIN || l === ALL_GOOD || l === ALL_GOOD_PLAIN)
+const wantsFix = (picked: string[]) => picked.some((l) => l === FIX_IT || l === FIX_IT_RECOMMENDED)
 
 const shotSchema = z.object({
   fileId: z.string().uuid().describe('The still or clip the user is looking at'),
-  label: z.string().min(1).max(40).describe('How the user knows it: "Scene 1", "Scene 2 — the reveal"'),
+  // No max: a long label once failed the whole call (Lakmē, 2026-10-06); it is cut to fit instead.
+  label: z.string().min(1).describe('Short, how the user knows it: "Scene 1", "Scene 2 — the reveal"'),
 })
 
 export interface ReviewOutcome {
@@ -38,12 +45,11 @@ export function reviewOutcome(kind: ShotKind, shots: Array<{ fileId: string; lab
   }
   let fix: Array<{ fileId: string; label: string }>
   if (shots.length === 1) {
-    const wantsFix = picked.includes(FIX_IT) || (!!note && !picked.includes(LOOKS_GOOD))
-    fix = wantsFix ? shots : []
+    fix = wantsFix(picked) || (!!note && !wantsContinue(picked)) ? shots : []
   } else {
     fix = shots.filter((s) => picked.includes(s.label))
     // Only a note, no scene picked: the note says which; Olmo reads it.
-    if (fix.length === 0 && note && !picked.includes(ALL_GOOD)) {
+    if (fix.length === 0 && note && !wantsContinue(picked)) {
       return {
         decision: 'fix', fix: [], note,
         nextStep: `The user wrote what to change but picked no scene. Work out from the note which ${kind}s it means; if it is unclear, ask which scene in one short question. Then fix only those.`,
@@ -72,19 +78,29 @@ export const reviewShotsTool = createTool({
     question: z.string().max(200).optional().describe('Optional wording for the question; a plain default is used without it'),
   }),
   execute: async (inputData, execContext) => {
-    const { kind, shots, question } = inputData as { kind: ShotKind; shots: Array<{ fileId: string; label: string }>; question?: string }
+    const given = inputData as { kind: ShotKind; shots: Array<{ fileId: string; label: string }>; question?: string }
+    const { kind, question } = given
+    const shots = given.shots.map((s) => ({ ...s, label: s.label.trim().slice(0, 40) }))
     const noun = kind === 'still' ? 'picture' : 'clip'
+    const failed = kind === 'clip' ? shots.map((s) => clipCheckFailure(s.fileId)) : shots.map(() => undefined)
+    const anyFailed = failed.some(Boolean)
     const q = shots.length === 1
       ? {
           prompt: question ?? `Does ${shots[0].label} look right? The other scenes are built from this ${noun}, so anything off here would carry into them.`,
-          options: [{ label: LOOKS_GOOD }, { label: FIX_IT, rationale: 'Say what to change below' }],
+          options: anyFailed
+            ? [{ label: FIX_IT_RECOMMENDED, rationale: `The check found: ${failed[0]}` }, { label: LOOKS_GOOD_PLAIN }]
+            : [{ label: LOOKS_GOOD }, { label: FIX_IT, rationale: 'Say what to change below' }],
           allowFreeText: true, allowSkip: true,
         }
       : {
           prompt: question ?? `Here are the ${shots.length} scenes. Tap any that need a fix and say what below, or continue.`,
           options: [
-            ...shots.map((s) => ({ label: s.label, ...(kind === 'still' ? { imageFileId: s.fileId } : {}) })),
-            { label: ALL_GOOD },
+            ...shots.map((s, i) => ({
+              label: s.label,
+              ...(kind === 'still' ? { imageFileId: s.fileId } : {}),
+              ...(failed[i] ? { rationale: `Needs a fix (Recommended): ${failed[i]}` } : {}),
+            })),
+            { label: anyFailed ? ALL_GOOD_PLAIN : ALL_GOOD },
           ],
           allowFreeText: true, allowSkip: true,
           multiSelect: { min: 1, max: shots.length + 1 },

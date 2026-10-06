@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('./askClarifyingQuestions.js', () => ({ askClarifyingQuestionsTool: { execute: vi.fn() } }))
-import { reviewOutcome } from './reviewShots.js'
-import { firstShotUnreviewed, markShotReviewed, briefIsReviewedAdFlow, AD_FLOW_KEY } from './reviewGate.js'
+import { reviewOutcome, reviewShotsTool } from './reviewShots.js'
+import { askClarifyingQuestionsTool } from './askClarifyingQuestions.js'
+import { firstShotUnreviewed, markShotReviewed, briefIsReviewedAdFlow, noteClipCheck, AD_FLOW_KEY } from './reviewGate.js'
 
 const shots = [
   { fileId: '11111111-1111-4111-8111-111111111111', label: 'Scene 1' },
@@ -43,5 +44,30 @@ describe('first one first gate', () => {
   it('knows an ad flow from the brief', () => {
     expect(briefIsReviewedAdFlow('flow: ugc ad\n\nMake scene 1')).toBe(true)
     expect(briefIsReviewedAdFlow('make a logo')).toBe(false)
+  })
+})
+
+describe('a clip the check failed', () => {
+  it('is marked as needing a fix, and continuing is no longer the recommended pick', async () => {
+    noteClipCheck(shots[2].fileId, false, 'Did not say the approved line (heard: "honestly you")')
+    noteClipCheck(shots[1].fileId, true, 'Same person, product and line.')
+    const ask = askClarifyingQuestionsTool.execute as unknown as ReturnType<typeof vi.fn>
+    // The user taps scene 3, by whatever label the card showed.
+    ask.mockImplementationOnce(async (input: { questions: Array<{ options: Array<{ label: string }> }> }) => ({ answers: [{ selectedLabels: [input.questions[0].options[1].label] }] }))
+    const out = await (reviewShotsTool as unknown as { execute: (i: unknown, c: unknown) => Promise<{ decision: string; fix: Array<{ label: string }> }> })
+      .execute({ kind: 'clip', shots: [shots[1], { ...shots[2], label: 'Scene 3 — Payoff & CTA with the price and shades line' }] }, { requestContext: new Map([['conversationId', 'c']]) })
+    const q = ask.mock.calls[0][0].questions[0]
+    const labels = q.options.map((o: { label: string }) => o.label)
+    expect(labels[0]).toBe('Scene 2')
+    expect(labels[1].startsWith('Scene 3 — Payoff')).toBe(true)
+    expect(labels[1].length).toBeLessThanOrEqual(40)
+    expect(labels[2]).toBe('All good — continue')
+    expect(q.options[1].rationale).toContain('honestly you')
+    expect(q.options[0].rationale).toBeUndefined()
+    expect(out.decision).toBe('fix')
+  })
+  it('one failed clip recommends fixing it', () => {
+    expect(reviewOutcome('clip', [shots[0]], { selectedLabel: 'Fix it (Recommended)' }).decision).toBe('fix')
+    expect(reviewOutcome('clip', [shots[0]], { selectedLabel: 'Looks good — continue' }).decision).toBe('continue')
   })
 })

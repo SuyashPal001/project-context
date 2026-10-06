@@ -34,6 +34,24 @@ export function shotReviewed(conversationId: string | undefined, kind: ShotKind)
   return at !== undefined && Date.now() - at < REVIEW_TTL_MS
 }
 
+// What check_clip last said about each clip, so review_shots never offers
+// "All good" as the safe pick for a clip the check already failed.
+// 2026-10-06 (Lakmē): scene 3 ended mid-sentence, check_clip caught it, and
+// the review still recommended continuing; the cut line went into the ad.
+const clipChecks = new Map<string, { passed: boolean; reason: string; at: number }>()
+
+export function noteClipCheck(fileId: string | undefined, passed: boolean, reason: string): void {
+  if (!fileId) return
+  clipChecks.set(fileId, { passed, reason, at: Date.now() })
+  if (clipChecks.size > 5000) clipChecks.delete(clipChecks.keys().next().value as string)
+}
+
+/** The reason a clip failed its last check, or undefined if it passed or was never checked. */
+export function clipCheckFailure(fileId: string): string | undefined {
+  const c = clipChecks.get(fileId)
+  return c && !c.passed && Date.now() - c.at < REVIEW_TTL_MS ? c.reason : undefined
+}
+
 /** Set on the turn's request context when Olmo hands an ad flow to the Director. */
 export const AD_FLOW_KEY = 'reviewedAdFlow'
 
