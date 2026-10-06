@@ -1,23 +1,14 @@
 'use client';
 
-import { PixelLoader, type PixelLoaderKind } from './PixelLoader';
+import { PixelLoader } from './PixelLoader';
 import type { LiveStep } from './types';
 
 // The live step list for a long job ("Storyboard ✓ · Video clips ✓ · Voice ◐").
 // Pattern after beautiful-ui's TaskRows / ThinkingState "Steps" (MIT, Shane
 // Levine): a running row shows its work, a finished one settles to a quiet
 // check. Rewritten in our own Tailwind and colours. A running row shows the
-// same rose pixel loader as the tool rows, one motion per kind of media.
-
-const LOADER_FOR_KIND: Record<LiveStep['kind'], PixelLoaderKind> = {
-    image: 'image',
-    cast: 'image',
-    video: 'video',
-    join: 'video',
-    finish: 'video',
-    check: 'video',
-    voice: 'audio',
-};
+// rose pixel loader in its own ripple motion, so the stage never looks the same
+// as the tool row (driving / orbiting / metering) working under it.
 
 export interface StepRow {
     key: string;
@@ -70,7 +61,7 @@ const amberMark = (
 );
 
 function RowIcon({ row, live }: { row: StepRow; live: boolean }) {
-    if (row.running && live) return <PixelLoader kind={LOADER_FOR_KIND[row.kind]} label={`${row.label} in progress`} />;
+    if (row.running && live) return <PixelLoader kind="step" label={`${row.label} in progress`} />;
     if (row.waiting) return (
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-muted-foreground" aria-label="waiting for your OK">
             <path d="M5 3.5v7M9 3.5v7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />

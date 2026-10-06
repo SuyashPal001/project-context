@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 
 // Pixel-grid loader for long media work, one motion per kind: pictures drive
-// right, video laps the edge like a reel, audio pulses as dots. Pattern after
+// right, video laps the edge like a reel, audio rises in columns like a level
+// meter. A step row (the stage, e.g. "Pictures") ripples out from the centre,
+// so it never looks the same as the tool row working under it. Pattern after
 // beautiful-ui's LoadingState (MIT, Shane Levine); rewritten in our Tailwind
 // with the rose accent. Reduced motion holds the grid still.
 
@@ -14,12 +16,18 @@ const orbit = Array.from({ length: 9 }, (_, i) => {
     return k === -1 ? null : k * 110;
 });
 
-export type PixelLoaderKind = 'image' | 'video' | 'audio';
+// Columns left to right, each lighting bottom-up.
+const meter = Array.from({ length: 9 }, (_, i) => (i % 3) * 160 + (2 - Math.floor(i / 3)) * 90);
+// Centre first, then edges, then corners.
+const ripple = Array.from({ length: 9 }, (_, i) => (Math.abs(i % 3 - 1) + Math.abs(Math.floor(i / 3) - 1)) * 170);
+
+export type PixelLoaderKind = 'image' | 'video' | 'audio' | 'step';
 
 const PATTERNS: Record<PixelLoaderKind, { delays: (number | null)[]; dur: number; round: boolean }> = {
     image: { delays: chevron, dur: 650, round: false },
     video: { delays: orbit, dur: 950, round: false },
-    audio: { delays: chevron, dur: 650, round: true },
+    audio: { delays: meter, dur: 700, round: true },
+    step: { delays: ripple, dur: 1100, round: true },
 };
 
 export function PixelLoader({ kind, label }: { kind: PixelLoaderKind; label?: string }) {

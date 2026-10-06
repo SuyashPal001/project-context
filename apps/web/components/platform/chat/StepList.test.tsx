@@ -22,9 +22,9 @@ describe('StepList', () => {
             ['Storyboard', 1, 1, false], ['Video clips', 1, 1, false], ['Voice', 1, 3, true], ['Quality checks', 0, 1, false],
         ]);
     });
-    it('animates only the running row, with the loader for its kind of media', () => {
+    it('animates only the running row, in the step motion, not a tool row\'s', () => {
         render(<StepList steps={steps} />);
-        expect(screen.getAllByTestId('pixel-loader').map(o => o.getAttribute('data-kind'))).toEqual(['audio']);
+        expect(screen.getAllByTestId('pixel-loader').map(o => o.getAttribute('data-kind'))).toEqual(['step']);
         expect(screen.getByText('1 of 3')).toBeTruthy();
         expect(screen.getByText('needs a look')).toBeTruthy();
     });
