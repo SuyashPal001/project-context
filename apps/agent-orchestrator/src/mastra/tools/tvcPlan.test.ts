@@ -385,14 +385,19 @@ describe('jingle (J5)', () => {
   })
   it('refuses a sign-off that would start too soon after the voiceover', () => {
     const p = withJingle()
-    p.voiceover[0].startSeconds = 8.5 // ends at 12.2
-    expect(jingleErrors(p, 3)).toEqual(['JINGLE_OVERLAPS_SPEECH: the sung line would start -0.2s after the last word; shorten the line or end the voiceover earlier'])
-    expect(jingleErrors(p, 2)).toEqual([])
+    p.voiceover[0].startSeconds = 8.1 // ends at 11.8
+    expect(jingleErrors(p, 3)).toEqual(['JINGLE_OVERLAPS_SPEECH: the sung line would start 0.2s after the last word; shorten the line or end the voiceover earlier'])
+    expect(jingleErrors(p, 2.4)).toEqual([])
   })
   it('refuses a sign-off that would start too soon after an on-camera line', () => {
     const p = withJingle()
     p.shots[5] = { ...p.shots[5], audio: 'line', line: 'Soft all day long.' } // ends at 11.0
     expect(jingleErrors(p, 3.6)[0]).toMatch(/^JINGLE_OVERLAPS_SPEECH: the sung line would start 0.4s after the last word/)
+  })
+  it('refuses a sign-off that would start before the last word even ends (negative gap)', () => {
+    const p = withJingle()
+    p.shots[5] = { ...p.shots[5], audio: 'line', line: 'Soft all day long.' } // ends at 11.0
+    expect(jingleErrors(p, 5)).toEqual(['JINGLE_OVERLAPS_SPEECH: the sung line would start 1s before the last word ends; shorten the line or end the voiceover earlier'])
   })
   it('refuses a sign-off longer than the packshot plus 2s', () => {
     expect(jingleErrors(withJingle(), 5.5)).toContain('JINGLE_TOO_LONG: the sung sign-off is 5.5s; at most 5s (the packshot plus 2s); shorten the line')

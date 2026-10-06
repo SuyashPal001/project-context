@@ -345,7 +345,10 @@ export function jingleErrors(plan: TvcPlan, signoffSeconds: number): string[] {
   const errors: string[] = []
   const start = r2(plan.brief.lengthSeconds - signoffSeconds)
   const gap = r2(start - lastSpeechEnd(plan))
-  if (gap < JINGLE_GAP) errors.push(`JINGLE_OVERLAPS_SPEECH: the sung line would start ${gap}s after the last word; shorten the line or end the voiceover earlier`)
+  if (gap < JINGLE_GAP) {
+    const where = gap >= 0 ? `start ${gap}s after the last word` : `start ${r2(Math.abs(gap))}s before the last word ends`
+    errors.push(`JINGLE_OVERLAPS_SPEECH: the sung line would ${where}; shorten the line or end the voiceover earlier`)
+  }
   const max = r2(plan.shots[plan.shots.length - 1].durationSeconds + JINGLE_OVER_PACK)
   if (signoffSeconds > max + EPS) errors.push(`JINGLE_TOO_LONG: the sung sign-off is ${signoffSeconds}s; at most ${max}s (the packshot plus 2s); shorten the line`)
   return errors

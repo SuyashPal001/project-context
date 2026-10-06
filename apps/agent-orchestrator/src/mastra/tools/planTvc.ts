@@ -112,6 +112,11 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     if (!input.plan) return { refused: true, refusalReason: 'PLAN_REQUIRED' }
     const { errors, warnings, plan } = validateTvcPlan(input.plan)
     if (errors.length) return { errors, warnings }
+    // Only `record` may set the jingle fields — a fresh plan arriving with
+    // them (or a re-check carrying them over from input.plan) never passed
+    // jingleErrors, so check always starts clean before carryOver decides
+    // whether the previously recorded jingle still fits.
+    delete plan.jingleFileId; delete plan.signoffFileId; delete plan.signoffSeconds
     let storageKey = deps.newKey()
     let toSave = plan
     if (input.planFileId) {

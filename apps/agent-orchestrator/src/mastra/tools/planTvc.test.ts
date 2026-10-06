@@ -239,4 +239,15 @@ describe('plan_tvc record: the jingle (J5)', () => {
     expect(finish.jingleFileId).toBeUndefined()
     expect(finish.signoffStartSeconds).toBeUndefined()
   })
+  it('a fresh check saves none of the three jingle fields, even when the input plan carries them', async () => {
+    const { deps } = fakeDeps()
+    const p = withJingle()
+    p.jingleFileId = 'sneaky'; p.signoffFileId = 'sneaky'; p.signoffSeconds = 100
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: p }, deps)
+    const finish = await getFinish(deps, planFileId!)
+    expect(finish.jingleFileId).toBeUndefined()
+    expect(finish.signoffFileId).toBeUndefined()
+    expect(finish.signoffSeconds).toBeUndefined()
+    expect(finish.signoffStartSeconds).toBeUndefined()
+  })
 })
