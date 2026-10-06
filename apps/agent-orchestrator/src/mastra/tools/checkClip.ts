@@ -55,6 +55,19 @@ export function lineMatchScore(expected: string, heard: string): number {
   return Math.max(i, present) / want.length
 }
 
+/** Words heard beyond the approved line (a repeated sentence, an invented
+ * tail). lineMatchScore only asks whether every approved word was heard, so
+ * "One tap and you are ready. One tap and you are ready." passed as a perfect
+ * match (2026-10-06 board test). */
+export function extraWordCount(expected: string, heard: string): number {
+  const want = normalise(expected), got = normalise(heard)
+  let i = 0, matched = 0
+  for (const word of got) if (i < want.length && word === want[i]) { i++; matched++ }
+  return Math.max(0, got.length - matched)
+}
+// A stray "okay" or "no" is tolerated; three or more extra words is a repeat or an invented line.
+const MAX_EXTRA_WORDS = 2
+
 export interface ClipVerdict { samePerson: boolean; productSame: boolean; glitch: boolean; confidence: number; heard: string; reason: string; soundSame: boolean }
 
 // Asked point by point, against the master still (it carries this ad's exact
@@ -175,7 +188,7 @@ export function judgeVerdict(
   v: ClipVerdict,
   opts: { expectedLine?: string; audioChecked: boolean; expectNoSpeech: boolean; noPerson: boolean; soundChecked?: boolean },
 ): { passed: boolean; samePerson: boolean; lineMatches: boolean; productMatches: boolean; speechOk: boolean; soundMatches: boolean; reason: string } {
-  const lineMatches = opts.expectedLine && opts.audioChecked ? lineMatchScore(opts.expectedLine, v.heard) >= LINE_MATCH_THRESHOLD : true
+  const lineMatches = opts.expectedLine && opts.audioChecked ? lineMatchScore(opts.expectedLine, v.heard) >= LINE_MATCH_THRESHOLD && extraWordCount(opts.expectedLine, v.heard) <= MAX_EXTRA_WORDS : true
   const samePerson = opts.noPerson ? v.samePerson : v.samePerson && v.confidence >= 6
   const productMatches = v.productSame
   const noGlitch = !v.glitch

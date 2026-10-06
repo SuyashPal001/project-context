@@ -122,6 +122,9 @@ export interface MessageAttachment {
     size?: number;
     previewUrl?: string;
     generation?: { creditsUsedMicro: string; model: string };
+    /** Made in this turn and used as an input by a later step (a narration, a
+     *  scene clip, the joined cut): folded behind one row so the result shows. */
+    working?: boolean;
 }
 
 export interface PrdTask {

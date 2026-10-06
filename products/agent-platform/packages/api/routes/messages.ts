@@ -167,6 +167,8 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
                 creditsUsedMicro: z.string(),
                 model: z.string(),
             }).optional(),
+            // A file a later step of the same turn used as input: the chat folds it away.
+            working: z.boolean().optional(),
         })).nullish(),
         artifactRef: z.object({
             type: z.enum(['prd', 'roadmap', 'tasks']),

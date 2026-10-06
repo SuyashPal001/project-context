@@ -164,3 +164,14 @@ describe('narrow checks are opt-in (Review Focus 1)', () => {
     expect(dropped2('conv:clipProd', { expectedLine: false, product: true, reference: false, productNarrow: false })).toEqual(['productNarrow'])
   })
 })
+
+describe('extraWordCount', () => {
+  it('counts a repeated sentence as extra words, and tolerates one stray word', async () => {
+    const { extraWordCount } = await import('./checkClip.js')
+    const line = 'Ever feel too tired to start? One tap, and you are ready.'
+    expect(extraWordCount(line, 'Ever feel too tired to start? One tap and you are ready. One tap and you are ready.')).toBe(6)
+    expect(extraWordCount(line, 'Ever feel too tired to start? One tap and you are ready. And you are ready.')).toBe(4)
+    expect(extraWordCount(line, 'Ever feel too tired to start? One tap and you are ready.')).toBe(0)
+    expect(extraWordCount('it actually tastes like a light crispy wafer', 'No, it actually tastes like a light crispy wafer')).toBe(1)
+  })
+})

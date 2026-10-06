@@ -440,6 +440,8 @@ export interface AttachmentPayload {
   type: string
   size: number
   generation?: { creditsUsedMicro: string; model: string }
+  /** Made this turn and then used as an input by a later step: folded away in the chat. */
+  working?: boolean
 }
 
 /**

@@ -26,6 +26,7 @@ import { GENERATION_APPROVAL_METADATA, detectSkillPii } from '../mastra/tools/ge
 import { saveGenerationConfirmRequest, updateGenerationConfirmRequest, saveConversationTitle, fetchConversationAllowMode } from '../persistence.js'
 import { isClientHiddenTool } from '../toolVisibility.js'
 import { relayedDelegateMedia } from './nestedMedia.js'
+import { fileIdsIn, markWorkingFiles } from './workingFiles.js'
 import { buildCancelNotice, backgroundDeclineReason, trackBackgroundDecline, waitForBackgroundDecline } from './cancelNotice.js'
 
 async function generateFollowUps(userMessage: string, assistantReply: string): Promise<string[]> {
@@ -293,6 +294,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const assistantMessageId = crypto.randomUUID()
   let pendingArtifactRef: ArtifactRefPayload | null = null
   const pendingAttachments: AttachmentPayload[] = []
+  // File ids this turn's tool calls took as inputs (see workingFiles.ts).
+  const turnInputFileIds = new Set<string>()
   const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks', 'rendercanvas', 'render-canvas', 'render_canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video', 'generate-narration', 'lipsync', 'assemble-clips', 'mux-beat-audio', 'composite-end-card', 'burn-captions', 'overlay-text', 'stretch-clip', 'mix-music-bed', 'trim-clip', 'generate-videos', 'generate-images'])
 
   // Set once a cancelled card has been answered instantly (see cancelNotice.ts):
@@ -555,7 +558,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       const completedTrace = (toolCallCount > 0 || elapsedSec >= 2 || !!reasoningText)
         ? { elapsedSec, toolCallCount, ...(reasoningText ? { reasoningText } : {}), ...(reasoningElapsedSec !== undefined ? { reasoningElapsedSec } : {}) }
         : null
-      saveAssistantMessage(liveIdToken(), conversationId, redactUnverifiedFileIds(fullText, pendingAttachments), assistantMessageId, pendingArtifactRef, completedTrace, pendingAttachments)
+      saveAssistantMessage(liveIdToken(), conversationId, redactUnverifiedFileIds(fullText, pendingAttachments), assistantMessageId, pendingArtifactRef, completedTrace, markWorkingFiles(pendingAttachments, turnInputFileIds))
     }
 
     // Settles when Mastra's background title call reports back (or is skipped),
@@ -671,6 +674,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const args = (p.args ?? {}) as Record<string, unknown>
           const toolCallId = (p.toolCallId ?? toolName) as string
           if (toolCallId && toolName) toolCallNames.set(toolCallId, toolName)
+          fileIdsIn(args, turnInputFileIds)
           toolCallCount++
           if (!isClientHiddenTool(toolName)) sendEvent('tool_call', { toolName, toolCallId, args, conversationId })
           onToolCallStart()
@@ -906,7 +910,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // Confirmed live 2026-09-17: a real generate_video result was silently
           // dropped this way.
           if (Array.isArray(result.subAgentToolResults)) {
-            for (const entry of result.subAgentToolResults as Array<{ toolName?: unknown; result?: unknown }>) {
+            for (const entry of result.subAgentToolResults as Array<{ toolName?: unknown; result?: unknown; args?: unknown }>) {
+              fileIdsIn(entry.args, turnInputFileIds)
               const innerName = typeof entry.toolName === 'string' ? entry.toolName.toLowerCase().replace(/_/g, '-') : ''
               const innerResult = (entry.result ?? {}) as Record<string, unknown>
               pendingAttachments.push(...attachmentsFromToolResult(innerName, innerResult))
@@ -961,7 +966,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             ]).catch(() => [] as string[])
           }
 
-          sendEvent('done', { text: fullText, conversationId, messageId: assistantMessageId, planResult, artifactRef: pendingArtifactRef ?? undefined, citations: ragSources.length > 0 ? ragSources : undefined, attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined })
+          sendEvent('done', { text: fullText, conversationId, messageId: assistantMessageId, planResult, artifactRef: pendingArtifactRef ?? undefined, citations: ragSources.length > 0 ? ragSources : undefined, attachments: pendingAttachments.length > 0 ? markWorkingFiles(pendingAttachments, turnInputFileIds) : undefined })
 
           // Guard against ghost messages: if the client disconnected (Stop button
           // or navigation) before the agent finished, isStreamClosed() is already

@@ -33,6 +33,7 @@ export const inputSchema = z.object({
     startSeconds: z.number().min(0).describe('Where this block starts in the video, from the TVC plan'),
     kind: z.enum(['voice', 'jingle']).optional().describe('jingle = the sung sign-off (signoffFileId at the finish slice\'s signoffStartSeconds): level-matched to the speech before it instead of ducking. Default voice'),
   })).min(1).max(5),
+  room: z.boolean().optional().describe('true = the narrator sits in the scene\'s room (a little quieter, a touch of room echo) instead of a dry studio voice on top. Use for the animated ad\'s narrator.'),
 })
 
 export type MixBlock = { start: number; duration: number; kind?: 'voice' | 'jingle'; gainDb?: number }
@@ -41,10 +42,15 @@ export type MixBlock = { start: number; duration: number; kind?: 'voice' | 'jing
 // muteJingles silences jingle blocks there so the window holds only what
 // the jingle has to match. A call without kind builds the same graph as
 // before, byte for byte.
-export function buildVoiceoverFilter(blocks: MixBlock[], baseHasAudio: boolean, tail: string = MASTER, muteJingles = false): string {
+// A dry TTS voice laid over an animated room sounded "pasted on" (Gemini 6/10);
+// a touch of early echo, trimmed lows and highs and a little less level made it
+// "sit in the scene" (9/10), tested 2026-10-06.
+export const ROOM_VOICE = 'aecho=0.85:0.7:35|60:0.18|0.10,highpass=f=90,lowpass=f=9500,volume=0.8,'
+
+export function buildVoiceoverFilter(blocks: MixBlock[], baseHasAudio: boolean, tail: string = MASTER, muteJingles = false, room = false): string {
   const parts = blocks.map((b, i) => {
     const ms = Math.round(b.start * 1000)
-    const gain = b.kind !== 'jingle' ? '' : muteJingles ? 'volume=0,' : b.gainDb !== undefined ? `volume=${b.gainDb}dB,` : ''
+    const gain = b.kind !== 'jingle' ? (room ? ROOM_VOICE : '') : muteJingles ? 'volume=0,' : b.gainDb !== undefined ? `volume=${b.gainDb}dB,` : ''
     return `[${i + 1}:a]${gain}adelay=${ms}|${ms}[vo${i}]`
   })
   parts.push(blocks.length === 1
@@ -157,13 +163,13 @@ async function durationOf(path: string): Promise<number> {
 
 export const mixVoiceover = createTool({
   id: 'mix-voiceover',
-  description: 'Lays one or more voiceover blocks over a joined video at their planned start times, keeping the video\'s own sound (on-camera lines, sound effects) and dipping it under the voice, then masters the mix. Refuses a voiceover that runs past the end of the video or is too quiet to hear. Used in the TVC ad finish, after assemble_clips and before overlay_text and mix_music_bed. A block with kind "jingle" (the sung sign-off) is level-matched to the speech before it and never ducks the sound.',
+  description: 'Lays one or more voiceover blocks over a joined video at their planned start times, keeping the video\'s own sound (on-camera lines, sound effects) and dipping it under the voice, then masters the mix. Refuses a voiceover that runs past the end of the video or is too quiet to hear. Used in the TVC ad finish (after assemble_clips, before overlay_text and mix_music_bed) and to place the animated ad\'s narrator lines on their shots (with room true). A block with kind "jingle" (the sung sign-off) is level-matched to the speech before it and never ducks the sound.',
   inputSchema,
   outputSchema,
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'clip_assembly', subject: MIX_SUBJECT }, ctx),
   execute: async (inputData, execContext) => {
-    const { videoFileId, blocks } = inputData as z.infer<typeof inputSchema>
+    const { videoFileId, blocks, room } = inputData as z.infer<typeof inputSchema>
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
@@ -256,7 +262,7 @@ export const mixVoiceover = createTool({
     try {
       await execFile('ffmpeg', [
         '-y', '-i', videoPath, ...voPaths.flatMap((p) => ['-i', p]),
-        '-filter_complex', buildVoiceoverFilter(timed, baseHasAudio),
+        '-filter_complex', buildVoiceoverFilter(timed, baseHasAudio, MASTER, false, room === true),
         '-map', '0:v', '-map', '[outa]',
         '-c:v', 'copy', '-c:a', 'aac',
         '-t', String(videoSeconds),

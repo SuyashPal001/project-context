@@ -16,6 +16,9 @@ export interface TraceSummaryProps {
      *  generation/show_files call renders its image inline — see ToolCallCard's
      *  freshUrls prop. */
     freshUrls?: Record<string, string>;
+    /** The turn ended with a finished video: the pictures and clips made on
+     *  the way fold behind one row instead of filling the reply. */
+    foldMedia?: boolean;
 }
 
 // Collapsed "Worked for Ns" row shown after a turn finishes. The outer
@@ -25,8 +28,9 @@ export interface TraceSummaryProps {
 // clicking a tool card also fire the outer collapse toggle, leaving the
 // inner disclosure unusable. The tool call list is rendered as a sibling
 // <div>, shown/hidden off the same `collapsed` state instead.
-export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningElapsedSec, defaultCollapsed = true, freshUrls }: TraceSummaryProps) {
+export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningElapsedSec, defaultCollapsed = true, freshUrls, foldMedia = false }: TraceSummaryProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
+    const [mediaOpen, setMediaOpen] = useState(false);
 
     // A tool call that produced media (an image/video/song, or a show_files
     // result) stays visible even while the rest of the trace is collapsed —
@@ -35,10 +39,24 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
     // wrappers with no result media, plan/PRD tools, ...) is what collapses.
     const mediaCalls = withoutRepeatedTraceFiles(toolCalls).filter(tc => extractResultFiles(tc.toolName, tc.result).length > 0);
     const stepCalls = toolCalls.filter(tc => extractResultFiles(tc.toolName, tc.result).length === 0);
+    const mediaFileCount = mediaCalls.reduce((n, tc) => n + extractResultFiles(tc.toolName, tc.result).length, 0);
 
     return (
         <div className="flex flex-col w-full min-w-0">
-            {mediaCalls.length > 0 && (
+            {mediaCalls.length > 0 && foldMedia && (
+                <button
+                    type="button"
+                    onClick={() => setMediaOpen(o => !o)}
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 self-start"
+                    data-testid="trace-media-fold"
+                >
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className={cn("shrink-0 transition-transform", mediaOpen ? "rotate-90" : "")}>
+                        <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <span>{mediaFileCount} picture{mediaFileCount === 1 ? '' : 's'} and clip{mediaFileCount === 1 ? '' : 's'} made along the way</span>
+                </button>
+            )}
+            {mediaCalls.length > 0 && (!foldMedia || mediaOpen) && (
                 <div className="flex flex-col gap-1 normal-case">
                     {groupImageToolCalls(mediaCalls).map((group, gi) => (
                         group.length > 1 ? (

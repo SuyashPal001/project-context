@@ -363,8 +363,8 @@ function toolLabel(toolName: string, query: string, status: 'loading' | 'done'):
         if (isImageGenTool(toolName)) return { prefix: toolName.includes('edit') ? 'Editing image...' : 'Generating image...', highlight: '' };
         if (isSongGenTool(toolName)) return { prefix: 'Generating song...', highlight: '' };
         if (isVideoGenTool(toolName)) return { prefix: 'Generating video...', highlight: '' };
-        if (isDirectorDelegateTool(toolName)) return { prefix: 'Generating visual', highlight: query ? ` — ${q}` : '...' };
-        if (isProducerDelegateTool(toolName)) return { prefix: 'Generating audio', highlight: query ? ` — ${q}` : '...' };
+        if (isDirectorDelegateTool(toolName)) return { prefix: 'Generating visual', highlight: '...' };
+        if (isProducerDelegateTool(toolName)) return { prefix: 'Generating audio', highlight: '...' };
         if (isPmDelegateTool(toolName)) return { prefix: 'Building plan', highlight: query ? ` — ${q}` : '...' };
         if (isArchitectDelegateTool(toolName)) return { prefix: 'Designing architecture', highlight: query ? ` — ${q}` : '...' };
     }
@@ -387,8 +387,8 @@ function toolLabel(toolName: string, query: string, status: 'loading' | 'done'):
     if (isImageGenTool(toolName)) return { prefix: toolName.includes('edit') ? 'Image edited' : 'Image generated', highlight: '' };
     if (isSongGenTool(toolName)) return { prefix: 'Song generated', highlight: '' };
     if (isVideoGenTool(toolName)) return { prefix: 'Video generated', highlight: '' };
-    if (isDirectorDelegateTool(toolName)) return { prefix: 'Visual created', highlight: query ? ` — ${q}` : '' };
-    if (isProducerDelegateTool(toolName)) return { prefix: 'Audio created', highlight: query ? ` — ${q}` : '' };
+    if (isDirectorDelegateTool(toolName)) return { prefix: 'Visual created', highlight: '' };
+    if (isProducerDelegateTool(toolName)) return { prefix: 'Audio created', highlight: '' };
     if (isPmDelegateTool(toolName)) return { prefix: 'Plan built', highlight: query ? ` — ${q}` : '' };
     if (isArchitectDelegateTool(toolName)) return { prefix: 'Architecture designed', highlight: query ? ` — ${q}` : '' };
 
@@ -571,10 +571,21 @@ export function stripIds(text: string): string {
 
 // agent-director also makes narration and video, so before its generation tool
 // starts, read Olmo's instruction to it to pick the right word and tile.
-function directorMediaKind(query: string): 'image' | 'audio' | 'video' {
-  if (/\b(narration|voice-?over|voice over|audio|song|music)\b/i.test(query)) return 'audio';
-  if (/\b(video|clip|clips|animate|lip-?sync)\b/i.test(query)) return 'video';
+// Guessed from the brief while the job runs. Its header lines ("flow:
+// animation character ad", "style: …") name the whole ad, not this step, so
+// they are ignored. Once the job is done the files it returned decide.
+export function directorMediaKind(query: string): 'image' | 'audio' | 'video' {
+  const body = query.split('\n').filter(line => !/^\s*[a-zA-Z_]+\s*:/.test(line)).join('\n');
+  if (/\b(narration|voice-?over|voice over|audio|song|music)\b/i.test(body)) return 'audio';
+  if (/\b(video|clip|clips|animate|lip-?sync)\b/i.test(body)) return 'video';
   return 'image';
+}
+
+function kindFromFiles(files: Array<{ fileType: string }>): 'image' | 'audio' | 'video' | null {
+  if (files.some(f => f.fileType.startsWith('video/'))) return 'video';
+  if (files.some(f => f.fileType.startsWith('audio/'))) return 'audio';
+  if (files.some(f => f.fileType.startsWith('image/'))) return 'image';
+  return null;
 }
 
 export function ToolCallCard({ toolName, query, prompt, status, results, result, generationStarted, aspectRatio, batchProgress, mediaCount, freshUrls, statusText, statusDetails }: ToolCallCardProps) {
@@ -591,7 +602,11 @@ export function ToolCallCard({ toolName, query, prompt, status, results, result,
   // "the image has already started" (it may still be waiting on the approval card).
   const preparing = status === 'loading' && isDelegate && !generationStarted && !cardAwaitingApproval;
   const awaitingApproval = cardAwaitingApproval && status === 'loading' && isMediaGenDelegateOrTool(toolName);
-  const directorKind = isDirectorDelegateTool(toolName) ? directorMediaKind(prompt || query) : null;
+  // An animated ad's row read "Audio created" because its brief mentions narration
+  // (2026-10-06): when the job is done, what it made decides the word.
+  const directorKind = isDirectorDelegateTool(toolName)
+    ? (status === 'done' ? kindFromFiles(extractResultFiles(toolName, result)) : null) ?? directorMediaKind(prompt || query)
+    : null;
   const label = toolLabel(toolName, query, status);
   // The director also records narration and renders video: name what it made.
   const labelPrefix = status === 'done' && directorKind === 'audio' && label.prefix === 'Visual created' ? 'Audio created'
