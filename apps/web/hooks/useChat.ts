@@ -29,6 +29,8 @@ export interface UseChatOptions {
     onGenerationStarted?: (aspectRatio?: string, count?: number) => void;
     /** A live status line (+ optional sub-lines) for the running delegate, from a tool_status event. */
     onToolStatus?: (text: string, details?: string[]) => void;
+    /** A step of a long job started or ended (see LiveStep). */
+    onStep?: (step: Record<string, unknown>) => void;
     // Follow-up suggestion chips arrive after `done` (the server no longer holds
     // `done` for them); messageId is the message `done` just settled.
     onFollowUps?: (suggestions: string[], messageId: string) => void;
@@ -72,6 +74,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         onBatchItemProgress,
         onGenerationStarted,
         onToolStatus,
+        onStep,
         onFollowUps,
         onTitle,
         onApprovalRequired,
@@ -102,6 +105,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const onBatchItemProgressRef = useRef(onBatchItemProgress);
     const onGenerationStartedRef = useRef(onGenerationStarted);
     const onToolStatusRef = useRef(onToolStatus);
+    const onStepRef = useRef(onStep);
     const onFollowUpsRef = useRef(onFollowUps);
     const onTitleRef = useRef(onTitle);
     const onApprovalRequiredRef = useRef(onApprovalRequired);
@@ -126,6 +130,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     onBatchItemProgressRef.current = onBatchItemProgress;
     onGenerationStartedRef.current = onGenerationStarted;
     onToolStatusRef.current = onToolStatus;
+    onStepRef.current = onStep;
     onFollowUpsRef.current = onFollowUps;
     onTitleRef.current = onTitle;
     onApprovalRequiredRef.current = onApprovalRequired;
@@ -396,6 +401,11 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                                 typeof payload.aspectRatio === 'string' ? payload.aspectRatio : undefined,
                                 typeof payload.count === 'number' ? payload.count : undefined,
                             );
+                            break;
+                        }
+
+                        case 'step': {
+                            onStepRef.current?.(payload);
                             break;
                         }
 

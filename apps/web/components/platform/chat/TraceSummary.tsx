@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { CompletedToolCall } from "./types";
+import { CompletedToolCall, LiveStep } from "./types";
+import { StepList } from "./StepList";
 import { ToolCallCard, groupImageToolCalls, extractResultFiles, withoutRepeatedTraceFiles } from "./ToolCallCard";
 import { ReasoningRow } from "./ThinkingIndicator";
 
@@ -19,6 +20,8 @@ export interface TraceSummaryProps {
     /** The turn ended with a finished video: the pictures and clips made on
      *  the way fold behind one row instead of filling the reply. */
     foldMedia?: boolean;
+    /** The step list as the turn ended, shown when the row is opened. */
+    steps?: LiveStep[];
 }
 
 // Collapsed "Worked for Ns" row shown after a turn finishes. The outer
@@ -28,7 +31,7 @@ export interface TraceSummaryProps {
 // clicking a tool card also fire the outer collapse toggle, leaving the
 // inner disclosure unusable. The tool call list is rendered as a sibling
 // <div>, shown/hidden off the same `collapsed` state instead.
-export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningElapsedSec, defaultCollapsed = true, freshUrls, foldMedia = false }: TraceSummaryProps) {
+export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningElapsedSec, defaultCollapsed = true, freshUrls, foldMedia = false, steps }: TraceSummaryProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const [mediaOpen, setMediaOpen] = useState(false);
 
@@ -84,6 +87,11 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
                 </svg>
                 <span>Worked for {elapsedSec}s{toolCalls.length > 0 ? ` · ${toolCalls.length} step${toolCalls.length === 1 ? '' : 's'}` : ''}</span>
             </button>
+            {!collapsed && steps && steps.length > 0 && (
+                <div className="ml-4">
+                    <StepList steps={steps} live={false} />
+                </div>
+            )}
             {!collapsed && (stepCalls.length > 0 || reasoningText) && (
                 <div className="ml-4 flex flex-col gap-1 normal-case">
                     {groupImageToolCalls(stepCalls).map((group, gi) => (

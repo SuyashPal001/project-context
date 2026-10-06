@@ -1,4 +1,6 @@
-import { stableToolCallId } from '../credits.js'
+import { createHash } from 'node:crypto'
+
+const stableToolCallId = (id: string): string => createHash('sha256').update(id).digest('hex')
 
 // A delegate's own tool calls never reach the browser: only the delegate
 // wrapper's (agent-director) call does, and its result lands once the whole

@@ -3,13 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { MessageSquare } from "lucide-react";
 import { AgentOrb } from "./AgentOrb";
-import { Message, CompletedToolCall, PlanResult } from "./types";
+import { Message, CompletedToolCall, PlanResult, LiveStep } from "./types";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { useRouter, useParams } from "next/navigation";
 import { ThinkingIndicator } from "./ThinkingIndicator";
-import { AwaitingApprovalContext, extractResultFiles, withoutRepeatedTraceFiles } from "./ToolCallCard";
-import { InlineAttachmentCard } from "./InlineAttachmentCard";
+import { AwaitingApprovalContext, extractResultFiles } from "./ToolCallCard";
 import { MessageItem, messageHasDisplayedContent } from "./MessageItem";
 import { findPendingClarification, findPendingGenerationConfirm, findPendingUpload } from "./pendingRequests";
 import { ClarificationCard } from "./ClarificationCard";
@@ -27,6 +26,8 @@ interface MessageThreadProps {
     isRetrying?: boolean;
     activeToolCalls?: Message["toolCalls"];
     completedToolCalls?: CompletedToolCall[];
+    /** Live step list for the turn that is streaming. */
+    liveSteps?: LiveStep[];
     reasoningText?: string;
     /** See CompletedTrace.afterSeq — live value for the message being streamed. */
     traceAfterSeq?: number | null;
@@ -73,7 +74,7 @@ function toCreditResourceType(resourceType: string): CreditResourceType | null {
         : null;
 }
 
-export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, traceAfterSeq, error, warmupMessage, onApprove, onDismiss, onGenerationConfirm, onGenerationDecline, onClarificationAnswer, onUploadAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl, agentPersona, agentIsDefault, agentName }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, liveSteps, reasoningText, traceAfterSeq, error, warmupMessage, onApprove, onDismiss, onGenerationConfirm, onGenerationDecline, onClarificationAnswer, onUploadAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl, agentPersona, agentIsDefault, agentName }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     // Marks where real content ends and the reserved bottom spacer begins.
     // scrollHeight now always includes that spacer (~one pane's worth of
@@ -132,15 +133,6 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
         ...(pendingGenerationConfirm ? [{ kind: 'generationConfirm' as const, message: pendingGenerationConfirm.message }] : []),
         ...(pendingUpload ? [{ kind: 'upload' as const, message: pendingUpload.message }] : []),
     ];
-    // The question overlay covers the chat, so the pictures the question is
-    // about (a storyboard to approve) sat hidden behind it (2026-10-05: "where
-    // is story board i dont see any of it"). The files this turn made or showed
-    // are shown inside the overlay, above the question.
-    const overlayFiles = pendingClarification
-        ? Array.from(new Map(withoutRepeatedTraceFiles(isStreaming ? (completedToolCalls ?? []) : (pendingClarification.message.completedTrace?.toolCalls ?? []))
-            .flatMap(tc => extractResultFiles(tc.toolName, tc.result))
-            .map(f => [f.fileId, f] as const)).values()).slice(-12)
-        : [];
     const activeOverlay = overlayCandidates.length > 0
         ? overlayCandidates.reduce((a, b) => (messages.indexOf(a.message) <= messages.indexOf(b.message) ? a : b)).kind
         : null;
@@ -359,7 +351,11 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
 
     return (
         <AwaitingApprovalContext.Provider value={pendingGenerationConfirm !== null && pendingGenerationConfirm !== undefined}>
-        <div className="relative flex-1 min-h-0 overflow-hidden" style={{ containerType: 'size' }}>
+        <div className="relative flex-1 min-h-0 overflow-hidden flex flex-col">
+        {/* The scroll area keeps its own size container (the anchor spacer below
+            reads 100cqh); a docked question card sits under it, where the
+            composer is, instead of covering the chat. */}
+        <div className="relative flex-1 min-h-0" style={{ containerType: 'size' }}>
         <div ref={scrollRef} className="h-full px-4 md:px-8 py-4 overflow-y-auto custom-scrollbar">
             <div className="max-w-4xl mx-auto space-y-2 pb-4">
                 {messages.length === 0 && !isTyping && (
@@ -406,6 +402,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                             onCreateInSystem={handleCreateInSystem}
                             activeToolCalls={message.isStreaming ? activeToolCalls : undefined}
                             completedToolCalls={message.isStreaming ? completedToolCalls : undefined}
+                            liveSteps={message.isStreaming ? liveSteps : undefined}
                             liveReasoningText={message.isStreaming ? reasoningText : undefined}
                             liveTraceAfterSeq={message.isStreaming ? (traceAfterSeq ?? undefined) : undefined}
                         />
@@ -420,6 +417,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                         isStreaming={isStreaming ?? false}
                         activeToolCalls={activeToolCalls ?? []}
                         completedToolCalls={completedToolCalls ?? []}
+                        steps={liveSteps}
                         reasoningText={reasoningText ?? ''}
                         agentAvatarUrl={agentAvatarUrl}
                         agentPersona={agentPersona}
@@ -471,22 +469,23 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                 )}
             </div>
         </div>
+        {showScrollToBottom && (
+            <button
+                type="button"
+                onClick={() => scrollRef.current?.scrollTo({ top: contentEndRef.current?.offsetTop ?? scrollRef.current.scrollHeight, behavior: 'smooth' })}
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 h-8 w-8 rounded-full bg-secondary shadow-md flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+            >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M3 5.5L7 9.5L11 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+            </button>
+        )}
+        </div>
         {activeOverlay === 'clarification' && pendingClarification && (
             // Anchored toward the bottom of the panel (near where ChatInput sits just
             // below this wrapper) rather than dead-center, so it reads as the next
             // step in the conversation instead of a modal dropped in empty space.
-            <div className="absolute inset-0 z-40 flex flex-col items-center justify-end pb-6 bg-background/90 backdrop-blur-sm px-4">
-                {overlayFiles.length > 0 && (
-                    <div className="w-full max-w-3xl flex flex-wrap justify-center gap-2 max-h-[45%] overflow-y-auto" data-testid="clarification-files">
-                        {overlayFiles.map(f => (
-                            <InlineAttachmentCard
-                                key={f.fileId}
-                                file={{ id: f.fileId, fileId: f.fileId, name: f.name, type: f.fileType, size: f.size }}
-                                url={freshUrls[f.fileId] ?? null}
-                            />
-                        ))}
-                    </div>
-                )}
+            <div className="shrink-0 z-40 flex flex-col items-center px-4 pt-2 pb-3 max-h-[65%] overflow-y-auto border-t border-border/50 bg-background" data-testid="docked-request">
                 <ClarificationCard
                     key={pendingClarification.request.id}
                     request={pendingClarification.request}
@@ -504,7 +503,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
             // Same "anchored toward the bottom" takeover wrapper as the clarification
             // overlay above — ApproveCost is the only input surface while a generation
             // confirm request is pending.
-            <div className="absolute inset-0 z-40 flex items-end justify-center pb-10 bg-background/90 backdrop-blur-md px-4">
+            <div className="shrink-0 z-40 flex flex-col items-center px-4 pt-2 pb-3 max-h-[65%] overflow-y-auto border-t border-border/50 bg-background" data-testid="docked-request">
                 <ApproveCost
                     label={pendingGenerationConfirm.request.label}
                     resourceType={toCreditResourceType(pendingGenerationConfirm.request.resourceType)}
@@ -518,7 +517,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
         )}
         {activeOverlay === 'upload' && pendingUpload && (
             // Same anchored takeover wrapper as clarification/generation-confirm above.
-            <div className="absolute inset-0 z-40 flex items-end justify-center pb-10 bg-background/90 backdrop-blur-md px-4">
+            <div className="shrink-0 z-40 flex flex-col items-center px-4 pt-2 pb-3 max-h-[65%] overflow-y-auto border-t border-border/50 bg-background" data-testid="docked-request">
                 <UploadRequestCard
                     key={pendingUpload.request.id}
                     request={pendingUpload.request}
@@ -529,17 +528,6 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     ) ?? Promise.resolve(true)}
                 />
             </div>
-        )}
-        {showScrollToBottom && (
-            <button
-                type="button"
-                onClick={() => scrollRef.current?.scrollTo({ top: contentEndRef.current?.offsetTop ?? scrollRef.current.scrollHeight, behavior: 'smooth' })}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 h-8 w-8 rounded-full bg-secondary shadow-md flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-            >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path d="M3 5.5L7 9.5L11 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-            </button>
         )}
         </div>
         </AwaitingApprovalContext.Provider>

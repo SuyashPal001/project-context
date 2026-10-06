@@ -60,6 +60,7 @@
     "remark-gfm": "^4.0.1",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
+    "thinking-orbs": "^0.3.2",
     "three": "0.185.0",
     "tippy.js": "^6.3.7",
     "tiptap-markdown": "^0.9.0",

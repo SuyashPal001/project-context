@@ -27,6 +27,7 @@ import { saveGenerationConfirmRequest, updateGenerationConfirmRequest, saveConve
 import { isClientHiddenTool } from '../toolVisibility.js'
 import { relayedDelegateMedia } from './nestedMedia.js'
 import { fileIdsIn, markWorkingFiles } from './workingFiles.js'
+import { stepStart, stepEnd, type StepEvent } from './stepEvents.js'
 import { buildCancelNotice, backgroundDeclineReason, trackBackgroundDecline, waitForBackgroundDecline } from './cancelNotice.js'
 
 async function generateFollowUps(userMessage: string, assistantReply: string): Promise<string[]> {
@@ -296,6 +297,20 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const pendingAttachments: AttachmentPayload[] = []
   // File ids this turn's tool calls took as inputs (see workingFiles.ts).
   const turnInputFileIds = new Set<string>()
+  // Live step list (stepEvents.ts): running steps by tool call id, Olmo's own and nested.
+  const runningSteps = new Map<string, StepEvent>()
+  const startStep = (toolName: string, toolCallId: string, args: unknown) => {
+    const s = stepStart(toolName, toolCallId, (args ?? {}) as Record<string, unknown>)
+    if (!s) return
+    runningSteps.set(toolCallId, s)
+    sendEvent('step', { ...s, conversationId })
+  }
+  const endStep = (toolCallId: string, result: unknown) => {
+    const s = runningSteps.get(toolCallId)
+    if (!s) return
+    runningSteps.delete(toolCallId)
+    sendEvent('step', { ...stepEnd(s, result), conversationId })
+  }
   const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks', 'rendercanvas', 'render-canvas', 'render_canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video', 'generate-narration', 'lipsync', 'assemble-clips', 'mux-beat-audio', 'composite-end-card', 'burn-captions', 'overlay-text', 'stretch-clip', 'mix-music-bed', 'trim-clip', 'generate-videos', 'generate-images'])
 
   // Set once a cancelled card has been answered instantly (see cancelNotice.ts):
@@ -611,6 +626,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       if (part.type === 'tool-output') {
         const nested = part.payload?.output
         if (nested?.type === 'tool-result' && isGatedTool(nested.payload?.toolName)) generationActivity++
+        // A delegate's own tool calls become steps too.
+        const np = nested?.payload as { toolName?: string; toolCallId?: string; args?: unknown; result?: unknown; output?: unknown } | undefined
+        if (nested?.type === 'tool-call' && np?.toolName) startStep(np.toolName, np.toolCallId ?? '', np.args)
+        else if (nested?.type === 'tool-result' && np?.toolCallId) endStep(np.toolCallId, np.result ?? np.output)
+        else if (nested?.type === 'tool-error' && np?.toolCallId) endStep(np.toolCallId, { failed: true })
         const relayed = relayedDelegateMedia(nested)
         if (relayed) {
           sendEvent('tool_call', { toolName: relayed.toolName, toolCallId: relayed.toolCallId, args: {}, conversationId })
@@ -675,6 +695,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const toolCallId = (p.toolCallId ?? toolName) as string
           if (toolCallId && toolName) toolCallNames.set(toolCallId, toolName)
           fileIdsIn(args, turnInputFileIds)
+          startStep(toolName, toolCallId, args)
           toolCallCount++
           if (!isClientHiddenTool(toolName)) sendEvent('tool_call', { toolName, toolCallId, args, conversationId })
           onToolCallStart()
@@ -846,6 +867,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const toolCallId = (p.toolCallId ?? '') as string
           const resolvedToolName = ((p.toolName ?? '') as string) || toolCallNames.get(toolCallId) || ''
           toolCallNames.delete(toolCallId)
+          endStep(toolCallId, { failed: true })
           const err = p.error as { message?: string; stack?: string } | string | undefined
           const message = typeof err === 'string' ? err : err?.message ?? JSON.stringify(err ?? null)
           console.error(`[sse:${sessionId}] tool-error toolName=${resolvedToolName} toolCallId=${toolCallId} error=${message}${typeof err === 'object' && err?.stack ? `\n${err.stack}` : ''}`)
@@ -861,6 +883,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const resolvedToolName = rawToolName || toolCallNames.get(toolCallId) || ''
           toolCallNames.delete(toolCallId)
           const result = (p.result ?? p.output ?? {}) as Record<string, unknown>
+          endStep(toolCallId, result)
           if (isGatedTool(resolvedToolName)) generationActivity++
           console.log(`[sse:${sessionId}] tool-result toolName=${resolvedToolName} resultKeys=${Object.keys(result).join(',')}`)
           if (!isClientHiddenTool(resolvedToolName)) sendEvent('tool_done', { toolCallId, toolName: resolvedToolName, result, conversationId })

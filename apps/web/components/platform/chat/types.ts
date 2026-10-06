@@ -170,7 +170,20 @@ export interface ArtifactRef {
     pmStepId?: string;
 }
 
+/** One step of a long job, from the orchestrator's `step` events
+ *  (stepEvents.ts). One event per tool call; the step list groups them by key. */
+export interface LiveStep {
+    id: string;
+    key: string;
+    label: string;
+    kind: 'image' | 'video' | 'voice' | 'join' | 'finish' | 'check' | 'cast';
+    state: 'running' | 'done' | 'failed';
+    count: number;
+}
+
 export interface CompletedTrace {
+    /** The step list as it ended (live turns only; not persisted). */
+    steps?: LiveStep[];
     elapsedSec: number;
     /** seq of the last message part that arrived before the first tool call /
      *  reasoning delta. Text parts at or below it render ABOVE the trace, the

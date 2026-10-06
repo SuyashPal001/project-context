@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { useChat } from '@/hooks/useChat';
 import { toast } from 'sonner';
 import type { CanvasAction, CanvasEventData, ArtifactType } from '@/components/platform/canvas/types';
-import type { ToolCall, CompletedToolCall, Message, MessagePart, MessagesResponse, ArtifactRef, MessageAttachment } from '@/components/platform/chat/types';
+import type { ToolCall, CompletedToolCall, Message, MessagePart, MessagesResponse, ArtifactRef, MessageAttachment, LiveStep } from '@/components/platform/chat/types';
 import type { Conversation, ConversationsResponse } from '@/components/platform/chat/types';
 import type { ClarificationRequest, ClarificationQuestion, UploadRequest } from '@/components/platform/chat/types';
 import { normalizeMessages } from '@/components/platform/chat/normalizeMessages';
@@ -201,6 +201,10 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     // the setCompletedToolCalls update, leaving onDone reading the stale
     // (pre-append) array and building a trace with an empty toolCalls list.
     const completedToolCallsRef = useRef<CompletedToolCall[]>([]);
+    // Live step list for long jobs (one entry per tool call, by id), mirrored
+    // in a ref for onDone — same staleness reason as completedToolCallsRef.
+    const [liveSteps, setLiveSteps] = useState<LiveStep[]>([]);
+    const liveStepsRef = useRef<LiveStep[]>([]);
     // Items settle out of order (Promise.allSettled resolves whichever
     // finishes first) — index alone isn't a monotonic "done count", so this
     // tracks which indices have actually been seen per batch toolCallId.
@@ -247,6 +251,8 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
         setActiveToolCalls(new Map());
         setCompletedToolCalls([]);
         completedToolCallsRef.current = [];
+        setLiveSteps([]);
+        liveStepsRef.current = [];
         batchSeenIndicesRef.current.clear();
         setReasoningText('');
         reasoningTextRef.current = '';
@@ -361,8 +367,9 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             reasoningStartRef.current = null;
             reasoningLastRef.current = null;
             const toolCallsAtDone = completedToolCallsRef.current;
+            const stepsAtDone = liveStepsRef.current;
             const hadTrace = toolCallsAtDone.length > 0 || elapsedSec >= 2 || !!reasoningTextAtDone;
-            const trace = hadTrace ? { completedTrace: { elapsedSec, afterSeq: traceAfterSeqRef.current ?? undefined, toolCalls: toolCallsAtDone, reasoningText: reasoningTextAtDone || undefined, reasoningElapsedSec } } : {};
+            const trace = hadTrace ? { completedTrace: { elapsedSec, afterSeq: traceAfterSeqRef.current ?? undefined, toolCalls: toolCallsAtDone, reasoningText: reasoningTextAtDone || undefined, reasoningElapsedSec, ...(stepsAtDone.length ? { steps: stepsAtDone } : {}) } } : {};
 
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const data = old ? [...old.data] : [];
@@ -549,6 +556,21 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
 
         // Same targeting as onGenerationStarted: the tool that emits the status
         // runs inside a delegate, so mark the most recent loading call.
+        onStep: useCallback((raw: Record<string, unknown>) => {
+            if (typeof raw.id !== 'string' || typeof raw.label !== 'string') return;
+            const step: LiveStep = {
+                id: raw.id, key: String(raw.key ?? raw.label), label: raw.label,
+                kind: (raw.kind as LiveStep['kind']) ?? 'finish',
+                state: raw.state === 'done' || raw.state === 'failed' ? raw.state : 'running',
+                count: typeof raw.count === 'number' ? raw.count : 1,
+            };
+            const prev = liveStepsRef.current;
+            const i = prev.findIndex(s => s.id === step.id);
+            const next = i === -1 ? [...prev, step] : prev.map((s, j) => (j === i ? step : s));
+            liveStepsRef.current = next;
+            setLiveSteps(next);
+        }, []),
+
         onToolStatus: useCallback((text: string, details?: string[]) => {
             setActiveToolCalls(prev => {
                 let targetId: string | undefined;
@@ -799,7 +821,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
 
     return {
         sendMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, sendUploadAnswer, cancel, isStreaming, isPreparingMessage, isRetrying,
-        activeToolCalls, completedToolCalls, reasoningText, traceAfterSeq,
+        activeToolCalls, completedToolCalls, liveSteps, reasoningText, traceAfterSeq,
         eventError, warmupMessage, agentTimedOut, hasSentFirstMessage,
         lastStreamEvent, regenerate, editAndResubmit,
     };

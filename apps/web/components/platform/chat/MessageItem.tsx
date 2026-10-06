@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { Terminal, Info, RotateCcw, Pencil, Check, X } from "lucide-react";
-import { ClarificationRequest, Message, MessageAttachment, MessagePart, PlanResult, ToolCall, CompletedToolCall, UploadRequest } from "./types";
+import { ClarificationRequest, LiveStep, Message, MessageAttachment, MessagePart, PlanResult, ToolCall, CompletedToolCall, UploadRequest } from "./types";
 import { useThumbnailUrl } from "@/hooks/useAssetThumbnail";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -64,6 +64,8 @@ interface MessageItemProps {
     // trailing element after the whole message list.
     activeToolCalls?: ToolCall[];
     completedToolCalls?: CompletedToolCall[];
+    /** Live step list for the turn still streaming. */
+    liveSteps?: LiveStep[];
     liveReasoningText?: string;
     /** See CompletedTrace.afterSeq — live value while this message streams. */
     liveTraceAfterSeq?: number;
@@ -90,6 +92,7 @@ export function MessageItem({
     onCreateInSystem,
     activeToolCalls,
     completedToolCalls,
+    liveSteps,
     liveReasoningText,
     liveTraceAfterSeq,
     onFollowUpSelect,
@@ -285,12 +288,14 @@ export function MessageItem({
                         isStreaming
                         activeToolCalls={activeToolCalls ?? []}
                         completedToolCalls={completedToolCalls ?? []}
+                        steps={liveSteps}
                         reasoningText={liveReasoningText}
                         freshUrls={freshUrls}
                     />
                 ) : isAssistant && !message.isStreaming && message.completedTrace && (
                     <TraceSummary
                         foldMedia={hasFinalVideo}
+                        steps={message.completedTrace.steps}
                         elapsedSec={message.completedTrace.elapsedSec}
                         toolCalls={message.completedTrace.toolCalls ?? []}
                         reasoningText={message.completedTrace.reasoningText}

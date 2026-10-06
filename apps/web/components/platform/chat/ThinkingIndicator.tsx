@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AgentOrb } from "./AgentOrb";
-import { ToolCall, CompletedToolCall } from "./types";
+import { ToolCall, CompletedToolCall, LiveStep } from "./types";
+import { StepList } from "./StepList";
 import { ToolCallCard, groupImageToolCalls, withoutRepeatedTraceFiles } from "./ToolCallCard";
 import type { PersonaSummary } from "../personas/types";
 
@@ -115,6 +116,8 @@ export interface LiveTraceProps {
     isStreaming: boolean;
     activeToolCalls: ToolCall[];
     completedToolCalls: CompletedToolCall[];
+    /** Live step list for a long job (orchestrator `step` events). */
+    steps?: LiveStep[];
     reasoningText?: string;
     /** fileId -> presigned URL — see ToolCallCard's freshUrls prop. */
     freshUrls?: Record<string, string>;
@@ -124,6 +127,7 @@ export function LiveTrace({
     isStreaming,
     activeToolCalls,
     completedToolCalls,
+    steps = [],
     reasoningText = '',
     freshUrls,
 }: LiveTraceProps) {
@@ -243,9 +247,10 @@ export function LiveTrace({
                     </div>
                 ) : liveElapsed >= 2 && (
                     <div className="shimmer-text text-sm text-shimmer-accent-80 font-mono mb-1.5" key={loadingTools.length > 0 ? messageIndex : 'done'}>
-                        Working for {liveElapsed}s{loadingTools.length > 0 ? ` · ${thinkingMessages[messageIndex % thinkingMessages.length]}` : ''}
+                        Working for {liveElapsed}s{loadingTools.length > 0 && steps.length === 0 ? ` · ${thinkingMessages[messageIndex % thinkingMessages.length]}` : ''}
                     </div>
                 )}
+                {steps.length > 0 && <StepList steps={steps} />}
                 <ReasoningRow text={reasoningText} />
                 {groupImageToolCalls(withoutRepeatedTraceFiles(completedToolCalls)).map((group, gi) => (
                     group.length > 1 ? (
@@ -342,6 +347,8 @@ export interface ThinkingIndicatorProps {
     isStreaming: boolean;
     activeToolCalls: ToolCall[];
     completedToolCalls: CompletedToolCall[];
+    /** Live step list for a long job (orchestrator `step` events). */
+    steps?: LiveStep[];
     reasoningText?: string;
     agentAvatarUrl?: string | null;
     agentPersona?: PersonaSummary | null;
@@ -356,6 +363,7 @@ export function ThinkingIndicator({
     isStreaming,
     activeToolCalls,
     completedToolCalls,
+    steps = [],
     reasoningText = '',
     agentAvatarUrl,
     agentPersona,
@@ -412,6 +420,7 @@ export function ThinkingIndicator({
                     isStreaming={isStreaming}
                     activeToolCalls={activeToolCalls}
                     completedToolCalls={completedToolCalls}
+                    steps={steps}
                     reasoningText={reasoningText}
                     freshUrls={freshUrls}
                 />
