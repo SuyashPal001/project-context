@@ -13,7 +13,8 @@ export function buildOlmoDelegates(
   args: { requestContext?: RequestContext<TenantContext> },
 ): Record<string, Agent> {
   // Conversational turns (thinkingBudget === 0 per thinking.ts — greetings,
-  // acks, sub-15-char messages) must never reach a delegate. The delegates'
+  // acks, and thanks, including letter-elongated or filler-tailed spellings
+  // like "hii" or "hi there") must never reach a delegate. The delegates'
   // tool descriptions ("PM supervisor…", "Generates images…") were tempting
   // the model to fire `agent-pm` on inputs as trivial as "hi", so the reply
   // that surfaced was pmAgent's clarification, not Olmo's own. Hiding the

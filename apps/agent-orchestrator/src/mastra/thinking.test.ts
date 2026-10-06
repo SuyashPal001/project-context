@@ -75,4 +75,27 @@ describe('getThinkingBudget', () => {
       expect(getThinkingBudget(word), word).toBe(0)
     }
   })
+
+  // F2: common greetings must still hide the delegates — letter-elongated
+  // spellings, filler-tailed greetings, and new everyday greeting words.
+  it('common greetings and filler-tailed/elongated greetings get 0', () => {
+    const rows = [
+      'hi there', 'hey olmo', 'hi olmo', 'hii', 'heyy', 'good morning', 'gm',
+      'namaste', 'thanks a lot', 'thank u', 'sup', 'hmm', 'thx', 'ty', 'hiya',
+      'yo', 'see ya', 'take care',
+    ]
+    for (const row of rows) {
+      expect(getThinkingBudget(row), row).toBe(0)
+    }
+  })
+
+  it('approval and typo paths still run first and are unchanged', () => {
+    expect(getThinkingBudget('aoorived')).toBe(1024)
+    expect(getThinkingBudget('yes approved')).toBe(1024)
+    expect(getThinkingBudget('ok')).toBe(1024)
+  })
+
+  it('does not collapse a genuine double letter into a different word ("see ya" stays conversational via its own exact phrase)', () => {
+    expect(getThinkingBudget('see ya')).toBe(0)
+  })
 })

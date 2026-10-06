@@ -11,7 +11,29 @@ const CONVERSATIONAL = new Set([
   'ok', 'okay', 'got it', 'sure', 'yes', 'no', 'great', 'nice', 'cool',
   'good', 'lol', 'haha', 'bye', 'goodbye', 'see ya', 'take care',
   'sounds good', 'perfect', 'alright', 'understood', 'noted',
+  // F2: more everyday greetings/thanks that must also hide the delegates.
+  'gm', 'good morning', 'good afternoon', 'good evening', 'good night',
+  'namaste', 'thank u', 'sup', 'hmm',
 ])
+
+// F2: a greeting or thanks word still counts as purely conversational when
+// every word after it is filler ("hi there", "hey olmo", "thanks a lot") —
+// none of these carry any real request for the delegates to act on.
+const CONVERSATIONAL_FILLER_WORDS = new Set([
+  'there', 'olmo', 'all', 'team', 'morning', 'afternoon', 'evening', 'night',
+  'so', 'much', 'a', 'lot', 'u', 'you', 'guys',
+])
+
+// F2: letter-elongated spellings ("hii", "heyyy") are still the same
+// greeting — collapse a trailing run of 2+ identical letters down to one
+// before the CONVERSATIONAL lookup. Only ever applied as a fallback AFTER
+// the exact (uncollapsed) lookup above has already failed, so a real word
+// that happens to end in a genuine double letter ("see" in "see ya") is
+// matched on its own exact phrase first and never reaches this collapse —
+// collapsing it would wrongly turn "see" into "se".
+function collapseElongatedWord(word: string): string {
+  return word.replace(/(.)\1+$/, '$1')
+}
 
 // Approval-shaped short replies — see COST_CONFIRMATION_CONTRACT in
 // platformAgent.ts, which explicitly treats these words as a valid approval
@@ -110,6 +132,14 @@ export function getThinkingBudget(message: string): number {
   // message that is neither conversational nor an approval must fall
   // through to the default below instead of being assumed harmless.
   if (CONVERSATIONAL.has(lower) || lower === '') return 0
+
+  // F2: a greeting/thanks word (possibly letter-elongated) followed only by
+  // filler words is still purely conversational.
+  const words = lower.split(' ').filter(Boolean)
+  const firstWordCollapsed = words.length ? collapseElongatedWord(words[0]) : ''
+  if (words.length > 0 && CONVERSATIONAL.has(firstWordCollapsed) && words.slice(1).every((w) => CONVERSATIONAL_FILLER_WORDS.has(w))) {
+    return 0
+  }
 
   // Complex reasoning keywords
   if (COMPLEX_KEYWORDS.some(kw => lower.includes(kw))) return 8192
