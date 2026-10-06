@@ -467,9 +467,11 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             emitStreamEvent('error');
             if (code === 'AGENT_TIMEOUT') { setAgentTimedOut(true); return; }
             if (code === 'WARMUP_TIMEOUT') { setWarmupMessage(message); return; }
+            // A run that broke mid-way saved what it made; show the saved copy.
+            if (code === 'STREAM_ERROR') queryClient.invalidateQueries({ queryKey: ['messages'] });
             setEventError(`[${code}] ${message}`);
             toast.error(message);
-        }, []),
+        }, [queryClient]),
 
         onToolCall: useCallback((toolName: string, toolCallId: string, args: Record<string, unknown>) => {
             emitStreamEvent('tool_call');
