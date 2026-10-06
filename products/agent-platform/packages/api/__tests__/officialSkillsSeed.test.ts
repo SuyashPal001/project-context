@@ -69,7 +69,7 @@ describe('OFFICIAL_SKILLS', () => {
     expect(director).toContain('check_still')
     expect(director).toContain('detect_cuts')
     // Task 4: cut times come from the reference file itself, never Director's own numbers.
-    expect(director).toMatch(/Set brief\.reference\.videoFileId to the reference video; plan_tvc reads its cut times itself/)
+    expect(director).toMatch(/Set brief\.reference\.videoFileId to the reference video \(this supersedes writing cutTimes above\): plan_tvc reads its cut times itself/)
     expect(director).toMatch(/generateSeconds/)
     expect(director).toMatch(/trimStartSeconds/)
     expect(director).toMatch(/productFileId/)

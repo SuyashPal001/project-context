@@ -14,6 +14,12 @@ import { stillPassedCheck } from './checkStill.js'
 // "TVC plan: <id>" and a step — the plan itself never rides in a prompt.
 export interface SavedPlan { version: 1; storageKey: string; plan: TvcPlan }
 
+// plan_tvc never takes a threshold from Director — only the detect_cuts tool
+// does (see detectCuts.ts's cache-poisoning note). Always the fixed default
+// that matched the 2026-10-05 reference ad, so a plan's check is always
+// against the same cut count the real file produces.
+const REFERENCE_CUT_THRESHOLD = 0.25
+
 export interface PlanTvcDeps {
   load: (planFileId: string) => Promise<SavedPlan>
   save: (doc: SavedPlan) => Promise<string | null>
@@ -127,6 +133,18 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     if (!input.plan) return { refused: true, refusalReason: 'PLAN_REQUIRED' }
     const planInput = structuredClone(input.plan)
     const ref = planInput.brief.reference
+    // A re-check loads the previously saved plan up front (not only later,
+    // for storageKey/carryOver) so the reference-video identity check below
+    // runs before any detection: once a plan is tied to a reference ad, that
+    // tie can't be dropped or swapped by a later check.
+    let previous: SavedPlan | undefined
+    if (input.planFileId) {
+      previous = await deps.load(input.planFileId)
+      const previousVideoId = previous.plan.brief.reference?.videoFileId
+      if (previousVideoId && previousVideoId !== ref?.videoFileId) {
+        return { refused: true, refusalReason: `REFERENCE_CHANGED: keep brief.reference.videoFileId ${previousVideoId}; the reference ad can't be dropped or swapped once planned` }
+      }
+    }
     // P6 (Task 4): cut times always come from the reference file itself, never
     // from Director — overwrite before validation so editing cutTimes can
     // never make a failing plan pass.
@@ -135,7 +153,11 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     }
     if (ref?.videoFileId) {
       try {
-        const { cutTimes } = await deps.detectCutTimes(ref.videoFileId)
+        const { cutTimes, durationSeconds } = await deps.detectCutTimes(ref.videoFileId)
+        // ffprobe on a file that isn't really a video (e.g. an image) still
+        // exits 0 with an N/A/0 duration — that is not a usable detection,
+        // never a reference with no cuts.
+        if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) throw new Error(`unusable durationSeconds: ${durationSeconds}`)
         ref.cutTimes = cutTimes
       } catch (err) {
         console.error('[planTvc] detectCutTimes failed:', (err as Error).message)
@@ -151,8 +173,7 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     delete plan.jingleFileId; delete plan.signoffFileId; delete plan.signoffSeconds
     let storageKey = deps.newKey()
     let toSave = plan
-    if (input.planFileId) {
-      const previous = await deps.load(input.planFileId)
+    if (previous) {
       storageKey = previous.storageKey
       toSave = carryOver(previous.plan, plan)
     }
@@ -240,7 +261,7 @@ export const planTvc = createTool({
       },
       newKey: () => `generated/${conversationId}/tvc-plan-${randomUUID()}.json`,
       stillChecked: (id) => stillPassedCheck({ threadId: conversationId, resourceId: tenantId }, id),
-      detectCutTimes: (videoFileId) => detectCutTimes(videoFileId, idToken, tenantId || conversationId),
+      detectCutTimes: (videoFileId) => detectCutTimes(videoFileId, idToken, tenantId || conversationId, REFERENCE_CUT_THRESHOLD),
     }
     try {
       return await runPlanTvc(inputData as PlanTvcInput, deps)

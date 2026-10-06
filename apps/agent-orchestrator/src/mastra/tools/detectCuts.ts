@@ -17,9 +17,24 @@ export interface CutTimesResult { cutTimes: number[]; durationSeconds: number }
 
 // Shared by the detect_cuts tool and plan_tvc check (spec Task 4): the plan
 // must never trust Director's own cutTimes, only what ffmpeg finds in the
-// reference file itself. Cached per videoFileId within the process so a
-// Director re-check loop doesn't re-run ffmpeg on every plan_tvc call.
+// reference file itself. Cached within the process so a Director re-check
+// loop doesn't re-run ffmpeg on every plan_tvc call.
+//
+// Keyed by scopeId + videoFileId + threshold, not videoFileId alone:
+// - scopeId (the tenant, falling back to conversationId) means a cache hit
+//   can never answer with another tenant's detection of the "same" fileId.
+// - threshold is Director-controlled on the detect_cuts tool (0.05-0.9). A
+//   cache keyed only by videoFileId let Director call detect_cuts once at
+//   threshold 0.9 (few cuts), poisoning the entry plan_tvc then reused to
+//   pass a plan with fewer shots than the real 0.25 cut count. plan_tvc
+//   itself never accepts a threshold from Director — see planTvc.ts, which
+//   always calls detectCutTimes with the default.
+const MAX_CACHE_ENTRIES = 200
 const cutTimesCache = new Map<string, Promise<CutTimesResult>>()
+
+function cacheKey(scopeId: string, videoFileId: string, threshold: number): string {
+  return `${scopeId}:${videoFileId}:${threshold}`
+}
 
 async function detectCutTimesUncached(videoFileId: string, idToken: string, scopeId: string, threshold: number): Promise<CutTimesResult> {
   const url = await fetchPresignedUrl(videoFileId, idToken)
@@ -30,11 +45,17 @@ async function detectCutTimesUncached(videoFileId: string, idToken: string, scop
 }
 
 export function detectCutTimes(videoFileId: string, idToken: string, scopeId: string, threshold = 0.25): Promise<CutTimesResult> {
-  const cached = cutTimesCache.get(videoFileId)
+  const key = cacheKey(scopeId, videoFileId, threshold)
+  const cached = cutTimesCache.get(key)
   if (cached) return cached
   const promise = detectCutTimesUncached(videoFileId, idToken, scopeId, threshold)
-  promise.catch(() => cutTimesCache.delete(videoFileId))
-  cutTimesCache.set(videoFileId, promise)
+  promise.catch(() => cutTimesCache.delete(key))
+  cutTimesCache.set(key, promise)
+  // Map iteration order is insertion order: the first key is the oldest.
+  if (cutTimesCache.size > MAX_CACHE_ENTRIES) {
+    const oldest = cutTimesCache.keys().next().value
+    if (oldest !== undefined) cutTimesCache.delete(oldest)
+  }
   return promise
 }
 

@@ -90,6 +90,32 @@ describe('runPlanTvc check: reference cut times come from the file, not Director
     const out = await runPlanTvc({ action: 'check', plan: p }, deps)
     expect(out.errors).toEqual([])
   })
+  it('refuses a zero or non-finite durationSeconds as unavailable, e.g. ffprobe on an image returning N/A', async () => {
+    const zero = fakeDeps({ detectCutTimes: async () => ({ cutTimes: [2, 4], durationSeconds: 0 }) })
+    const p1 = plan(); p1.brief.reference = { videoFileId: 'ref-video' }
+    expect((await runPlanTvc({ action: 'check', plan: p1 }, zero.deps)).refusalReason).toMatch(/^REFERENCE_CUTS_UNAVAILABLE/)
+    const nan = fakeDeps({ detectCutTimes: async () => ({ cutTimes: [2, 4], durationSeconds: NaN }) })
+    const p2 = plan(); p2.brief.reference = { videoFileId: 'ref-video' }
+    expect((await runPlanTvc({ action: 'check', plan: p2 }, nan.deps)).refusalReason).toMatch(/^REFERENCE_CUTS_UNAVAILABLE/)
+  })
+  it('refuses a re-check that drops or swaps the previously planned reference video', async () => {
+    const { deps } = fakeDeps({ detectCutTimes: async () => ({ cutTimes: [2, 4], durationSeconds: 6 }) })
+    const first = plan(); first.brief.reference = { videoFileId: 'ref-video-a' }
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: first }, deps)
+
+    const dropped = plan() // no reference at all
+    const droppedOut = await runPlanTvc({ action: 'check', plan: dropped, planFileId }, deps)
+    expect(droppedOut.refusalReason).toMatch(/^REFERENCE_CHANGED: keep brief\.reference\.videoFileId ref-video-a/)
+
+    const swapped = plan(); swapped.brief.reference = { videoFileId: 'ref-video-b' }
+    const swappedOut = await runPlanTvc({ action: 'check', plan: swapped, planFileId }, deps)
+    expect(swappedOut.refusalReason).toMatch(/^REFERENCE_CHANGED: keep brief\.reference\.videoFileId ref-video-a/)
+
+    // Re-checking with the same reference video still works.
+    const same = plan(); same.brief.reference = { videoFileId: 'ref-video-a' }
+    const sameOut = await runPlanTvc({ action: 'check', plan: same, planFileId }, deps)
+    expect(sameOut.errors).toEqual([])
+  })
 })
 
 describe('runPlanTvc get and record', () => {
