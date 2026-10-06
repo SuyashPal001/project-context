@@ -336,10 +336,13 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
 
                 {multiSelect && (
                     <div className="text-xs text-muted-foreground -mt-1">
+                        {/* "Select 1-4" said nothing a user needed and read as "pick
+                            your favourite" on a fix-these review (2026-10-06); only a
+                            real limit is spelled out. */}
                         {multiSelect.min === multiSelect.max
-                            ? `Select exactly ${multiSelect.min}`
-                            : `Select ${multiSelect.min}-${multiSelect.max}`}
-                        {' · '}{selectedIndices.size} selected
+                            ? `Select exactly ${multiSelect.min} · `
+                            : multiSelect.min > 1 ? `Select at least ${multiSelect.min} · ` : ''}
+                        {selectedIndices.size} selected
                     </div>
                 )}
                 {question.options.length > 0 && (

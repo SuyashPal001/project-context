@@ -1,7 +1,8 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { askClarifyingQuestionsTool } from './askClarifyingQuestions.js'
-import { clipCheckFailure, markShotReviewed, type ShotKind } from './reviewGate.js'
+import { briefRefsFor, clipCheckFailure, markShotReviewed, type ShotKind } from './reviewGate.js'
+import { checkClip } from './checkClip.js'
 
 // The one way an ad's stills and clips are put to the user, built here rather
 // than written freely each time. 2026-10-06 (Lakmē ad): the free-form review
@@ -32,6 +33,34 @@ export interface ReviewOutcome {
   fix: Array<{ fileId: string; label: string }>
   note?: string
   nextStep: string
+}
+
+/** "Scene 2 — Product Benefit Still" -> "Scene 2 — Product Benefit": the card already says what it shows, and the extra word wrapped the label. */
+export function shotLabel(label: string): string {
+  return label.trim().replace(/[\s—–-]*\b(still|clip|video clip|image|picture)$/i, '').trim().slice(0, 40) || label.trim().slice(0, 40)
+}
+
+// Always on the card, under any wording Olmo gives: a tapped picture means
+// "fix this one", which a bare "Do these look good?" never said (2026-10-06).
+const PICK_HINT = 'Tap any scene that needs a fix and say what below, or continue.'
+
+type StillCheck = { productMatches?: boolean; glitch?: boolean; reason?: string; refused?: boolean }
+
+/** Checks each still against the brief's product photo (and avatar) before the user sees it.
+ *  Only a wrong product or a broken picture counts: a hands-only close-up is not "a different person". */
+async function stillFaults(shots: Array<{ fileId: string }>, productFileId: string | undefined, avatarFileId: string | undefined, execContext: unknown): Promise<Array<string | undefined>> {
+  if (!productFileId) return shots.map(() => undefined)
+  const ctx = { requestContext: (execContext as { requestContext?: unknown })?.requestContext }
+  const run = (checkClip as unknown as { execute: (i: unknown, c: unknown) => Promise<StillCheck> }).execute
+  return Promise.all(shots.map(async (s) => {
+    try {
+      const r = await run({ clipFileId: s.fileId, masterStillFileId: shots[0].fileId, productFileId, ...(avatarFileId ? { referenceFileIds: [avatarFileId] } : {}) }, ctx)
+      if (r.refused) return undefined
+      if (r.productMatches === false) return `wrong product — ${r.reason ?? 'it does not match the product photo'}`
+      if (r.glitch) return `looks broken — ${r.reason ?? 'a glitch in the picture'}`
+      return undefined
+    } catch { return undefined }
+  }))
 }
 
 type Answer = { selectedLabel?: string; selectedLabels?: string[]; freeText?: string; skipped?: boolean }
@@ -76,24 +105,30 @@ export const reviewShotsTool = createTool({
     kind: z.enum(['still', 'clip']).describe('"still" for pictures, "clip" for videos'),
     shots: z.array(shotSchema).min(1).max(8).describe('In scene order'),
     question: z.string().max(200).optional().describe('Optional wording for the question; a plain default is used without it'),
+    productFileId: z.string().optional().describe('The product photo, when the ad has one; stills are checked against it before the user sees them. Taken from the brief when left out.'),
   }),
   execute: async (inputData, execContext) => {
-    const given = inputData as { kind: ShotKind; shots: Array<{ fileId: string; label: string }>; question?: string }
+    const given = inputData as { kind: ShotKind; shots: Array<{ fileId: string; label: string }>; question?: string; productFileId?: string }
     const { kind, question } = given
-    const shots = given.shots.map((s) => ({ ...s, label: s.label.trim().slice(0, 40) }))
+    const shots = given.shots.map((s) => ({ ...s, label: shotLabel(s.label) }))
     const noun = kind === 'still' ? 'picture' : 'clip'
-    const failed = kind === 'clip' ? shots.map((s) => clipCheckFailure(s.fileId)) : shots.map(() => undefined)
+    // Stills are checked here, so a wrong product (scene 1 held a pink tube,
+    // not the Lakmē bullet, 2026-10-06) is flagged before it is animated.
+    const brief = briefRefsFor(execContext?.requestContext?.get('conversationId') as string | undefined)
+    const failed = kind === 'clip'
+      ? shots.map((s) => clipCheckFailure(s.fileId))
+      : await stillFaults(shots, given.productFileId ?? brief.productFileId, brief.avatarFileId, execContext)
     const anyFailed = failed.some(Boolean)
     const q = shots.length === 1
       ? {
-          prompt: question ?? `Does ${shots[0].label} look right? The other scenes are built from this ${noun}, so anything off here would carry into them.`,
+          prompt: `${question ?? `Does ${shots[0].label} look right?`} The other scenes are built from this ${noun}, so anything off here would carry into them.`,
           options: anyFailed
             ? [{ label: FIX_IT_RECOMMENDED, rationale: `The check found: ${failed[0]}` }, { label: LOOKS_GOOD_PLAIN }]
             : [{ label: LOOKS_GOOD }, { label: FIX_IT, rationale: 'Say what to change below' }],
           allowFreeText: true, allowSkip: true,
         }
       : {
-          prompt: question ?? `Here are the ${shots.length} scenes. Tap any that need a fix and say what below, or continue.`,
+          prompt: `${question ?? `Here are the ${shots.length} scenes.`} ${PICK_HINT}`,
           options: [
             ...shots.map((s, i) => ({
               label: s.label,

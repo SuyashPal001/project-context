@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('./askClarifyingQuestions.js', () => ({ askClarifyingQuestionsTool: { execute: vi.fn() } }))
-import { reviewOutcome, reviewShotsTool } from './reviewShots.js'
+vi.mock('./checkClip.js', () => ({ checkClip: { execute: vi.fn() } }))
+import { reviewOutcome, reviewShotsTool, shotLabel } from './reviewShots.js'
+import { checkClip } from './checkClip.js'
 import { askClarifyingQuestionsTool } from './askClarifyingQuestions.js'
-import { firstShotUnreviewed, markShotReviewed, briefIsReviewedAdFlow, noteClipCheck, AD_FLOW_KEY } from './reviewGate.js'
+import { firstShotUnreviewed, markShotReviewed, briefIsReviewedAdFlow, noteClipCheck, noteBriefRefs, briefRefsFor, AD_FLOW_KEY } from './reviewGate.js'
 
 const shots = [
   { fileId: '11111111-1111-4111-8111-111111111111', label: 'Scene 1' },
@@ -69,5 +71,48 @@ describe('a clip the check failed', () => {
   it('one failed clip recommends fixing it', () => {
     expect(reviewOutcome('clip', [shots[0]], { selectedLabel: 'Fix it (Recommended)' }).decision).toBe('fix')
     expect(reviewOutcome('clip', [shots[0]], { selectedLabel: 'Looks good — continue' }).decision).toBe('continue')
+  })
+})
+
+describe('stills are checked against the brief before the user sees them', () => {
+  const brief = 'User direction:\ncreate an ad\nCreative brief:\n- Avatar: Hana · Beauty creator · Natural\n  Use the attached still image as the presenter reference.\n- Product: Lakmē Forever Matte Lipstick\n  Shop Lakme'
+  const atts = [{ fileId: 'avatar-1', name: 'Hana' }, { fileId: 'product-1', name: 'Lakmē Forever Matte Lipstick.jpg' }]
+
+  it('remembers the product photo and avatar from the brief', () => {
+    noteBriefRefs('conv-brief', brief, atts)
+    expect(briefRefsFor('conv-brief')).toMatchObject({ productFileId: 'product-1', avatarFileId: 'avatar-1' })
+    noteBriefRefs('conv-plain', 'make me a logo', atts)
+    expect(briefRefsFor('conv-plain')).toEqual({})
+  })
+
+  it('flags the still with the wrong product, says what to tap, and drops "Still" from labels', async () => {
+    noteBriefRefs('conv-still', brief, atts)
+    const check = checkClip.execute as unknown as ReturnType<typeof vi.fn>
+    check.mockReset()
+    check.mockImplementation(async (i: { clipFileId: string; productFileId: string }) => {
+      expect(i.productFileId).toBe('product-1')
+      return i.clipFileId === shots[0].fileId ? { passed: false, productMatches: false, reason: 'pink tube, not the maroon bullet' } : { passed: true, productMatches: true }
+    })
+    const ask = askClarifyingQuestionsTool.execute as unknown as ReturnType<typeof vi.fn>
+    ask.mockReset()
+    ask.mockResolvedValueOnce({ answers: [{ selectedLabels: ['All good — continue'] }] })
+    await (reviewShotsTool as unknown as { execute: (i: unknown, c: unknown) => Promise<unknown> }).execute(
+      { kind: 'still', question: 'Do these look good to animate?', shots: [{ ...shots[0], label: 'Scene 1 — Hook Still' }, { ...shots[1], label: 'Scene 2 — Product Benefit Still' }] },
+      { requestContext: new Map([['conversationId', 'conv-still']]) },
+    )
+    const q = ask.mock.calls[0][0].questions[0]
+    expect(q.prompt).toContain('Do these look good to animate?')
+    expect(q.prompt).toContain('Tap any scene that needs a fix')
+    expect(q.options[0]).toMatchObject({ label: 'Scene 1 — Hook' })
+    expect(q.options[0].rationale).toContain('wrong product')
+    expect(q.options[1].label).toBe('Scene 2 — Product Benefit')
+    expect(q.options[1].rationale).toBeUndefined()
+    expect(q.options[2].label).toBe('All good — continue')
+  })
+
+  it('shortens labels without emptying them', () => {
+    expect(shotLabel('Scene 3 — Look & CTA Still')).toBe('Scene 3 — Look & CTA')
+    expect(shotLabel('Scene 1 clip')).toBe('Scene 1')
+    expect(shotLabel('Still')).toBe('Still')
   })
 })

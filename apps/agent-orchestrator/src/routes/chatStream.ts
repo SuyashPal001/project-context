@@ -26,7 +26,7 @@ import { GENERATION_APPROVAL_METADATA, detectSkillPii } from '../mastra/tools/ge
 import { saveGenerationConfirmRequest, updateGenerationConfirmRequest, saveConversationTitle, fetchConversationAllowMode } from '../persistence.js'
 import { isClientHiddenTool } from '../toolVisibility.js'
 import { relayedDelegateMedia } from './nestedMedia.js'
-import { AD_FLOW_KEY, briefIsReviewedAdFlow } from '../mastra/tools/reviewGate.js'
+import { AD_FLOW_KEY, briefIsReviewedAdFlow, noteBriefRefs } from '../mastra/tools/reviewGate.js'
 import { fileIdsIn, markWorkingFiles } from './workingFiles.js'
 import { stepStart, stepEnd, type StepEvent } from './stepEvents.js'
 import { buildCancelNotice, backgroundDeclineReason, trackBackgroundDecline, waitForBackgroundDecline } from './cancelNotice.js'
@@ -380,6 +380,9 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       : ''
     console.log('[session] tenantId:', tenantId, 'folderId:', folderId ?? '(none)')
     const sessionCtx = `<session_context>\ntenant_id: ${tenantId}${folderId ? `\nfolder_id: ${folderId}` : ''}${folderScopeLine(folderPrefix)}\n</session_context>\n\n`
+    // Remember the brief's product photo and avatar so review_shots can check
+    // the stills against them in a later turn.
+    noteBriefRefs(conversationId, message, attachments)
     const mastraMessage = await buildMastraMessage(attachments, memPreamble, sessionCtx, message, sessionId)
     mark('message built')
 

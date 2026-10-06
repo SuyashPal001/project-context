@@ -76,3 +76,29 @@ export function firstShotRefusal(kind: ShotKind) {
     refusalReason: `FIRST_ONE_FIRST: the user has not looked at the first ${kind} of this ad yet. Make only the first scene's ${kind} with ${tool}, then stop and return it to Olmo, who shows it with review_shots. Make the rest only after the user says continue.`,
   }
 }
+
+// The product photo and avatar a creative brief came with, per conversation,
+// so a later turn's review can check stills against them without the model
+// having to pass them. The web's brief reads "- Product: <name>" and
+// "- Avatar: <name> · …", and attaches each picture under that name.
+const briefRefs = new Map<string, { productFileId?: string; avatarFileId?: string; at: number }>()
+
+const stem = (name: string) => name.replace(/\.[a-z0-9]+$/i, '').trim().toLowerCase()
+
+export function noteBriefRefs(conversationId: string | undefined, message: string, attachments: Array<{ fileId?: string; name?: string }>): void {
+  if (!conversationId || !message.includes('Creative brief:')) return
+  const find = (label: string) => {
+    const name = message.match(new RegExp(`^- ${label}: ([^·\\n]+)`, 'm'))?.[1]?.trim().toLowerCase()
+    return name ? attachments.find((a) => a.fileId && a.name && stem(a.name) === name)?.fileId : undefined
+  }
+  const productFileId = find('Product')
+  const avatarFileId = find('Avatar')
+  if (!productFileId && !avatarFileId) return
+  briefRefs.set(conversationId, { productFileId, avatarFileId, at: Date.now() })
+  if (briefRefs.size > 5000) briefRefs.delete(briefRefs.keys().next().value as string)
+}
+
+export function briefRefsFor(conversationId: string | undefined): { productFileId?: string; avatarFileId?: string } {
+  const r = conversationId ? briefRefs.get(conversationId) : undefined
+  return r && Date.now() - r.at < REVIEW_TTL_MS * 4 ? r : {}
+}
