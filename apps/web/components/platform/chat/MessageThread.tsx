@@ -210,6 +210,29 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
         }
     }, [messages]);
 
+    // Follow the newest content while a reply is live (long thinking, the step
+    // list, a growing answer) — the anchor above leaves the reply to grow below
+    // the fold, and live thinking ran off the bottom unseen (2026-10-06). Only
+    // while you are at the bottom: scrolling up yourself stops the follow, and
+    // coming back down resumes it.
+    const followRef = useRef(true);
+    const liveRef = useRef(false);
+    liveRef.current = !!(isTyping || isStreaming);
+    const contentRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const el = scrollRef.current;
+        const inner = contentRef.current;
+        if (!el || !inner || typeof ResizeObserver === 'undefined') return;
+        const ro = new ResizeObserver(() => {
+            if (!followRef.current || !liveRef.current) return;
+            const contentEnd = contentEndRef.current?.offsetTop ?? el.scrollHeight;
+            const overflow = contentEnd + 24 - (el.scrollTop + el.clientHeight);
+            if (overflow > 0) el.scrollTop += overflow;
+        });
+        ro.observe(inner);
+        return () => ro.disconnect();
+    }, []);
+
     useEffect(() => {
         const el = scrollRef.current;
         if (!el) return;
@@ -217,6 +240,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
             const contentEnd = contentEndRef.current?.offsetTop ?? el.scrollHeight;
             const distanceFromBottom = contentEnd - el.scrollTop - el.clientHeight;
             setShowScrollToBottom(distanceFromBottom > 200);
+            followRef.current = distanceFromBottom < 80;
         };
         // Runs once immediately, not just on the next native 'scroll' event.
         // The anchor-to-last-user-message effect above scrolls synchronously
@@ -357,7 +381,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
             composer is, instead of covering the chat. */}
         <div className="relative flex-1 min-h-0" style={{ containerType: 'size' }}>
         <div ref={scrollRef} className="h-full px-4 md:px-8 py-4 overflow-y-auto custom-scrollbar">
-            <div className="max-w-4xl mx-auto space-y-2 pb-4">
+            <div ref={contentRef} className="max-w-4xl mx-auto space-y-2 pb-4">
                 {messages.length === 0 && !isTyping && (
                     <div className="flex flex-col items-center justify-center py-20 text-center">
                         <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
