@@ -55,6 +55,15 @@ export interface PlanTvcOutput {
   refusalReason?: string
 }
 
+// F4: compared field by field, not with JSON.stringify — a jingle rebuilt
+// with the same fields in a different key order must still count as the same.
+function jingleFieldsEqual(a: TvcPlan['brief']['jingle'], b: TvcPlan['brief']['jingle']): boolean {
+  if (!a || !b) return a === b
+  if (a.line !== b.line || a.style !== b.style || a.language !== b.language) return false
+  const al = a.lyrics ?? [], bl = b.lyrics ?? []
+  return al.length === bl.length && al.every((l, i) => l === bl[i])
+}
+
 // Recorded stills and clips survive a re-check for shots whose content did not
 // change. The narration survives while the voiceover and the voice are the
 // same; the song while the tier and the category are (what it was chosen for).
@@ -67,7 +76,7 @@ function carryOver(previous: TvcPlan, next: TvcPlan): TvcPlan {
   // The recorded jingle survives while the jingle asked for is the same and
   // still fits the (possibly changed) voiceover; otherwise it must be re-made.
   delete out.jingleFileId; delete out.signoffFileId; delete out.signoffSeconds
-  const sameJingle = !!next.brief.jingle && JSON.stringify(previous.brief.jingle) === JSON.stringify(next.brief.jingle)
+  const sameJingle = !!next.brief.jingle && jingleFieldsEqual(previous.brief.jingle, next.brief.jingle)
   if (sameJingle && previous.signoffSeconds !== undefined && jingleErrors(out, previous.signoffSeconds).length === 0) {
     out.jingleFileId = previous.jingleFileId
     out.signoffFileId = previous.signoffFileId

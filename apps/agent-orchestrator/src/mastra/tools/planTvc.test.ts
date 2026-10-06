@@ -239,6 +239,19 @@ describe('plan_tvc record: the jingle (J5)', () => {
     expect(finish.jingleFileId).toBeUndefined()
     expect(finish.signoffStartSeconds).toBeUndefined()
   })
+  // F4: the comparison is field by field, so a different key order on the
+  // jingle object still counts as the same jingle.
+  it('a re-check keeps the recorded jingle when the jingle object arrives with its keys in a different order', async () => {
+    const { deps } = fakeDeps()
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: withJingle() }, deps)
+    await runPlanTvc({ action: 'record', planFileId: planFileId!, jingleFileId: 'j1', signoffFileId: 's1', signoffSeconds: 2 }, deps)
+    const reordered = withJingle()
+    reordered.brief.jingle = { style: 'bright pop, male vocal', line: 'Ice cold, every time' }
+    await runPlanTvc({ action: 'check', plan: reordered, planFileId }, deps)
+    const finish = await getFinish(deps, planFileId!)
+    expect(finish.jingleFileId).toBe('j1')
+    expect(finish.signoffStartSeconds).toBe(4)
+  })
   it('a fresh check saves none of the three jingle fields, even when the input plan carries them', async () => {
     const { deps } = fakeDeps()
     const p = withJingle()
