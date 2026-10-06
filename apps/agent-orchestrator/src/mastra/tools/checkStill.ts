@@ -2,18 +2,22 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { fetchBase64 } from './checkClip.js'
 import { CheckUnavailableError, gatewayAsk, runStillChecks, type ProductScale } from './tvcChecks.js'
+import { checkScopeOf, loadCheckRecords, updateCheckRecords, type CheckScope } from './tvcCheckRecords.js'
 
 // Checks a TVC still BEFORE it is animated (spec §3.3): the product, glitches,
 // background people and the lead (same face; nobody else looks like her).
 // Free to the user. Proven 2026-10-05: a squat bottle was fixed on retry, and
 // a wide shot that failed twice was held back instead of animated.
-const passedStills = new Map<string, true>()
-export function markStillPassed(conversationId: string, stillFileId: string): void {
-  if (passedStills.size > 2000) passedStills.delete(passedStills.keys().next().value as string)
-  passedStills.set(`${conversationId}:${stillFileId}`, true)
+
+// Passed stills live in the conversation thread's metadata (K1), so a
+// restart no longer forgets them. false = not stored (missing or foreign
+// thread, or the store is down); plan_tvc will then treat it as unchecked.
+export async function markStillPassed(scope: CheckScope, stillFileId: string): Promise<boolean> {
+  const out = await updateCheckRecords(scope, (r) => ({ ...r, passedStills: [...r.passedStills.filter((id) => id !== stillFileId), stillFileId] }))
+  return out !== 'unavailable'
 }
-export function stillPassedCheck(conversationId: string, stillFileId: string): boolean {
-  return passedStills.has(`${conversationId}:${stillFileId}`)
+export async function stillPassedCheck(scope: CheckScope, stillFileId: string): Promise<boolean> {
+  return !!(await loadCheckRecords(scope))?.passedStills.includes(stillFileId)
 }
 
 export const checkStill = createTool({
@@ -38,7 +42,6 @@ export const checkStill = createTool({
     const i = inputData as { stillFileId: string; productFileId?: string; productScale?: ProductScale; productMustBeVisible?: boolean; expectExtras?: boolean; actorFileId?: string; leadInShot?: boolean }
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
-    const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined ?? ''
     if (!idToken) return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE' }
     const signal = AbortSignal.timeout(300_000)
     try {
@@ -51,7 +54,9 @@ export const checkStill = createTool({
         product, productScale: i.productScale, productMustBeVisible: i.productMustBeVisible,
         expectExtras: i.expectExtras, lead, leadInShot: i.leadInShot,
       })
-      if (r.passed) markStillPassed(conversationId, i.stillFileId)
+      if (r.passed && !(await markStillPassed(checkScopeOf(execContext?.requestContext), i.stillFileId))) {
+        return { passed: true, reason: 'The still passed every check, but this conversation could not store the result (CHECK_RECORD_UNAVAILABLE), so plan_tvc will not record it. Tell Olmo.' }
+      }
       return { passed: r.passed, reason: r.passed ? 'The still passed every check.' : r.reasons.join(' ') }
     } catch (err) {
       // Every throw here — CheckUnavailableError, a plain Error from fetchBase64

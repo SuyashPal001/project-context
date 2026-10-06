@@ -18,7 +18,7 @@ export interface PlanTvcDeps {
   save: (doc: SavedPlan) => Promise<string | null>
   price: (plan: TvcPlan) => Promise<{ fullCostCredits: number; shortfallCredits: number }>
   newKey: () => string
-  stillChecked: (stillFileId: string) => boolean
+  stillChecked: (stillFileId: string) => boolean | Promise<boolean>
 }
 
 export const planTvcInputSchema = z.object({
@@ -156,7 +156,7 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     const shot = doc.plan.shots.find((s) => s.n === r.shot)
     if (!shot) return { refused: true, refusalReason: 'NO_SUCH_SHOT' }
     if (shot.continuesFrom !== undefined) return { refused: true, refusalReason: `CONTINUING_SHOT_HAS_NO_STILL: shot ${r.shot} starts from shot ${shot.continuesFrom}'s last frame; record its clip only` }
-    if (!r.keptByUser && !deps.stillChecked(r.stillFileId)) return { refused: true, refusalReason: `STILL_NOT_CHECKED: run check_still on shot ${r.shot}'s still first (or record it with keptByUser when the user chose to keep it)` }
+    if (!r.keptByUser && !(await deps.stillChecked(r.stillFileId))) return { refused: true, refusalReason: `STILL_NOT_CHECKED: run check_still on shot ${r.shot}'s still first (or record it with keptByUser when the user chose to keep it)` }
   }
   let next: TvcPlan = doc.plan
   try {
@@ -207,7 +207,7 @@ export const planTvc = createTool({
         return { fullCostCredits: result.fullCostCredits, shortfallCredits: result.shortfallCredits }
       },
       newKey: () => `generated/${conversationId}/tvc-plan-${randomUUID()}.json`,
-      stillChecked: (id) => stillPassedCheck(conversationId, id),
+      stillChecked: (id) => stillPassedCheck({ threadId: conversationId, resourceId: tenantId }, id),
     }
     try {
       return await runPlanTvc(inputData as PlanTvcInput, deps)

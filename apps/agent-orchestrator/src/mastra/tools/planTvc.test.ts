@@ -251,3 +251,13 @@ describe('plan_tvc record: the jingle (J5)', () => {
     expect(finish.signoffStartSeconds).toBeUndefined()
   })
 })
+
+describe('plan_tvc record: async still records (K1)', () => {
+  it('awaits an async stillChecked and refuses an unchecked still', async () => {
+    const { deps } = fakeDeps()
+    deps.stillChecked = async (id) => id === 'good'
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    expect(await runPlanTvc({ action: 'record', planFileId: planFileId!, shot: 1, stillFileId: 'bad' }, deps)).toMatchObject({ refusalReason: expect.stringMatching(/^STILL_NOT_CHECKED/) })
+    expect(await runPlanTvc({ action: 'record', planFileId: planFileId!, shot: 1, stillFileId: 'good' }, deps)).toEqual({ planFileId })
+  })
+})

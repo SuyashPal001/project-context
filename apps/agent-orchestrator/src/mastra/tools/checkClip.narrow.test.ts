@@ -19,6 +19,8 @@ vi.mock('./tvcChecks.js', async (orig) => {
 
 import { checkClip } from './checkClip.js'
 import { CheckUnavailableError } from './tvcChecks.js'
+import { setCheckRecordStore } from './tvcCheckRecords.js'
+import { inMemoryThreadStore } from './tvcCheckRecords.testing.js'
 
 function ctx() {
   const rc = new RequestContext()
@@ -35,6 +37,7 @@ beforeEach(() => {
     }
     return new Response(Buffer.from('bytes'), { status: 200, headers: { 'content-type': String(url).includes('clip') ? 'video/mp4' : 'image/jpeg' } })
   }) as unknown as typeof fetch
+  setCheckRecordStore(inMemoryThreadStore([{ id: 'c-narrow', resourceId: 't1' }]).store)
 })
 
 describe('check_clip narrow checks', () => {

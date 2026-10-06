@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { droppedCheckInputs, lineMatchScore, parseVerdict, buildCheckQuestion, judgeVerdict, narrowWanted, droppedCheckInputs as dropped2 } from './checkClip.js'
+import { droppedCheckInputsFallback as droppedCheckInputs, lineMatchScore, parseVerdict, buildCheckQuestion, judgeVerdict, narrowWanted, droppedCheckInputsFallback as dropped2 } from './checkClip.js'
 
 describe('lineMatchScore', () => {
   it('passes the exact line and small transcription differences', () => {

@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os'
 import { fetchPresignedUrl } from './mediaCache.js'
 import { resolveAvatarReferences } from './avatarReferences.js'
 import { persistCost } from '../cost.js'
+import { checkScopeOf, updateCheckRecords, type CheckInputs, type CheckScope } from './tvcCheckRecords.js'
 import { markCheckFailed } from './oneVideoPerTurn.js'
 import { CheckUnavailableError, gatewayAsk, runNarrowClipChecks, sampleFrames, type NarrowClipResult, type ProductScale } from './tvcChecks.js'
 
@@ -93,30 +94,50 @@ export function parseVerdict(raw: string): ClipVerdict | null {
 // presenter = the clip was judged as a shot with a person in it. A re-check
 // that flips noPerson on drops the face and outfit comparison, so it counts as
 // a dropped input like the others; noPerson true -> false is stricter and allowed.
-type CheckInputs = { expectedLine: boolean; product: boolean; reference: boolean; noSpeech?: boolean; presenter?: boolean; productVisible?: boolean; extras?: boolean; lead?: boolean; action?: boolean; endState?: boolean; productNarrow?: boolean; productExpectedState?: boolean }
 const CHECK_KEYS = ['expectedLine', 'product', 'reference', 'noSpeech', 'presenter', 'productVisible', 'extras', 'lead', 'action', 'endState', 'productNarrow', 'productExpectedState'] as const
-const checkedWith = new Map<string, CheckInputs>()
-export function droppedCheckInputs(key: string, now: CheckInputs): string[] {
-  const before = checkedWith.get(key)
+
+/** The re-check rules (unchanged): a re-check may add inputs, never drop them. */
+export function mergeCheckInputs(before: CheckInputs | undefined, now: CheckInputs): { dropped: string[]; merged: CheckInputs } {
   const dropped = before ? CHECK_KEYS.filter((k) => before[k] && !now[k]) : []
+  const merged: CheckInputs = {
+    expectedLine: now.expectedLine || !!before?.expectedLine,
+    product: now.product || !!before?.product,
+    reference: now.reference || !!before?.reference,
+    noSpeech: !!now.noSpeech || !!before?.noSpeech,
+    presenter: !!now.presenter || !!before?.presenter,
+    productVisible: !!now.productVisible || !!before?.productVisible,
+    extras: !!now.extras || !!before?.extras,
+    lead: !!now.lead || !!before?.lead,
+    action: !!now.action || !!before?.action,
+    endState: !!now.endState || !!before?.endState,
+    productNarrow: !!now.productNarrow || !!before?.productNarrow,
+    productExpectedState: !!now.productExpectedState || !!before?.productExpectedState,
+  }
+  return { dropped, merged }
+}
+
+// Today's in-process record, kept only as the fallback when the thread
+// cannot hold the record (missing, foreign, or the store is down).
+const fallbackCheckedWith = new Map<string, CheckInputs>()
+export function droppedCheckInputsFallback(key: string, now: CheckInputs): string[] {
+  const { dropped, merged } = mergeCheckInputs(fallbackCheckedWith.get(key), now)
   if (dropped.length === 0) {
-    if (checkedWith.size > 1000) checkedWith.delete(checkedWith.keys().next().value as string)
-    checkedWith.set(key, {
-      expectedLine: now.expectedLine || !!before?.expectedLine,
-      product: now.product || !!before?.product,
-      reference: now.reference || !!before?.reference,
-      noSpeech: !!now.noSpeech || !!before?.noSpeech,
-      presenter: !!now.presenter || !!before?.presenter,
-      productVisible: !!now.productVisible || !!before?.productVisible,
-      extras: !!now.extras || !!before?.extras,
-      lead: !!now.lead || !!before?.lead,
-      action: !!now.action || !!before?.action,
-      endState: !!now.endState || !!before?.endState,
-      productNarrow: !!now.productNarrow || !!before?.productNarrow,
-      productExpectedState: !!now.productExpectedState || !!before?.productExpectedState,
-    })
+    if (fallbackCheckedWith.size > 1000) fallbackCheckedWith.delete(fallbackCheckedWith.keys().next().value as string)
+    fallbackCheckedWith.set(key, merged)
   }
   return dropped
+}
+
+/** What a clip was first checked with lives in the thread's metadata (K1). */
+export async function droppedCheckInputs(scope: CheckScope, clipFileId: string, now: CheckInputs): Promise<string[]> {
+  let dropped: string[] = []
+  const out = await updateCheckRecords(scope, (r) => {
+    const res = mergeCheckInputs(r.checkedWith[clipFileId], now)
+    dropped = res.dropped
+    if (dropped.length) return null
+    return { ...r, checkedWith: { ...r.checkedWith, [clipFileId]: res.merged }, checkedOrder: [...r.checkedOrder.filter((k) => k !== clipFileId), clipFileId] }
+  })
+  return out === 'unavailable' ? droppedCheckInputsFallback(`${scope.threadId}:${clipFileId}`, now) : dropped
 }
 
 export async function fetchBase64(fileId: string, idToken: string, signal: AbortSignal): Promise<{ data: string; mime: string }> {
@@ -220,7 +241,7 @@ export const checkClip = createTool({
     const lines = givenLine ? spokenSoFar(conversationId, clipFileId) : undefined
     const expectedLine = givenLine ? (lines?.join(' ') ?? givenLine) : undefined
     const narrow = narrowWanted({ productMustBeVisible, productScale, expectExtras, leadFileId, action })
-    const dropped = droppedCheckInputs(`${conversationId}:${clipFileId}`, { expectedLine: !!expectedLine, product: !!productFileId, reference: !!referenceFileIds?.length, noSpeech: !!expectNoSpeech, presenter: !noPerson, productVisible: !!productMustBeVisible, extras: !!expectExtras, lead: !!leadFileId, action: !!action, endState: !!endState, productNarrow: !!(productFileId && (productScale || productMustBeVisible)), productExpectedState: !!productExpectedState })
+    const dropped = await droppedCheckInputs(checkScopeOf(execContext?.requestContext), clipFileId, { expectedLine: !!expectedLine, product: !!productFileId, reference: !!referenceFileIds?.length, noSpeech: !!expectNoSpeech, presenter: !noPerson, productVisible: !!productMustBeVisible, extras: !!expectExtras, lead: !!leadFileId, action: !!action, endState: !!endState, productNarrow: !!(productFileId && (productScale || productMustBeVisible)), productExpectedState: !!productExpectedState })
     if (dropped.length) {
       return { refused: true, refusalReason: `CHECK_INPUTS_DROPPED: this clip was checked before with ${dropped.join(', ')}; check it again with the same inputs (never fewer) — a check without them proves nothing` }
     }
