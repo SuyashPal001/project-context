@@ -884,8 +884,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // set requireApproval, and all 8 have a metadata entry from Task
           // 1). Fail open rather than hang the turn on an invisible card.
           if (!meta || !toolCallId) {
-            console.error(`[sse:${sessionId}] tool-call-approval for unmapped tool="${toolName}" toolCallId="${toolCallId}" — auto-approving`)
-            currentStream = await (activeAgent as any).approveToolCall({ runId, toolCallId, requestContext, memory: titleMemory, ...olmoOptions })
+            console.error(`[sse:${sessionId}] tool-call-approval for unmapped tool="${toolName}" toolCallId="${toolCallId}" — declining (no card to show)`)
+            currentStream = await (activeAgent as any).declineToolCall({ runId, toolCallId, reason: 'This action needs approval the app cannot show, so it was not run. Do not retry it.', requestContext, memory: titleMemory, ...olmoOptions })
             continue turnLoop
           }
 
