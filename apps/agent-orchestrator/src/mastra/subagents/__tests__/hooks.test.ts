@@ -94,12 +94,38 @@ describe('onDelegationStart', () => {
   // (planTvc.ts's expectedReferenceVideoFileId) to refuse a plan that drops
   // or never had the reference, even on its very first check.
   it('parses "Reference video: <id>" off the prompt into tvcReferenceVideoFileId', async () => {
-    const ctx = startContext({ prompt: 'TVC plan: plan-1\nReference video: file-ref-99\nStep: shot 1' })
+    const ctx = startContext({ prompt: 'TVC plan: plan-1\nReference video: a1b2c3d4-e5f6-4789-a012-b3c4d5e6f789\nStep: shot 1' })
     await buildDelegationConfig(host, { budget: allow, record: noopRecord }).onDelegationStart!(ctx as never)
-    expect(ctx.requestContext.get('tvcReferenceVideoFileId')).toBe('file-ref-99')
+    expect(ctx.requestContext.get('tvcReferenceVideoFileId')).toBe('a1b2c3d4-e5f6-4789-a012-b3c4d5e6f789')
   })
   it('leaves tvcReferenceVideoFileId unset when the prompt carries no reference', async () => {
     const ctx = startContext()
+    await buildDelegationConfig(host, { budget: allow, record: noopRecord }).onDelegationStart!(ctx as never)
+    expect(ctx.requestContext.get('tvcReferenceVideoFileId')).toBeUndefined()
+  })
+
+  // Re-review fix: a plain \S+ capture also swallows trailing punctuation or
+  // surrounding quoting/backticks, which would make every correct plan fail
+  // planTvc.ts's comparison and get wrongly refused. The regex now anchors
+  // on the fileId's UUID shape and strips any of those wrappers.
+  const UUID = 'a1b2c3d4-e5f6-4789-a012-b3c4d5e6f789'
+  it('strips a trailing period off the id', async () => {
+    const ctx = startContext({ prompt: `Reference video: ${UUID}.\nStep: shot 1` })
+    await buildDelegationConfig(host, { budget: allow, record: noopRecord }).onDelegationStart!(ctx as never)
+    expect(ctx.requestContext.get('tvcReferenceVideoFileId')).toBe(UUID)
+  })
+  it('strips surrounding backticks off the id', async () => {
+    const ctx = startContext({ prompt: `Reference video: \`${UUID}\`\nStep: shot 1` })
+    await buildDelegationConfig(host, { budget: allow, record: noopRecord }).onDelegationStart!(ctx as never)
+    expect(ctx.requestContext.get('tvcReferenceVideoFileId')).toBe(UUID)
+  })
+  it('strips surrounding quotes off the id', async () => {
+    const ctx = startContext({ prompt: `Reference video: "${UUID}"\nStep: shot 1` })
+    await buildDelegationConfig(host, { budget: allow, record: noopRecord }).onDelegationStart!(ctx as never)
+    expect(ctx.requestContext.get('tvcReferenceVideoFileId')).toBe(UUID)
+  })
+  it('sets nothing when the token after the label is not a UUID', async () => {
+    const ctx = startContext({ prompt: 'Reference video: not-a-real-id\nStep: shot 1' })
     await buildDelegationConfig(host, { budget: allow, record: noopRecord }).onDelegationStart!(ctx as never)
     expect(ctx.requestContext.get('tvcReferenceVideoFileId')).toBeUndefined()
   })

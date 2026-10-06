@@ -24,15 +24,32 @@ const CONVERSATIONAL_FILLER_WORDS = new Set([
   'so', 'much', 'a', 'lot', 'u', 'you', 'guys',
 ])
 
-// F2: letter-elongated spellings ("hii", "heyyy") are still the same
-// greeting — collapse a trailing run of 2+ identical letters down to one
-// before the CONVERSATIONAL lookup. Only ever applied as a fallback AFTER
-// the exact (uncollapsed) lookup above has already failed, so a real word
-// that happens to end in a genuine double letter ("see" in "see ya") is
-// matched on its own exact phrase first and never reaches this collapse —
-// collapsing it would wrongly turn "see" into "se".
-function collapseElongatedWord(word: string): string {
-  return word.replace(/(.)\1+$/, '$1')
+// F2: letter-elongated spellings ("hii", "heyyy", "hmmm") are still the same
+// greeting — collapse a trailing run of identical letters down to `keep`
+// characters. Only ever applied as a fallback AFTER the exact (uncollapsed)
+// lookup above has already failed, so a real word that happens to end in a
+// genuine double letter ("see" in "see ya") is matched on its own exact
+// phrase first and never reaches this collapse.
+function collapseTrailingRun(word: string, keep: number): string {
+  const m = /(.)\1+$/.exec(word)
+  if (!m) return word
+  const [run, char] = m
+  if (run.length <= keep) return word
+  return word.slice(0, word.length - run.length) + char.repeat(keep)
+}
+
+// Tries collapsing to a single trailing letter first ("hii" -> "hi"), and
+// only when that form isn't itself a known word, also tries collapsing to a
+// doubled trailing letter ("hmmm" -> "hmm") — "hmm" is itself a genuine
+// doubled-letter word, so an elongated "hmmm" must still land on "hmm", not
+// get over-collapsed to "hm". Order matters: callers check candidates in
+// this order and use the first one that matches, so a word with no real
+// elongation (single stray double letter, like "see") never gets a second,
+// looser chance to accidentally match something.
+function collapsedCandidates(word: string): string[] {
+  const single = collapseTrailingRun(word, 1)
+  const double = collapseTrailingRun(word, 2)
+  return single === double ? [single] : [single, double]
 }
 
 // Approval-shaped short replies — see COST_CONFIRMATION_CONTRACT in
@@ -133,13 +150,18 @@ export function getThinkingBudget(message: string): number {
   // through to the default below instead of being assumed harmless.
   if (CONVERSATIONAL.has(lower) || lower === '') return 0
 
-  // F2: a greeting/thanks word (possibly letter-elongated) followed only by
-  // filler words is still purely conversational.
+  // F2: a greeting/thanks word (possibly letter-elongated), one or two
+  // words long ("hi", "thank you"), followed only by filler words is still
+  // purely conversational ("hi there", "hey olmo", "thanks a lot",
+  // "thank you so much", "hmmm").
   const words = lower.split(' ').filter(Boolean)
-  const firstWordCollapsed = words.length ? collapseElongatedWord(words[0]) : ''
-  if (words.length > 0 && CONVERSATIONAL.has(firstWordCollapsed) && words.slice(1).every((w) => CONVERSATIONAL_FILLER_WORDS.has(w))) {
-    return 0
-  }
+  const leadMatchesWithFillerTail = (leadWords: number, leadPhrase: string): boolean =>
+    CONVERSATIONAL.has(leadPhrase) && words.slice(leadWords).every((w) => CONVERSATIONAL_FILLER_WORDS.has(w))
+  const oneWordLead = words.length > 0
+    ? collapsedCandidates(words[0]).some((candidate) => leadMatchesWithFillerTail(1, candidate))
+    : false
+  const twoWordLead = words.length >= 2 && leadMatchesWithFillerTail(2, `${words[0]} ${words[1]}`)
+  if (oneWordLead || twoWordLead) return 0
 
   // Complex reasoning keywords
   if (COMPLEX_KEYWORDS.some(kw => lower.includes(kw))) return 8192

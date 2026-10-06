@@ -89,8 +89,12 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
       // prompt is the one place that fact can't be edited away: when it
       // recreates a reference ad, it carries "Reference video: <id>" (same
       // pattern as AD_FLOW_KEY above), and planTvc.ts reads this back off
-      // requestContext to refuse a plan that disagrees.
-      const refMatch = /Reference video:\s*(\S+)/.exec(context.prompt)
+      // requestContext to refuse a plan that disagrees. Anchored on the
+      // fileId's actual UUID shape, not just "the next non-space run" — a
+      // plain \S+ capture also swallows surrounding punctuation or quoting
+      // ("<id>.", "`<id>`", "\"<id>\""), which would make every correct plan
+      // fail the comparison in planTvc.ts and get wrongly refused.
+      const refMatch = /Reference video:\s*[`'"(]?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(context.prompt)
       if (refMatch) ctx.set('tvcReferenceVideoFileId' as never, refMatch[1] as never)
       const spec = lookup(context.primitiveId)
       const tenantId = host.tenantId || (ctx.get('tenantId') as string | undefined) || ''

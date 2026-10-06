@@ -98,4 +98,18 @@ describe('getThinkingBudget', () => {
   it('does not collapse a genuine double letter into a different word ("see ya" stays conversational via its own exact phrase)', () => {
     expect(getThinkingBudget('see ya')).toBe(0)
   })
+
+  // Re-review fix: "thank you"-led filler, and "hmm"-style elongation
+  // ("hmmm") where the base word is itself a doubled letter.
+  it('treats "thank you" followed by filler as conversational', () => {
+    for (const row of ['thank you so much', 'thank you so', 'thank you much']) {
+      expect(getThinkingBudget(row), row).toBe(0)
+    }
+  })
+
+  it('collapses "hmm"-style elongation to the doubled base word', () => {
+    for (const row of ['hmmm', 'hmmmm']) {
+      expect(getThinkingBudget(row), row).toBe(0)
+    }
+  })
 })
