@@ -11,6 +11,7 @@ import { fetchPresignedUrl, downloadToSessionCache } from './mediaCache.js'
 import { refundMixMusicBedCharge } from './mixMusicBedCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
+import { finishedAdTitle } from './fileTitle.js'
 
 const execFile = promisify(execFileCb)
 
@@ -210,7 +211,7 @@ export const mixMusicBed = createTool({
       return { refused: true, refusalReason: 'MIX_FAILED', jobId }
     }
     const attachment = await uploadGeneratedFile(idToken, {
-      conversationId, title: 'Final Video', content: buffer,
+      conversationId, title: finishedAdTitle(conversationId, 'Final Video'), content: buffer,
       contentType: 'video/mp4', extension: 'mp4',
     })
     rmSync(workDir, { recursive: true, force: true })

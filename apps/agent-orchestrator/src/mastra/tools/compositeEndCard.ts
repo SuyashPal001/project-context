@@ -12,6 +12,7 @@ import { refundCompositeEndCardCharge } from './compositeEndCardCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
 import { chooseCardColumn, faceBoxes, sampleFrames } from './tvcChecks.js'
+import { finishedAdTitle } from './fileTitle.js'
 
 const execFile = promisify(execFileCb)
 
@@ -276,7 +277,7 @@ export const compositeEndCard = createTool({
       return { refused: true, refusalReason: 'COMPOSITE_FAILED', jobId }
     }
     const attachment = await uploadGeneratedFile(idToken, {
-      conversationId, title: 'Beat with End Card', content: buffer,
+      conversationId, title: finishedAdTitle(conversationId, 'Beat with End Card'), content: buffer,
       contentType: 'video/mp4', extension: 'mp4',
     })
     rmSync(workDir, { recursive: true, force: true })

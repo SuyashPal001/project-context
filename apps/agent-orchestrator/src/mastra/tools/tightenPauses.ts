@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { uploadGeneratedFile } from '../../persistence.js'
 import { fetchPresignedUrl, downloadToSessionCache } from './mediaCache.js'
+import { finishedAdTitle } from './fileTitle.js'
 
 // Cuts dead air out of a finished talking-head or UGC ad. 2026-10-05: a part
 // given more seconds than its line made Omni pause 1.3s mid-line and smile
@@ -99,7 +100,7 @@ export const tightenPauses = createTool({
       const out = join(workDir, 'tightened.mp4')
       await execFile('ffmpeg', ['-y', '-i', source, '-filter_complex', graph, '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'aac', out], { timeout: FFMPEG_TIMEOUT_MS })
       const buffer = readFileSync(out)
-      const attachment = await uploadGeneratedFile(idToken, { conversationId, title: 'Finished Ad', content: buffer, contentType: 'video/mp4', extension: 'mp4' })
+      const attachment = await uploadGeneratedFile(idToken, { conversationId, title: finishedAdTitle(conversationId, 'Finished Ad'), content: buffer, contentType: 'video/mp4', extension: 'mp4' })
       if (!attachment) return { refused: true, refusalReason: 'STORAGE_FAILED' }
       return { fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size, secondsBefore: Math.round(duration * 10) / 10, secondsAfter: Math.round(after * 10) / 10 }
     } catch (err) {

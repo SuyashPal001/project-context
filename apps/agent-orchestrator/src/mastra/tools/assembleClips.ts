@@ -11,6 +11,7 @@ import { fetchPresignedUrl, downloadToSessionCache } from './mediaCache.js'
 import { refundAssemblyCharge } from './assemblyCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
+import { finishedAdTitle } from './fileTitle.js'
 
 const execFile = promisify(execFileCb)
 
@@ -485,7 +486,7 @@ export const assembleClips = createTool({
       return { refused: true, refusalReason: 'ASSEMBLY_FAILED', jobId }
     }
     const attachment = await uploadGeneratedFile(idToken, {
-      conversationId, title: 'Assembled Video', content: buffer,
+      conversationId, title: finishedAdTitle(conversationId, 'Assembled Video'), content: buffer,
       contentType: 'video/mp4', extension: 'mp4',
     })
     rmSync(workDir, { recursive: true, force: true })

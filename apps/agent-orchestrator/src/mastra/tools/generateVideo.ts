@@ -1,6 +1,6 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
-import { fileTitleSchema, fileTitle } from './fileTitle.js'
+import { fileTitleSchema, fileTitle, noteClipTitle } from './fileTitle.js'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
 import { uploadGeneratedFile } from '../../persistence.js'
 import { fetchPresignedUrl } from './mediaCache.js'
@@ -314,6 +314,7 @@ export async function generateVideoItem(
 
     const buffer = Buffer.from(genResult.videoBase64, 'base64')
     const extension = (genResult.mimeType ?? 'video/mp4').split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'mp4'
+    noteClipTitle(conversationId, inputData.title)
     const attachment = await uploadGeneratedFile(idToken, {
       conversationId, title: fileTitle(inputData.title, 'Generated Video'), content: buffer,
       contentType: genResult.mimeType, extension,

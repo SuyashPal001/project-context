@@ -12,6 +12,7 @@ import { refundMixVoiceoverCharge } from './mixVoiceoverCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { parseIntegratedLoudness } from './mixMusicBed.js'
 import { stableToolCallId } from '../../credits.js'
+import { finishedAdTitle } from './fileTitle.js'
 
 // Lays announcer voiceover blocks over a joined TVC video at their planned
 // times, keeping the clips' own sound (on-camera lines, fizz, splash) and
@@ -285,7 +286,7 @@ export const mixVoiceover = createTool({
       return { refused: true, refusalReason: 'MIX_FAILED', jobId }
     }
     const attachment = await uploadGeneratedFile(idToken, {
-      conversationId, title: 'Ad with voiceover', content: buffer, contentType: 'video/mp4', extension: 'mp4',
+      conversationId, title: finishedAdTitle(conversationId, 'Ad with voiceover'), content: buffer, contentType: 'video/mp4', extension: 'mp4',
     })
     rmSync(workDir, { recursive: true, force: true })
     if (!attachment) {
