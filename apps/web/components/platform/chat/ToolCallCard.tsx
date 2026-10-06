@@ -614,12 +614,17 @@ export function ToolCallCard({ toolName, query, prompt, status, results, result,
   const directorKind = isDirectorDelegateTool(toolName)
     ? (status === 'done' ? kindFromFiles(extractResultFiles(toolName, result)) : liveKind ?? null) ?? directorMediaKind(prompt || query)
     : null;
+  // A finished Director row whose files were all shown above it already (the
+  // repeats are folded away) has nothing of its own: it said "Video created"
+  // after making one still, guessed from the brief (2026-10-06).
+  const directorDoneEmpty = status === 'done' && isDirectorDelegateTool(toolName) && Array.isArray(result?.subAgentToolResults) && extractResultFiles(toolName, result).length === 0;
   const liveDirectorLabel = status === 'loading' && isDirectorDelegateTool(toolName) && liveKind
     ? (liveKind === 'video' ? 'Making the video clips' : liveKind === 'audio' ? 'Recording the voice' : 'Making the pictures')
     : null;
   const label = toolLabel(toolName, query, status);
   // The director also records narration and renders video: name what it made.
-  const labelPrefix = status === 'done' && directorKind === 'audio' && label.prefix === 'Visual created' ? 'Audio created'
+  const labelPrefix = directorDoneEmpty && label.prefix === 'Visual created' ? 'Done'
+    : status === 'done' && directorKind === 'audio' && label.prefix === 'Visual created' ? 'Audio created'
     : status === 'done' && directorKind === 'video' && label.prefix === 'Visual created' ? 'Video created'
     : liveDirectorLabel ?? label.prefix;
   const { highlight } = label;
