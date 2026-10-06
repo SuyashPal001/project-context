@@ -123,6 +123,48 @@ describe('runPlanTvc check: reference cut times come from the file, not Director
     const sameOut = await runPlanTvc({ action: 'check', plan: same, planFileId }, deps)
     expect(sameOut.errors).toEqual([])
   })
+
+  // F3: once a reference is planned, lengthSeconds is locked the same way
+  // the reference video itself is.
+  it('refuses a re-check that changes lengthSeconds once a reference is planned', async () => {
+    const { deps } = fakeDeps({ detectCutTimes: async () => ({ cutTimes: [2, 4], durationSeconds: 6 }) })
+    const first = plan(); first.brief.reference = { videoFileId: 'ref-video-a' }
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: first }, deps)
+
+    const changed = plan(); changed.brief.reference = { videoFileId: 'ref-video-a' }; changed.brief.lengthSeconds = 15
+    const out = await runPlanTvc({ action: 'check', plan: changed, planFileId }, deps)
+    expect(out.refusalReason).toMatch(/^LENGTH_CHANGED: keep brief\.lengthSeconds 6/)
+  })
+  it('allows a lengthSeconds change on a re-check with no reference planned', async () => {
+    const { deps } = fakeDeps()
+    const first = plan()
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: first }, deps)
+
+    const changed = plan(); changed.brief.lengthSeconds = 15
+    const out = await runPlanTvc({ action: 'check', plan: changed, planFileId }, deps)
+    expect(out.refusalReason).toBeUndefined()
+  })
+})
+
+describe('runPlanTvc check: the reference video comes from Olmo\'s delegation (F4)', () => {
+  it('refuses a first check whose brief disagrees with the delegation-carried reference', async () => {
+    const { deps } = fakeDeps()
+    deps.expectedReferenceVideoFileId = 'file-ref-99'
+    const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    expect(out.refusalReason).toMatch(/^REFERENCE_VIDEO_MISSING: this ad recreates a reference; set brief\.reference\.videoFileId to file-ref-99/)
+  })
+  it('passes a first check whose brief.reference.videoFileId matches', async () => {
+    const { deps } = fakeDeps({ detectCutTimes: async () => ({ cutTimes: [2, 4], durationSeconds: 6 }) })
+    deps.expectedReferenceVideoFileId = 'file-ref-99'
+    const p = plan(); p.brief.reference = { videoFileId: 'file-ref-99' }
+    const out = await runPlanTvc({ action: 'check', plan: p }, deps)
+    expect(out.errors).toEqual([])
+  })
+  it('does not refuse when no reference was carried by the delegation', async () => {
+    const { deps } = fakeDeps()
+    const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    expect(out.refusalReason).toBeUndefined()
+  })
 })
 
 describe('runPlanTvc check: product photo must be an image, never the reference (Task 1)', () => {
@@ -146,6 +188,27 @@ describe('runPlanTvc check: product photo must be an image, never the reference 
     const { deps } = fakeDeps({ productPhotoInfo: async () => { throw new Error('file lookup failed') } })
     const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
     expect(out.refusalReason).toBe('PRODUCT_PHOTO_UNCHECKED: could not read the product photo; try again')
+  })
+
+  // F1: some browser uploads land in S3 under a generic mime type
+  // (apps/web/lib/assetType.ts:7-9) instead of the real one — a real photo
+  // must still pass when its storage path says it's an image.
+  it('accepts an octet-stream upload whose pathname ends in a real image extension', async () => {
+    const { deps } = fakeDeps({ productPhotoInfo: async () => ({ mimeType: 'application/octet-stream', pathname: '/generated/conv1/x-product-photo.jpg' }) })
+    const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    expect(out.errors).toEqual([])
+  })
+  it('accepts binary/octet-stream and an empty mime the same way, case-insensitively', async () => {
+    for (const mimeType of ['binary/octet-stream', '', 'APPLICATION/OCTET-STREAM']) {
+      const { deps } = fakeDeps({ productPhotoInfo: async () => ({ mimeType, pathname: '/generated/conv1/x-product-photo.WEBP' }) })
+      const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+      expect(out.errors).toEqual([])
+    }
+  })
+  it('still refuses an octet-stream upload whose pathname is not an image, e.g. a video', async () => {
+    const { deps } = fakeDeps({ productPhotoInfo: async () => ({ mimeType: 'application/octet-stream', pathname: '/generated/conv1/x-product-video.mp4' }) })
+    const out = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    expect(out.refusalReason).toMatch(/^PRODUCT_PHOTO_NOT_IMAGE/)
   })
 })
 

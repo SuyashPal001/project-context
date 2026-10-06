@@ -61,6 +61,20 @@ export function isExtractedFramePath(pathname: string): boolean {
   return EXTRACTED_FRAME_PATH_RE.test(pathname)
 }
 
+// F1: some browser uploads reach S3 with a generic mime type instead of the
+// real one (apps/web/lib/assetType.ts:7-9 falls back to these same strings).
+// When that happens, the photo is still accepted if its storage pathname
+// ends in a real image extension — otherwise a real product photo was being
+// refused as PRODUCT_PHOTO_NOT_IMAGE purely because the browser mislabeled
+// it on upload.
+const OCTET_STREAM_MIMES = new Set(['application/octet-stream', 'binary/octet-stream', ''])
+const IMAGE_EXTENSION_RE = /\.(jpe?g|png|webp|avif|heic)$/i
+
+function looksLikeProductPhoto(mimeType: string, pathname: string): boolean {
+  if (mimeType.startsWith('image/')) return true
+  return OCTET_STREAM_MIMES.has(mimeType.toLowerCase()) && IMAGE_EXTENSION_RE.test(pathname)
+}
+
 // plan_tvc never takes a threshold from Director — only the detect_cuts tool
 // does (see detectCuts.ts's cache-poisoning note). Always the fixed default
 // that matched the 2026-10-05 reference ad, so a plan's check is always
@@ -86,6 +100,10 @@ export interface PlanTvcDeps {
   // and use it as "the product". Throws if the file can't be read (check
   // refuses rather than passing silently).
   productPhotoInfo: (fileId: string) => Promise<ProductPhotoInfo>
+  // F4: set from requestContext's tvcReferenceVideoFileId (hooks.ts),
+  // undefined when Olmo's delegation prompt carried no "Reference video:" —
+  // the ordinary, reference-free ad flow.
+  expectedReferenceVideoFileId?: string
 }
 
 export const planTvcInputSchema = z.object({
@@ -188,6 +206,16 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     if (!input.plan) return { refused: true, refusalReason: 'PLAN_REQUIRED' }
     const planInput = structuredClone(input.plan)
     const ref = planInput.brief.reference
+    // F4: Olmo's own delegation prompt carries "Reference video: <id>" when
+    // this ad recreates a reference (hooks.ts's onDelegationStart parses it
+    // into requestContext as tvcReferenceVideoFileId) — a live run showed
+    // Director dropping brief.reference entirely on the FIRST check, before
+    // any previously-saved plan exists for REFERENCE_CHANGED (below) to
+    // catch. When the delegation itself said there is a reference, the plan
+    // must agree, from the very first check.
+    if (deps.expectedReferenceVideoFileId && ref?.videoFileId !== deps.expectedReferenceVideoFileId) {
+      return { refused: true, refusalReason: `REFERENCE_VIDEO_MISSING: this ad recreates a reference; set brief.reference.videoFileId to ${deps.expectedReferenceVideoFileId}` }
+    }
     // Task 1: the product photo must be an image, and never the reference
     // video itself — checked before anything else so a bad id can't ride
     // through on a plan that otherwise validates.
@@ -202,7 +230,7 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
       console.error('[planTvc] productPhotoInfo failed:', (err as Error).message)
       return { refused: true, refusalReason: 'PRODUCT_PHOTO_UNCHECKED: could not read the product photo; try again' }
     }
-    if (!productPhotoInfo.mimeType.startsWith('image/')) {
+    if (!looksLikeProductPhoto(productPhotoInfo.mimeType, productPhotoInfo.pathname)) {
       return { refused: true, refusalReason: 'PRODUCT_PHOTO_NOT_IMAGE: the product photo must be a photo of the product (jpg/png/webp), not a video; ask the user to upload one' }
     }
     // Task 2: the product photo can never be a frame extract_frame pulled
@@ -222,6 +250,13 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
       const previousVideoId = previous.plan.brief.reference?.videoFileId
       if (previousVideoId && previousVideoId !== ref?.videoFileId) {
         return { refused: true, refusalReason: `REFERENCE_CHANGED: keep brief.reference.videoFileId ${previousVideoId}; the reference ad can't be dropped or swapped once planned` }
+      }
+      // F3: once a reference is planned, lengthSeconds is locked too — the ad's
+      // length comes from the reference's own cut structure, so changing it
+      // after the fact would silently desync the plan from the reference it
+      // was checked against.
+      if (previousVideoId && planInput.brief.lengthSeconds !== previous.plan.brief.lengthSeconds) {
+        return { refused: true, refusalReason: `LENGTH_CHANGED: keep brief.lengthSeconds ${previous.plan.brief.lengthSeconds}; the ad length can't change once a reference is planned` }
       }
     }
     // P6 (Task 4): cut times always come from the reference file itself, never
@@ -342,6 +377,7 @@ export const planTvc = createTool({
       stillChecked: (id) => stillPassedCheck({ threadId: conversationId, resourceId: tenantId }, id),
       detectCutTimes: (videoFileId) => detectCutTimes(videoFileId, idToken, tenantId || conversationId, REFERENCE_CUT_THRESHOLD),
       productPhotoInfo: (fileId) => resolveProductPhotoInfo(fileId, idToken),
+      expectedReferenceVideoFileId: execContext?.requestContext?.get('tvcReferenceVideoFileId') as string | undefined,
     }
     try {
       return await runPlanTvc(inputData as PlanTvcInput, deps)
