@@ -64,13 +64,13 @@ describe('check_clip narrow checks', () => {
     })
     // check_clip's own frame extraction (ffmpeg) runs before the narrow
     // checks and must still succeed; only the narrow check's own sampling
-    // (the 4th+ ffmpeg call) fails, pinning that the failure comes from
+    // (the 6th+ ffmpeg call; check_clip samples five frames) fails, pinning that the failure comes from
     // sampleFrames and not from the main check.
     let ffmpegCalls = 0
     execFile.mockImplementation((cmd: string, _a: string[], _o: unknown, cb: (e: Error | null, r: { stdout: string; stderr: string }) => void) => {
       if (cmd === 'ffmpeg') {
         ffmpegCalls++
-        if (ffmpegCalls > 3) return cb(new Error('ffmpeg: no such filter'), { stdout: '', stderr: '' })
+        if (ffmpegCalls > 5) return cb(new Error('ffmpeg: no such filter'), { stdout: '', stderr: '' })
         return cb(null, { stdout: '', stderr: '' })
       }
       cb(null, { stdout: '3.0\n', stderr: '' })
