@@ -37,6 +37,10 @@ interface ToolCallCardProps {
   statusText?: string;
   /** Sub-lines under the status, e.g. one per person being cast. */
   statusDetails?: string[];
+  /** Director calls only: the kind of media its running step is making now
+   *  (from the live step list), so the row follows the work: stills first,
+   *  then clips, then the voice. */
+  liveKind?: 'image' | 'video' | 'audio';
 }
 
 // The web must re-show generated media the moment a tool call completes — not
@@ -589,7 +593,7 @@ function kindFromFiles(files: Array<{ fileType: string }>): 'image' | 'audio' | 
   return null;
 }
 
-export function ToolCallCard({ toolName, query, prompt, status, results, result, generationStarted, aspectRatio, batchProgress, mediaCount, freshUrls, statusText, statusDetails }: ToolCallCardProps) {
+export function ToolCallCard({ toolName, query, prompt, status, results, result, generationStarted, aspectRatio, batchProgress, mediaCount, freshUrls, statusText, statusDetails, liveKind }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(true);
   const hasResults = status === 'done' && !!results?.length;
   // The orchestrator closes a cancelled generation out with { cancelled: true } so the
@@ -605,14 +609,19 @@ export function ToolCallCard({ toolName, query, prompt, status, results, result,
   const awaitingApproval = cardAwaitingApproval && status === 'loading' && isMediaGenDelegateOrTool(toolName);
   // An animated ad's row read "Audio created" because its brief mentions narration
   // (2026-10-06): when the job is done, what it made decides the word.
+  // While it runs, the step it is on now decides (a UGC ad starts with stills
+  // and then makes clips; its row said "Generating image…" over the clips).
   const directorKind = isDirectorDelegateTool(toolName)
-    ? (status === 'done' ? kindFromFiles(extractResultFiles(toolName, result)) : null) ?? directorMediaKind(prompt || query)
+    ? (status === 'done' ? kindFromFiles(extractResultFiles(toolName, result)) : liveKind ?? null) ?? directorMediaKind(prompt || query)
+    : null;
+  const liveDirectorLabel = status === 'loading' && isDirectorDelegateTool(toolName) && liveKind
+    ? (liveKind === 'video' ? 'Making the video clips' : liveKind === 'audio' ? 'Recording the voice' : 'Making the pictures')
     : null;
   const label = toolLabel(toolName, query, status);
   // The director also records narration and renders video: name what it made.
   const labelPrefix = status === 'done' && directorKind === 'audio' && label.prefix === 'Visual created' ? 'Audio created'
     : status === 'done' && directorKind === 'video' && label.prefix === 'Visual created' ? 'Video created'
-    : label.prefix;
+    : liveDirectorLabel ?? label.prefix;
   const { highlight } = label;
   const preparingLabel = isProducerDelegateTool(toolName) || directorKind === 'audio' ? 'Preparing your audio…'
     : directorKind === 'video' ? 'Preparing your video…' : 'Preparing your image…';

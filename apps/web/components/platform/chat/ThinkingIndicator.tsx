@@ -120,6 +120,18 @@ export interface LiveTraceProps {
     freshUrls?: Record<string, string>;
 }
 
+// The kind of media the latest running step makes, for the Director's row label.
+function liveMediaKind(steps: LiveStep[]): 'image' | 'video' | 'audio' | undefined {
+    for (let i = steps.length - 1; i >= 0; i--) {
+        const s = steps[i];
+        if (s.state !== 'running') continue;
+        if (s.kind === 'image' || s.kind === 'cast') return 'image';
+        if (s.kind === 'video') return 'video';
+        if (s.kind === 'voice') return 'audio';
+    }
+    return undefined;
+}
+
 export function LiveTrace({
     isStreaming,
     activeToolCalls,
@@ -298,6 +310,7 @@ export function LiveTrace({
                                     mediaCount={tool.generationCount}
                                     statusText={tool.statusText}
                                     statusDetails={tool.statusDetails}
+                                    liveKind={liveMediaKind(steps)}
                                 />
                             ))}
                         </div>
@@ -314,6 +327,7 @@ export function LiveTrace({
                             mediaCount={group[0].generationCount}
                             statusText={group[0].statusText}
                             statusDetails={group[0].statusDetails}
+                            liveKind={liveMediaKind(steps)}
                         />
                     )
                 ))}
