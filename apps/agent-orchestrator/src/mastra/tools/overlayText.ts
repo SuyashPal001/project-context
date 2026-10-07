@@ -6,12 +6,13 @@ import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
-import { uploadGeneratedFile } from '../../persistence.js'
+import { generatedFileKey, uploadFileWithKey, uploadGeneratedFile } from '../../persistence.js'
 import { fetchPresignedUrl, downloadToSessionCache } from './mediaCache.js'
 import { refundOverlayTextCharge } from './overlayTextCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
 import { chooseTextPosition, faceBoxes, sampleFrames, type Box } from './tvcChecks.js'
+import { LEGAL_BOX_PADDING, LEGAL_FONT, LEGAL_MAX_LINES, LEGAL_TEXT_KEY_MARKER, firstWords, legalAssFontSize, legalLineCount, wrapLegal, type Frame } from './legalText.js'
 
 const execFile = promisify(execFileCb)
 
@@ -27,12 +28,14 @@ const FONT_SIZES = { small: 64, medium: 88, large: 120 } as const
 // ASS numpad alignment: 2 = bottom-center, 5 = middle-center, 8 = top-center.
 const ALIGNMENTS = { bottom: 2, center: 5, top: 8 } as const
 
+export type OverlaySize = keyof typeof FONT_SIZES | 'legal'
+
 export interface TextOverlay {
   text: string
   startSeconds: number
   endSeconds: number
   position: keyof typeof ALIGNMENTS
-  size?: keyof typeof FONT_SIZES
+  size?: OverlaySize
 }
 
 // Copy goes into an ASS Dialogue line, never into an inline ffmpeg filter
@@ -64,16 +67,57 @@ export function applyFacePlacement(overlays: TextOverlay[], facesPerOverlay: Arr
     const faces = facesPerOverlay[i]
     if (!faces) return o
     const { position, shrink } = chooseTextPosition(faces, o.position)
+    // E11: a disclaimer keeps its ASCI size; only its band may change, and
+    // with no free band it stays where it was asked to be.
+    if (o.size === 'legal') return { ...o, position: shrink ? o.position : position }
     return { ...o, position, ...(shrink ? { size: 'small' as const } : {}) }
   })
 }
 
-export function buildAss(overlays: TextOverlay[]): string {
+/** L1: the disclaimer style. Opaque black box (BorderStyle 3), white text, bold
+ *  and italic off, sized from the REAL frame so it lands at the ASCI size. */
+export function legalStyles(frame: Frame): string[] {
+  const size = legalAssFontSize(frame)
+  return (Object.keys(ALIGNMENTS) as (keyof typeof ALIGNMENTS)[]).map((pos) =>
+    `Style: ${pos}-legal,${LEGAL_FONT},${size},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,3,${LEGAL_BOX_PADDING},0,${ALIGNMENTS[pos]},60,60,${pos === 'center' ? 0 : 160},1`)
+}
+
+/** E5: while a disclaimer is on screen it owns its band; other text in that
+ *  band moves to the first band no disclaimer holds (center, then top). */
+export function resolveLegalBands(overlays: TextOverlay[]): TextOverlay[] {
+  const legal = overlays.filter((o) => o.size === 'legal')
+  if (legal.length === 0) return overlays
+  return overlays.map((o) => {
+    if (o.size === 'legal') return o
+    const during = legal.filter((l) => l.startSeconds < o.endSeconds && o.startSeconds < l.endSeconds)
+    if (!during.some((l) => l.position === o.position)) return o
+    const taken = new Set(during.map((l) => l.position))
+    const free = (['center', 'top', 'bottom'] as const).find((p) => !taken.has(p))
+    return free ? { ...o, position: free } : o
+  })
+}
+
+export async function probeFrame(videoPath: string): Promise<Frame> {
+  const { stdout } = await execFile('ffprobe', [
+    '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'json', videoPath,
+  ], { timeout: FFMPEG_TIMEOUT_MS })
+  const stream = (JSON.parse(stdout) as { streams?: Array<{ width?: number; height?: number }> }).streams?.[0]
+  if (!stream?.width || !stream?.height) throw new Error(`ffprobe gave no frame size: ${stdout}`)
+  return { width: stream.width, height: stream.height }
+}
+
+const dialogueText = (o: TextOverlay, frame?: Frame): string =>
+  o.size === 'legal' && frame ? wrapLegal(escapeAssText(o.text), frame).join('\\N') : escapeAssText(o.text)
+
+export function buildAss(overlays: TextOverlay[], frame?: Frame): string {
+  const hasLegal = overlays.some((o) => o.size === 'legal')
+  if (hasLegal && !frame) throw new Error('LEGAL_NEEDS_FRAME')
   const styles = (Object.keys(ALIGNMENTS) as (keyof typeof ALIGNMENTS)[])
     .flatMap((pos) => (Object.keys(FONT_SIZES) as (keyof typeof FONT_SIZES)[]).map((size) =>
       `Style: ${pos}-${size},DejaVu Sans,${FONT_SIZES[size]},&H00FFFFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,4,1,${ALIGNMENTS[pos]},60,60,${pos === 'center' ? 0 : 160},1`))
+  if (hasLegal) styles.push(...legalStyles(frame!))
   const events = overlays.map((o) =>
-    `Dialogue: 0,${formatAssTimestamp(o.startSeconds)},${formatAssTimestamp(o.endSeconds)},${o.position}-${o.size ?? 'medium'},,0,0,0,,${escapeAssText(o.text)}`)
+    `Dialogue: 0,${formatAssTimestamp(o.startSeconds)},${formatAssTimestamp(o.endSeconds)},${o.position}-${o.size ?? 'medium'},,0,0,0,,${dialogueText(o, frame)}`)
   return [
     '[Script Info]',
     'ScriptType: v4.00+',
@@ -112,7 +156,7 @@ export const inputSchema = z.object({
     startSeconds: z.number().min(0),
     endSeconds: z.number().min(0),
     position: z.enum(['top', 'center', 'bottom']),
-    size: z.enum(['small', 'medium', 'large']).optional().describe('Defaults to medium.'),
+    size: z.enum(['small', 'medium', 'large', 'legal']).optional().describe('Defaults to medium. "legal" is only for a disclaimer: ASCI size from the real frame, an opaque box, at most 2 lines, always the bottom band'),
   }).refine((o) => o.endSeconds > o.startSeconds, { message: 'endSeconds must be greater than startSeconds' }))
     .min(1).max(12),
   avoidFaces: z.boolean().optional().describe('Keep the text off faces: finds faces in each overlay\'s time window and moves it to a clear band (TVC tagline and end card)'),
@@ -120,7 +164,7 @@ export const inputSchema = z.object({
 
 export const overlayText = createTool({
   id: 'overlay-text',
-  description: 'Burns one or more timed text overlays (e.g. hook copy) onto an existing video at a chosen position and time window. Composited in post over a clean plate — on-screen text is never baked into generation, so a copy edit is a re-run of this tool, not a re-render. Heavy sans-serif, white fill, dark outline.',
+  description: 'Burns one or more timed text overlays (e.g. hook copy) onto an existing video at a chosen position and time window. Composited in post over a clean plate — on-screen text is never baked into generation, so a copy edit is a re-run of this tool, not a re-render. Heavy sans-serif, white fill, dark outline. Size "legal" is the disclaimer style (ASCI size worked out from the real frame, opaque box, at most 2 lines, bottom); a disclaimer that needs more than 2 lines is refused with LEGAL_TOO_LONG, uncharged.',
   inputSchema,
   outputSchema,
   requireApproval: async (_input, ctx) =>
@@ -143,6 +187,10 @@ export const overlayText = createTool({
       return { refused: true, refusalReason: 'INVALID_OVERLAY', jobId }
     }
 
+    const hasLegal = overlays.some((o) => o.size === 'legal')
+    // L1: a disclaimer always asks for the bottom band (avoidFaces may still move it).
+    const requested: TextOverlay[] = hasLegal ? overlays.map((o) => (o.size === 'legal' ? { ...o, position: 'bottom' as const } : o)) : overlays
+
     const scopeId = tenantId || sessionId
     let videoPath: string
     try {
@@ -151,6 +199,25 @@ export const overlayText = createTool({
     } catch (err) {
       console.error(`[session:${sessionId}] overlayText: failed to download source:`, (err as Error).message)
       return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE', jobId }
+    }
+
+    // L1: the frame decides the legal size and the line count; both are
+    // checked before the charge, so a refusal here costs nothing.
+    let frame: Frame | undefined
+    if (hasLegal) {
+      try {
+        frame = await probeFrame(videoPath)
+      } catch (err) {
+        console.error(`[session:${sessionId}] overlayText: frame probe failed:`, (err as Error).message)
+        return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE', jobId }
+      }
+      for (const o of requested) {
+        if (o.size !== 'legal') continue
+        const lines = legalLineCount(escapeAssText(o.text), frame)
+        if (lines > LEGAL_MAX_LINES) {
+          return { refused: true, refusalReason: `LEGAL_TOO_LONG: the disclaimer "${firstWords(o.text)}" needs ${lines} lines; ASCI allows 2. Shorten it`, jobId }
+        }
+      }
     }
 
     const attempt = 0
@@ -185,21 +252,21 @@ export const overlayText = createTool({
     // (per the global rule) means this must never land in a no-refund path.
     // Any throw here (gateway, sampling, parse, temp-dir) is caught and
     // falls back to the requested placement; it never fails the tool.
-    let placed = overlays
+    let placed = requested
     if (avoidFaces) {
       try {
         const faceDir = mkdtempSync(join(tmpdir(), 'overlay-faces-'))
         try {
-          const faces = await Promise.all(overlays.map(async (o) => {
+          const faces = await Promise.all(requested.map(async (o) => {
             try {
-              const [frame] = await sampleFrames(videoPath, [Math.round(((o.startSeconds + o.endSeconds) / 2) * 100) / 100], faceDir)
-              return await faceBoxes(tenantId, frame)
+              const [sampledFrame] = await sampleFrames(videoPath, [Math.round(((o.startSeconds + o.endSeconds) / 2) * 100) / 100], faceDir)
+              return await faceBoxes(tenantId, sampledFrame)
             } catch (err) {
               console.warn(`[session:${sessionId}] overlayText: face check failed, keeping the requested placement:`, (err as Error).message)
               return null
             }
           }))
-          placed = applyFacePlacement(overlays, faces)
+          placed = applyFacePlacement(requested, faces)
         } finally {
           rmSync(faceDir, { recursive: true, force: true })
         }
@@ -207,6 +274,7 @@ export const overlayText = createTool({
         console.warn(`[session:${sessionId}] overlayText: face check failed, keeping the requested placement:`, (err as Error).message)
       }
     }
+    placed = resolveLegalBands(placed)
 
     let workDir: string
     try {
@@ -219,7 +287,7 @@ export const overlayText = createTool({
     const outputPath = join(workDir, 'overlaid.mp4')
     try {
       const assPath = join(workDir, 'overlay.ass')
-      writeFileSync(assPath, buildAss(placed))
+      writeFileSync(assPath, buildAss(placed, frame))
       const escapedAssPath = assPath.replace(/\\/g, '\\\\').replace(/:/g, '\\:')
       await execFile('ffmpeg', [
         '-y', '-i', videoPath,
@@ -259,10 +327,17 @@ export const overlayText = createTool({
       rmSync(workDir, { recursive: true, force: true })
       return { refused: true, refusalReason: 'OVERLAY_FAILED', jobId }
     }
-    const attachment = await uploadGeneratedFile(idToken, {
-      conversationId, title: 'Video with Text Overlay', content: buffer,
-      contentType: 'video/mp4', extension: 'mp4',
-    })
+    // E4: a video carrying a disclaimer is stored under a key with the
+    // legal-text marker, so composite_end_card can refuse to cover it.
+    const attachment = hasLegal
+      ? await uploadFileWithKey(idToken, {
+        key: generatedFileKey(conversationId, `${LEGAL_TEXT_KEY_MARKER} Video with Text Overlay`, 'mp4'),
+        name: 'Video with Text Overlay.mp4', content: buffer, contentType: 'video/mp4',
+      })
+      : await uploadGeneratedFile(idToken, {
+        conversationId, title: 'Video with Text Overlay', content: buffer,
+        contentType: 'video/mp4', extension: 'mp4',
+      })
     rmSync(workDir, { recursive: true, force: true })
 
     if (!attachment) {
