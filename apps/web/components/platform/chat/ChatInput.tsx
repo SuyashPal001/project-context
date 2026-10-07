@@ -598,11 +598,12 @@ export function ChatInput({
                     <div className="px-4 pb-2 text-xs text-muted-foreground">{TEST_CHAT_SKILL_HINT}</div>
                 )}
                 {queued && (
-                    <div className="flex items-center gap-2 px-4 pb-2 text-xs text-muted-foreground" data-testid="queued-message">
+                    // Same wording, easier to see: it read as faint grey on both themes (2026-10-07).
+                    <div className="flex items-center gap-2 px-4 pb-2 text-sm text-foreground/70" data-testid="queued-message">
                         <span className="shrink-0">Queued, sends when this step finishes:</span>
-                        <span className="min-w-0 truncate text-foreground/80">{queued.text || `${queued.attachments.length} file${queued.attachments.length === 1 ? '' : 's'}`}</span>
-                        <button type="button" onClick={editQueued} className="shrink-0 hover:text-foreground" aria-label="Edit queued message">Edit</button>
-                        <button type="button" onClick={() => setQueued(null)} className="shrink-0 hover:text-foreground" aria-label="Remove queued message">✕</button>
+                        <span className="min-w-0 truncate font-medium text-foreground">{queued.text || `${queued.attachments.length} file${queued.attachments.length === 1 ? '' : 's'}`}</span>
+                        <button type="button" onClick={editQueued} className="shrink-0 font-medium text-foreground/80 underline-offset-2 hover:text-foreground hover:underline" aria-label="Edit queued message">Edit</button>
+                        <button type="button" onClick={() => setQueued(null)} className="shrink-0 text-foreground/80 hover:text-foreground" aria-label="Remove queued message">✕</button>
                     </div>
                 )}
                 {(() => {
