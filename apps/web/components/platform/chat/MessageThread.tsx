@@ -9,7 +9,7 @@ import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { useRouter, useParams } from "next/navigation";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { AwaitingApprovalContext, extractResultFiles } from "./ToolCallCard";
-import { MessageItem, messageHasDisplayedContent } from "./MessageItem";
+import { MessageItem, isAnsweredQuestionRow, messageHasDisplayedContent } from "./MessageItem";
 import { findPendingClarification, findPendingGenerationConfirm, findPendingUpload } from "./pendingRequests";
 import { ClarificationCard } from "./ClarificationCard";
 import { UploadRequestCard } from "./UploadRequestCard";
@@ -142,6 +142,11 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     // once the row exists, MessageItem renders the same content itself,
     // inside that row, so the two must never both render at once.
     const hasStreamingMessage = messages.some(m => m.isStreaming);
+    const hiddenAnsweredRows = new Set(messages.flatMap((m, i) => {
+        if (!isAnsweredQuestionRow(m)) return [];
+        const next = messages.slice(i + 1).find(messageHasDisplayedContent);
+        return next?.role === 'user' ? [i] : [];
+    }));
     // The bottom spacer (rendered below) needs full-pane room not just while
     // a reply is streaming, but also in the brief window right after you hit
     // send — the anchor-to-top-of-your-message effect in MessageThread fires
@@ -414,18 +419,21 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                 )}
 
                 {messages.map((message, i) => {
+                    // A question row whose answer is the next message is not
+                    // shown: the question was asked once, on its card, and the
+                    // user's answer stands for it (2026-10-07: shown again as
+                    // its own message, it read as asking twice).
+                    if (hiddenAnsweredRows.has(i)) return null;
                     // Walk back past any empty placeholder messages (approval/
                     // clarification/generation-confirm) — MessageItem doesn't
                     // render them at all, so they must not occupy the
                     // "previous message" slot for sequencing either, or the
                     // real reply right after one loses its own avatar.
                     let prevIdx = i - 1;
-                    while (prevIdx >= 0 && !messageHasDisplayedContent(messages[prevIdx])) prevIdx--;
+                    while (prevIdx >= 0 && (!messageHasDisplayedContent(messages[prevIdx]) || hiddenAnsweredRows.has(prevIdx))) prevIdx--;
                     const prevRole = prevIdx >= 0 ? messages[prevIdx].role : null;
                     const isLastMessage = i === messages.length - 1;
-                    // The user's answer to this message's question is the next
-                    // message (see useChatStream onTurnPause), so its card shows
-                    // just the question.
+                    // The user's answer to this message's question is the next message.
                     const next = messages.slice(i + 1).find(messageHasDisplayedContent);
                     const answerShownBelow = message.role === 'assistant' && next?.role === 'user';
                     return (

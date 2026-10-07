@@ -25,6 +25,10 @@ export interface TraceSummaryProps {
     steps?: LiveStep[];
     /** What this part of the turn made, named in the header ("1 picture, 2 clips"). */
     made?: { pictures: number; clips: number };
+    /** Saved tool-call count: a reloaded part has no step list, but did work. */
+    toolCallCount?: number;
+    /** The part's pictures and clips, as tiles under the header when there is no step list (a reloaded part). */
+    partFiles?: Array<{ fileId?: string; name: string; type: string; size?: number }>;
 }
 
 const SEARCH_TOOLS = new Set(['web_search', 'browser', 'internet_search']);
@@ -41,7 +45,7 @@ const madeLabel = (made?: { pictures: number; clips: number }) => [
 // clicking a tool card also fire the outer collapse toggle, leaving the
 // inner disclosure unusable. The tool call list is rendered as a sibling
 // <div>, shown/hidden off the same `collapsed` state instead.
-export function TraceSummary({ elapsedSec, toolCalls: allToolCalls, reasoningText, reasoningElapsedSec, defaultCollapsed = true, freshUrls, foldMedia = false, steps: rawSteps, made }: TraceSummaryProps) {
+export function TraceSummary({ elapsedSec, toolCalls: allToolCalls, reasoningText, reasoningElapsedSec, defaultCollapsed = true, freshUrls, foldMedia = false, steps: rawSteps, made, toolCallCount = 0, partFiles = [] }: TraceSummaryProps) {
     // Pictures and clips hang under their step row; the rows repeating them stay out.
     const steps = rawSteps && withMediaFiles(rawSteps, allToolCalls);
     const toolCalls = withoutStepOwned(allToolCalls, steps);
@@ -55,14 +59,16 @@ export function TraceSummary({ elapsedSec, toolCalls: allToolCalls, reasoningTex
     // wrappers with no result media, plan/PRD tools, ...) is what collapses.
     const mediaCalls = withoutRepeatedTraceFiles(toolCalls).filter(tc => extractResultFiles(tc.toolName, tc.result).length > 0);
     const stepCalls = toolCalls.filter(tc => extractResultFiles(tc.toolName, tc.result).length === 0);
-    const stepCount = steps && steps.length > 0 ? new Set(steps.map(s => s.key)).size : toolCalls.length;
+    const stepCount = steps && steps.length > 0 ? new Set(steps.map(s => s.key)).size : toolCalls.length || toolCallCount;
     const mediaFileCount = mediaCalls.reduce((n, tc) => n + extractResultFiles(tc.toolName, tc.result).length, 0);
     // Each part of a turn is headed by what it did (after beautiful-ui's
     // thinking states, 2026-10-07): a part that only thought says how long it
     // thought; one that only searched says how many sources it read; a part
     // that made things keeps "Worked for" with its steps.
     const hasSteps = !!steps?.length;
-    const onlyThought = !!reasoningText && !hasSteps && toolCalls.length === 0;
+    // A reloaded part has no step list or calls, only its saved count: it
+    // read "Thought for 1s" after 95s of work (2026-10-07).
+    const onlyThought = !!reasoningText && !hasSteps && toolCalls.length === 0 && toolCallCount === 0;
     const onlySearched = !hasSteps && mediaCalls.length === 0 && stepCalls.length > 0 && stepCalls.every(tc => SEARCH_TOOLS.has(tc.toolName));
     const sourceCount = onlySearched ? stepCalls.reduce((n, tc) => n + (tc.results?.length ?? 0), 0) : 0;
     const header = onlyThought
@@ -123,10 +129,10 @@ export function TraceSummary({ elapsedSec, toolCalls: allToolCalls, reasoningTex
             )}
             {/* Folded, the part still shows what it made: its pictures and clips
                 hang under the header; opened, each sits under its own step. */}
-            {collapsed && steps && stepTileFiles(steps).length > 0 && (
+            {collapsed && (steps && stepTileFiles(steps).length > 0 ? stepTileFiles(steps) : partFiles).length > 0 && (
                 <Branch>
                     <div className="flex flex-wrap gap-1.5" data-testid="part-files">
-                        {stepTileFiles(steps).map(f => <FileTile key={f.fileId} file={f} />)}
+                        {(steps && stepTileFiles(steps).length > 0 ? stepTileFiles(steps) : partFiles).map(f => <FileTile key={f.fileId} file={f} />)}
                     </div>
                 </Branch>
             )}

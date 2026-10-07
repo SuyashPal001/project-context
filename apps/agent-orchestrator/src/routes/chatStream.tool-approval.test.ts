@@ -923,3 +923,31 @@ describe('runChatStream — a question ends the part of the turn before it', () 
     expect(parts[0][7]).toBe(new Date(1_001).toISOString())
   })
 })
+
+describe('runChatStream — a part with no words hands its work over', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    pendingToolApprovals.clear()
+    agents.current = 'other'
+  })
+
+  it('sends one line naming the picture before the question, and saves it with the part', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream([
+      { type: 'tool-result', payload: { toolName: 'generate-image', toolCallId: 'g-1', result: { fileId: '11111111-2222-3333-4444-555555555555', name: 'Scene 1 Still — Ishita.png', fileType: 'image/png', size: 10 } } },
+      { type: 'tool-call-approval', payload: { toolName: 'generate-image', toolCallId: 'tc-h', args: { prompt: 'scene 2' } } },
+    ], 'run-h'))
+    approveToolCall.mockResolvedValueOnce(fakeStream([{ type: 'finish', payload: { output: { usage: {} } } }], 'run-h'))
+
+    const sendEvent = vi.fn()
+    const runPromise = runChatStream(baseOpts({ sendEvent }))
+    await vi.waitFor(() => expect(sendEvent).toHaveBeenCalledWith('turn_pause', expect.anything()))
+    pendingToolApprovals.get('tc-h')?.resolve({ confirmed: true })
+    await runPromise
+
+    const events = sendEvent.mock.calls.map(([e, d]) => (e === 'delta' ? `delta:${(d as { text: string }).text}` : e))
+    const i = events.indexOf("delta:Here's Scene 1 Still — Ishita.")
+    expect(i).toBeGreaterThan(-1)
+    expect(i).toBeLessThan(events.indexOf('turn_pause'))
+    expect(vi.mocked(persistence.saveAssistantMessage).mock.calls[0][2]).toBe("Here's Scene 1 Still — Ishita.")
+  })
+})

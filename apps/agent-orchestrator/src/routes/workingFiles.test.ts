@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fileIdsIn, markWorkingFiles } from './workingFiles.js'
+import { fileIdsIn, inputFileIdsOf, markWorkingFiles } from './workingFiles.js'
 
 const id = (n: number) => `0000000${n}-aaaa-4bbb-8ccc-${String(n).padStart(12, '0')}`
 
@@ -12,5 +12,13 @@ describe('working files', () => {
     const atts = [1, 2, 9].map((n) => ({ fileId: id(n), name: `f${n}`, type: 'video/mp4', size: 1 }))
     const marked = markWorkingFiles(atts, fileIdsIn({ clipFileIds: [id(1), id(2)] }))
     expect(marked.map((a) => a.working ?? false)).toEqual([true, true, false])
+  })
+})
+
+describe('inputFileIdsOf', () => {
+  it('a file only shown to the user is not an input', () => {
+    const id = '11111111-2222-3333-4444-555555555555'
+    expect(inputFileIdsOf('review_shots', { shots: [{ fileId: id }] }, new Set()).size).toBe(0)
+    expect(inputFileIdsOf('generate_video', { startImageFileId: id }, new Set()).has(id)).toBe(true)
   })
 })

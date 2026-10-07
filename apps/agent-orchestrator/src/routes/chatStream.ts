@@ -27,7 +27,8 @@ import { saveGenerationConfirmRequest, updateGenerationConfirmRequest, saveConve
 import { isClientHiddenTool } from '../toolVisibility.js'
 import { relayedDelegateMedia } from './nestedMedia.js'
 import { AD_FLOW_KEY, briefIsReviewedAdFlow, noteBriefRefs, noteMadeFile } from '../mastra/tools/reviewGate.js'
-import { fileIdsIn, markWorkingFiles } from './workingFiles.js'
+import { inputFileIdsOf, markWorkingFiles } from './workingFiles.js'
+import { handoverLine } from './turnAnswer.js'
 import { stepStart, stepEnd, type StepEvent } from './stepEvents.js'
 import { buildCancelNotice, backgroundDeclineReason, trackBackgroundDecline, waitForBackgroundDecline } from './cancelNotice.js'
 
@@ -665,6 +666,13 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const pauseTurn = (): void => {
       if (paused || backgroundDecline || isStreamClosed()) return
       paused = true
+      // A part that made pictures or clips but has no words hands them over
+      // in one line before the question (handoverLine, turnAnswer.ts).
+      if (!fullText.trim()) {
+        const line = handoverLine(markWorkingFiles(pendingAttachments, turnInputFileIds))
+        const out = line ? appendText('handover', line) : ''
+        if (out) sendEvent('delta', { text: out, conversationId })
+      }
       const trace = segmentTrace()
       sendEvent('turn_pause', {
         conversationId, messageId: assistantMessageId, text: fullText,
@@ -845,7 +853,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const args = (p.args ?? {}) as Record<string, unknown>
           const toolCallId = (p.toolCallId ?? toolName) as string
           if (toolCallId && toolName) toolCallNames.set(toolCallId, toolName)
-          fileIdsIn(args, turnInputFileIds)
+          inputFileIdsOf(toolName, args, turnInputFileIds)
           startStep(toolName, toolCallId, args)
           // The Director's tools learn they are in a reviewed ad flow before
           // any approval card is shown (see reviewGate.ts).
@@ -1093,7 +1101,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // dropped this way.
           if (Array.isArray(result.subAgentToolResults)) {
             for (const entry of result.subAgentToolResults as Array<{ toolName?: unknown; result?: unknown; args?: unknown }>) {
-              fileIdsIn(entry.args, turnInputFileIds)
+              inputFileIdsOf(typeof entry.toolName === 'string' ? entry.toolName : '', entry.args, turnInputFileIds)
               const innerName = typeof entry.toolName === 'string' ? entry.toolName.toLowerCase().replace(/_/g, '-') : ''
               const innerResult = (entry.result ?? {}) as Record<string, unknown>
               addAttachments(attachmentsFromToolResult(innerName, innerResult))

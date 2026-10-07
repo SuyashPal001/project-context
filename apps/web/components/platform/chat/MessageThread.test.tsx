@@ -17,6 +17,7 @@ vi.mock('./ThinkingIndicator', () => ({ ThinkingIndicator: () => <div data-testi
 vi.mock('./MessageItem', () => ({
     MessageItem: (props: Record<string, unknown>) => <div data-testid="message-item">{JSON.stringify(props)}</div>,
     messageHasDisplayedContent: () => true,
+    isAnsweredQuestionRow: () => false,
 }));
 vi.mock('./ClarificationCard', () => ({ ClarificationCard: () => <div data-testid="clarification-card" /> }));
 vi.mock('./UploadRequestCard', () => ({ UploadRequestCard: () => <div data-testid="upload-request-card" /> }));

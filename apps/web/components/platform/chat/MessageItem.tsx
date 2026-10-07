@@ -11,7 +11,7 @@ import remarkGfm from 'remark-gfm';
 import { chatMarkdownComponents } from './markdownComponents';
 import { ToolCallCard, groupImageToolCalls, extractResultFiles } from "./ToolCallCard";
 import { TraceSummary } from "./TraceSummary";
-import { stepTileFileIds, withMediaFiles } from "./StepList";
+import { withMediaFiles, withoutStepOwned } from "./StepList";
 import { LiveTrace } from "./ThinkingIndicator";
 import { ApprovalCard } from "./ApprovalCard";
 import { ClarificationCard } from "./ClarificationCard";
@@ -53,6 +53,17 @@ export function messageHasDisplayedContent(message: Message): boolean {
         (!!message.generationConfirmRequest && message.generationConfirmRequest.status !== 'pending') ||
         (message.uploadRequests ?? []).some(r => r.status !== 'pending')
     );
+}
+
+/** A row that is only a question card the user has already answered or decided. */
+export function isAnsweredQuestionRow(message: Message): boolean {
+    if (message.role !== 'assistant' || message.content.trim() || message.completedTrace || (message.attachments ?? []).length > 0) return false;
+    const asks = message.clarificationRequests ?? [];
+    const uploads = message.uploadRequests ?? [];
+    const cost = message.generationConfirmRequest;
+    if (asks.length === 0 && uploads.length === 0 && !cost) return false;
+    const settled = (s: string) => s === 'answered' || s === 'skipped' || s === 'approved' || s === 'declined';
+    return asks.every(r => settled(r.status)) && uploads.every(r => settled(r.status)) && (!cost || settled(cost.status));
 }
 
 interface MessageItemProps {
@@ -123,11 +134,13 @@ export function MessageItem({
     // A file the trace above already shows (a show_files of a generated still
     // and its close-up, in that order) is not repeated as an attachment below
     // it, so the full still reads first and the close-up second.
-    const traceFileIds = new Set((message.completedTrace?.toolCalls ?? []).flatMap(tc => extractResultFiles(tc.toolName, tc.result)).map(f => f.fileId));
-    // Pictures and clips that hang under a step in the trace are not repeated
-    // as big cards (branch style); the finished ad stays one.
-    const stepFileIds = stepTileFileIds(withMediaFiles(message.completedTrace?.steps, message.completedTrace?.toolCalls ?? []));
-    const visibleAttachments = message.attachments?.filter(file => !file.fileId || (!hiddenCreativeAttachmentIds.has(file.fileId) && !traceFileIds.has(file.fileId) && !stepFileIds.has(file.fileId)));
+    // A picture shown as a small tile under its step is still the part's
+    // output: it also gets its big card after the reply, like a finished
+    // piece of work handed over (2026-10-07). Only a file the trace shows as a
+    // card of its own is left out here.
+    const traceSteps = withMediaFiles(message.completedTrace?.steps, message.completedTrace?.toolCalls ?? []);
+    const traceFileIds = new Set(withoutStepOwned(message.completedTrace?.toolCalls ?? [], traceSteps).flatMap(tc => extractResultFiles(tc.toolName, tc.result)).map(f => f.fileId));
+    const visibleAttachments = message.attachments?.filter(file => !file.fileId || (!hiddenCreativeAttachmentIds.has(file.fileId) && !traceFileIds.has(file.fileId)));
     // Working files (inputs to a later step this turn) fold behind one row, so
     // the finished result is what the reply shows (see workingFiles.ts).
     const resultAttachments = (visibleAttachments ?? []).filter(file => !file.working);
@@ -234,10 +247,11 @@ export function MessageItem({
     // fixed slots at the bottom — never both.
     // Pending requests render as a panel-wide takeover overlay (see
     // MessageThread) instead of inline, which is why they're skipped here.
-    const renderClarificationCard = (request: ClarificationRequest) => request.status === 'pending' ? null : (
+    // Answered, with the answer as the next message: the question was asked
+    // once, on its card; repeating it in the chat read as asking twice (2026-10-07).
+    const renderClarificationCard = (request: ClarificationRequest) => request.status === 'pending' || (answerShownBelow && (request.status === 'answered' || request.status === 'skipped')) ? null : (
         <ClarificationCard
             request={request}
-            promptOnly={answerShownBelow && request.status === 'answered'}
             onAnswer={(answer, allAnswered) => onClarificationAnswer?.(
                 message.id,
                 request.id,
@@ -316,6 +330,8 @@ export function MessageItem({
                             clips: (message.attachments ?? []).filter(f => f.generation && f.type.startsWith('video/')).length,
                         }}
                         steps={message.completedTrace.steps}
+                        toolCallCount={message.completedTrace.toolCallCount}
+                        partFiles={(message.attachments ?? []).filter(f => f.generation && !f.working && /^(image|video)\//.test(f.type))}
                         elapsedSec={message.completedTrace.elapsedSec}
                         toolCalls={message.completedTrace.toolCalls ?? []}
                         reasoningText={message.completedTrace.reasoningText}
@@ -490,7 +506,7 @@ export function MessageItem({
 
                 {/* A decided cost card leaves its question in the chat; the
                     user's Approve / Cancel is the next message. */}
-                {message.generationConfirmRequest && message.generationConfirmRequest.status !== 'pending' && (
+                {message.generationConfirmRequest && message.generationConfirmRequest.status !== 'pending' && !answerShownBelow && (
                     <p className="text-[15px] leading-relaxed text-foreground [overflow-wrap:anywhere]">{/[.?!]$/.test(message.generationConfirmRequest.label.trim()) ? message.generationConfirmRequest.label : `${message.generationConfirmRequest.label.trim()}?`}</p>
                 )}
 

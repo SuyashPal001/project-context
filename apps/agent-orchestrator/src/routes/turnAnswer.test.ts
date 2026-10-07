@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { clarificationAnswerText, uploadAnswerText } from './turnAnswer.js'
+import { clarificationAnswerText, handoverLine, uploadAnswerText } from './turnAnswer.js'
 
 const review = [{ prompt: 'Here are the 3 scenes.', options: [{ label: 'Scene 1' }, { label: 'Scene 2' }, { label: 'All good — continue (Recommended)' }] }]
 
@@ -29,5 +29,15 @@ describe('uploadAnswerText', () => {
     expect(uploadAnswerText({ files: [{}], freeText: 'the red one' })).toBe('the red one')
     expect(uploadAnswerText({ files: [{}, {}] })).toBe('Uploaded 2 files')
     expect(uploadAnswerText({ files: [], skipped: true })).toBe('Skipped')
+  })
+})
+
+describe('handoverLine', () => {
+  it('hands over what the part made in one line', () => {
+    expect(handoverLine([{ name: 'Scene 1 Still — Ishita.png', type: 'image/png' }])).toBe("Here's Scene 1 Still — Ishita.")
+    expect(handoverLine([{ name: 'Scene 2.png', type: 'image/png' }, { name: 'Scene 3.png', type: 'image/png' }])).toBe('Here are Scene 2 and Scene 3.')
+  })
+  it('says nothing for working files or non-media', () => {
+    expect(handoverLine([{ name: 'a.png', type: 'image/png', working: true }, { name: 'notes.md', type: 'text/markdown' }])).toBe('')
   })
 })

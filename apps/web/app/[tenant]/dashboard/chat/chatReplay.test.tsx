@@ -121,6 +121,8 @@ describe('replay: Lakmē ad in Ask mode', () => {
             ev().onToolDone('dir-1', 'agent-director', { text: '' });
             tick(); ev().onToolCall('review_shots', 'rev-1', { kind: 'still' });
             ev().onClarificationRequired('cl-1', [{ prompt: 'Does Scene 1 look right?', options: [{ label: 'Looks good — continue (Recommended)' }, { label: 'Fix it' }] }], 'part-2');
+            // The server hands the work over in one line when Olmo wrote nothing (handoverLine).
+            ev().onDelta("Here's Scene 1 still.", 'part-2');
             ev().onTurnPause('part-2', { text: '', attachments: [{ fileId: 'still-1', name: 'Scene 1 still.png', type: 'image/png', size: 1 }] });
         });
         // While the review card is open (2026-10-07: the silent part was hidden
@@ -152,13 +154,16 @@ describe('replay: Lakmē ad in Ask mode', () => {
         draw();
         // Every answer is the user's own message.
         for (const answer of ['Approve', 'Looks good — continue']) expect(screen.getByText(answer)).toBeTruthy();
-        // The plan part keeps its text; the decided cost card keeps its question.
+        // The plan part keeps its text. A question is asked once, on its card:
+        // once answered it is not repeated in the chat.
         expect(screen.getByText('Here is the plan: 3 scenes, 15s.')).toBeTruthy();
-        expect(screen.getByText('Generate image?')).toBeTruthy();
-        // The Director's silent part is not hidden: its still is on screen, once,
-        // under the folded part, and the review question stays as plain text.
+        expect(screen.queryByText('Generate image?')).toBeNull();
+        expect(screen.queryByText('Does Scene 1 look right?')).toBeNull();
+        // The Director's part hands its work over: one line, the still as a
+        // small tile under the part, and the same still as the big output card.
+        expect(screen.getByText("Here's Scene 1 still.")).toBeTruthy();
         expect(screen.getAllByLabelText('Scene 1 still.png')).toHaveLength(1);
-        expect(screen.getByText('Does Scene 1 look right?')).toBeTruthy();
+        expect(screen.getAllByText(/Scene 1 still\.png/).length).toBeGreaterThanOrEqual(1);
         // Nothing from a part leaks into the next, and the dead run left nothing behind.
         expect(screen.queryByText(/Preparing your image/)).toBeNull();
         expect(screen.queryByText(/Checked the scenes with you/)).toBeNull();

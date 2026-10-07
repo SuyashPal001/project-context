@@ -9,6 +9,16 @@ import type { AttachmentPayload } from '../persistence.js'
 
 const FILE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+// Tools that only show a file to the user (a review question, show_files)
+// do not use it as an input: the Scene 1 still was folded away as a working
+// file because the review question was given its id (2026-10-07).
+const SHOWS_ONLY = /^(review_shots|show_files|ask_clarifying_questions)$/
+
+/** The file ids a tool call takes as inputs; none for a tool that only shows files. */
+export function inputFileIdsOf(toolName: string, args: unknown, into: Set<string>): Set<string> {
+  return SHOWS_ONLY.test(toolName.replace(/-/g, '_')) ? into : fileIdsIn(args, into)
+}
+
 /** Every file id anywhere in a tool call's arguments. */
 export function fileIdsIn(value: unknown, into: Set<string> = new Set()): Set<string> {
   if (typeof value === 'string') {
