@@ -725,7 +725,11 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             const toolCalls = [...completedToolCallsRef.current, ...asking.map((c): CompletedToolCall => ({ id: c.id, toolName: c.toolName, query: c.query ?? '' }))];
             const settledSteps = liveStepsRef.current.filter(s => s.state !== 'running' && s.state !== 'waiting');
             const hadTrace = toolCalls.length > 0 || settledSteps.length > 0 || !!reasoning;
-            const trace = hadTrace ? { completedTrace: { elapsedSec, afterSeq: traceAfterSeqRef.current ?? undefined, toolCalls, reasoningText: reasoning || undefined, reasoningElapsedSec, ...(settledSteps.length ? { steps: settledSteps } : {}) } } : {};
+            // The server's count of the part's calls: a call still running when
+            // the part stopped (the Director, held on a cost OK) is not in
+            // toolCalls, and the part read "Thought for 26s" (2026-10-07).
+            const toolCallCount = typeof payload.toolCallCount === 'number' ? payload.toolCallCount : undefined;
+            const trace = hadTrace || !!toolCallCount ? { completedTrace: { elapsedSec, afterSeq: traceAfterSeqRef.current ?? undefined, toolCalls, toolCallCount, reasoningText: reasoning || undefined, reasoningElapsedSec, ...(settledSteps.length ? { steps: settledSteps } : {}) } } : {};
             const text = typeof payload.text === 'string' ? payload.text : '';
             const attachmentsRaw = Array.isArray(payload.attachments) ? payload.attachments : [];
             const atts = attachmentsRaw.length > 0
@@ -738,7 +742,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 if (idx >= 0) {
                     const m = data[idx];
                     data[idx] = { ...m, content: text || m.content, isStreaming: false, parts: reconcileParts(m.parts, text || m.content), ...trace, ...atts };
-                } else if (hadTrace || text || 'attachments' in atts) {
+                } else if (hadTrace || toolCallCount || text || 'attachments' in atts) {
                     // Nothing streamed as text yet (a delegate working silently):
                     // the part still gets its own message, placed before the card
                     // that ended it.

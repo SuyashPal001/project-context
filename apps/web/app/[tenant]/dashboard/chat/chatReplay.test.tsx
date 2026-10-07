@@ -157,9 +157,10 @@ describe('replay: Lakmē ad in Ask mode', () => {
         // The plan part keeps its text. An answered question stays in the chat
         // as one line, once, with the answer as the user's message below it.
         expect(screen.getByText('Here is the plan: 3 scenes, 15s.')).toBeTruthy();
-        expect(screen.queryByText('Generate image?')).toBeNull();
+        // Every card a part stopped on stays as its line: the cost OK too.
+        expect(screen.getAllByText('Generate image?')).toHaveLength(1);
         expect(screen.getAllByText('Does Scene 1 look right?')).toHaveLength(1);
-        expect(screen.getByTestId('asked-line').textContent).toBe('Does Scene 1 look right?');
+        expect(screen.getAllByTestId('asked-line').map(l => l.textContent)).toEqual(['Generate image?', 'Does Scene 1 look right?']);
         expect(screen.queryByText(/Looks good — continue \(Recommended\)/)).toBeNull();
         // The Director's part hands its work over: one line and the still as the
         // big output card. Folded, the part is just its "Worked for" line; the
@@ -207,13 +208,22 @@ describe('replay: Lakmē ad in Ask mode', () => {
         expect(screen.getAllByLabelText('being made')).toHaveLength(2);
 
         act(() => {
+            // The review's own call and end reaching this part after the answer.
+            ev().onToolCall('review_shots', 'rev-late', { kind: 'still' });
+            ev().onToolDone('rev-late', 'review_shots', {});
+            ev().onReasoning('Generating the remaining stills for Scene 2 and Scene 3.');
             tick(); ev().onGenerationConfirmRequired('conf-2', 'image_generation', 'img', 'Generate 2 images');
-            ev().onTurnPause('part-2', { text: '', elapsedSec: 91 });
+            // The Director is still running, held on the cost OK.
+            ev().onTurnPause('part-2', { text: '', elapsedSec: 91, toolCallCount: 1 });
         });
         act(() => { tick(); decideCost('conf-2'); ev().onTurnResume({ text: 'Approve' }); });
         draw();
+        // The part that stopped on the cost OK did work, and says what it asked.
+        expect(screen.queryByText(/^Thought for/)).toBeNull();
+        expect(screen.getByText('Generate 2 images?')).toBeTruthy();
         for (const header of screen.getAllByText(/^Worked for/)) fireEvent.click(header.closest('button')!);
         expect(screen.queryByText(/Image generated/)).toBeNull();
+        expect(screen.queryByText(/Checked the scenes with you/)).toBeNull();
         // Once as part 1's card, once as its tile under part 1's step.
         expect(screen.getAllByLabelText('Scene 1 Still — Meera Hook.png')).toHaveLength(1);
     });

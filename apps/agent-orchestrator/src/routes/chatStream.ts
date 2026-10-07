@@ -692,7 +692,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       sendEvent('turn_pause', {
         conversationId, messageId: assistantMessageId, text: fullText,
         ...(pendingAttachments.length > 0 ? { attachments: markWorkingFiles(pendingAttachments, turnInputFileIds) } : {}),
-        ...(trace ? { elapsedSec: trace.elapsedSec } : {}),
+        ...(trace ? { elapsedSec: trace.elapsedSec, toolCallCount: trace.toolCallCount } : {}),
       })
       saveSegment()
       fullText = ''

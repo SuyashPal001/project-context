@@ -7,7 +7,7 @@ import { AgentOrb } from "./AgentOrb";
 import { ToolCall, CompletedToolCall, LiveStep } from "./types";
 import { StepList, withMediaFiles, withoutStepOwned } from "./StepList";
 import { Branch } from "./Branch";
-import { AwaitingApprovalContext, ToolCallCard, groupImageToolCalls, isMediaGenDelegateOrTool, withoutRepeatedTraceFiles } from "./ToolCallCard";
+import { AwaitingApprovalContext, ToolCallCard, groupImageToolCalls, isMediaGenDelegateOrTool, isQuestionTool, withoutRepeatedTraceFiles } from "./ToolCallCard";
 import type { PersonaSummary } from "../personas/types";
 
 // Live extended-thinking trace, streamed via the 'reasoning' SSE event (see
@@ -141,11 +141,13 @@ function liveMediaKind(steps: LiveStep[]): 'image' | 'video' | 'audio' | undefin
 export function LiveTrace({
     isStreaming,
     activeToolCalls,
-    completedToolCalls,
+    completedToolCalls: allCompletedToolCalls,
     steps = [],
     reasoningText = '',
     freshUrls,
 }: LiveTraceProps) {
+    // A finished question is the part's line in the chat (askedPrompts), not a row here.
+    const completedToolCalls = allCompletedToolCalls.filter(tc => !isQuestionTool(tc.toolName));
     const [messageIndex, setMessageIndex] = useState(0);
     const [startedAt, setStartedAt] = useState<number | null>(null);
     // Ticks the live "Working for Ns" counter once a second. This is separate

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { CompletedToolCall, LiveStep } from "./types";
 import { StepList, stepTileFiles, withMediaFiles, withoutStepOwned } from "./StepList";
 import { Branch, FileTile } from "./Branch";
-import { ToolCallCard, groupImageToolCalls, extractResultFiles, withoutRepeatedTraceFiles } from "./ToolCallCard";
+import { ToolCallCard, groupImageToolCalls, extractResultFiles, isQuestionTool, withoutRepeatedTraceFiles } from "./ToolCallCard";
 import { ReasoningRow } from "./ThinkingIndicator";
 
 export interface TraceSummaryProps {
@@ -48,7 +48,10 @@ const madeLabel = (made?: { pictures: number; clips: number }) => [
 export function TraceSummary({ elapsedSec, toolCalls: allToolCalls, reasoningText, reasoningElapsedSec, defaultCollapsed = true, freshUrls, foldMedia = false, steps: rawSteps, made, toolCallCount = 0, partFiles = [] }: TraceSummaryProps) {
     // Pictures and clips hang under their step row; the rows repeating them stay out.
     const steps = rawSteps && withMediaFiles(rawSteps, allToolCalls);
-    const toolCalls = withoutStepOwned(allToolCalls, steps);
+    // A finished question is the part's line in the chat (askedPrompts), not a
+    // row: its row also landed in the next part when its end came after the
+    // answer (2026-10-07, "Checked the scenes with you" under the next part).
+    const toolCalls = withoutStepOwned(allToolCalls.filter(tc => !isQuestionTool(tc.toolName)), steps);
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const [mediaOpen, setMediaOpen] = useState(false);
 
@@ -59,7 +62,7 @@ export function TraceSummary({ elapsedSec, toolCalls: allToolCalls, reasoningTex
     // wrappers with no result media, plan/PRD tools, ...) is what collapses.
     const mediaCalls = withoutRepeatedTraceFiles(toolCalls).filter(tc => extractResultFiles(tc.toolName, tc.result).length > 0);
     const stepCalls = toolCalls.filter(tc => extractResultFiles(tc.toolName, tc.result).length === 0);
-    const stepCount = steps && steps.length > 0 ? new Set(steps.map(s => s.key)).size : toolCalls.length || toolCallCount;
+    const stepCount = steps && steps.length > 0 ? new Set(steps.map(s => s.key)).size : allToolCalls.length > 0 ? toolCalls.length : toolCallCount;
     const mediaFileCount = mediaCalls.reduce((n, tc) => n + extractResultFiles(tc.toolName, tc.result).length, 0);
     // Each part of a turn is headed by what it did (after beautiful-ui's
     // thinking states, 2026-10-07): a part that only thought says how long it

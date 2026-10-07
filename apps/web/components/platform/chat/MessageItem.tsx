@@ -65,11 +65,20 @@ export function isAnsweredQuestionRow(message: Message): boolean {
     return asks.every(r => settled(r.status)) && uploads.every(r => settled(r.status)) && (!cost || settled(cost.status));
 }
 
-/** What a settled question row asked: its questions, or what it asked to upload. */
+/** A cost card's question as a sentence: "Generate image" -> "Generate image?". */
+const costPrompt = (label: string) => (/[.?!]$/.test(label.trim()) ? label.trim() : `${label.trim()}?`);
+
+/**
+ * What a part asked on its cards once they are settled — questions, uploads
+ * and the cost OK alike. Every part that stopped on a card keeps this as its
+ * line, so no part reads as Olmo saying nothing (2026-10-07).
+ */
 export function askedPrompts(message: Message): string[] {
+    const cost = message.generationConfirmRequest;
     return [
         ...(message.clarificationRequests ?? []).filter(r => r.status !== 'pending').flatMap(r => r.questions.map(q => q.prompt)),
         ...(message.uploadRequests ?? []).filter(r => r.status !== 'pending').map(r => r.prompt),
+        ...(cost && cost.status !== 'pending' ? [costPrompt(cost.label)] : []),
     ].filter(p => p.trim());
 }
 
@@ -508,10 +517,11 @@ export function MessageItem({
                     <div key={request.id} className="w-full">{renderUploadCard(request)}</div>
                 ))}
 
-                {/* A decided cost card leaves its question in the chat; the
-                    user's Approve / Cancel is the next message. */}
-                {message.generationConfirmRequest && message.generationConfirmRequest.status !== 'pending' && !answerShownBelow && (
-                    <p className="text-[15px] leading-relaxed text-foreground [overflow-wrap:anywhere]">{/[.?!]$/.test(message.generationConfirmRequest.label.trim()) ? message.generationConfirmRequest.label : `${message.generationConfirmRequest.label.trim()}?`}</p>
+                {/* A decided cost card leaves its question in the chat, like any
+                    settled card (askedPrompts); the user's Approve / Cancel is
+                    the next message. */}
+                {message.generationConfirmRequest && message.generationConfirmRequest.status !== 'pending' && (
+                    <AskedLine prompts={[costPrompt(message.generationConfirmRequest.label)]} />
                 )}
 
                 {message.toolCalls && message.toolCalls.length > 0 && (
