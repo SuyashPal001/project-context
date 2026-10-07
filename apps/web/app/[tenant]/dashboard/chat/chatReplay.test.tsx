@@ -165,4 +165,29 @@ describe('replay: Lakmē ad in Ask mode', () => {
         // The finished ad is the big card at the end.
         expect(screen.getAllByText(/Lakmē ad\.mp4/).length).toBeGreaterThan(0);
     });
+
+    it('a finished picture fills its step\'s tile even when the step never says done', () => {
+        // 2026-10-07: "Pictures 0 of 2" kept two empty tiles while both stills
+        // showed as loose "Image generated" cards below it.
+        const { draw } = setup();
+        act(() => {
+            tick(); ev().onToolCall('agent-director', 'dir-9', { prompt: 'Scenes 2 and 3' });
+            ev().onStep({ id: 's-9', key: 'pictures', label: 'Pictures', kind: 'image', state: 'running', count: 2, detail: 'Scene 2 +1' });
+            tick(20_000);
+            ev().onToolCall('generate_image', 'sub-a', {});
+            ev().onToolDone('sub-a', 'generate_image', { fileId: 'still-2', name: 'Scene 2 still.png', fileType: 'image/png' });
+        });
+        draw();
+        expect(screen.getAllByLabelText('Scene 2 still.png')).toHaveLength(1);
+        expect(screen.getAllByLabelText('being made')).toHaveLength(1);
+        expect(screen.queryByText(/Image generated/)).toBeNull();
+        act(() => {
+            ev().onToolCall('generate_image', 'sub-b', {});
+            ev().onToolDone('sub-b', 'generate_image', { fileId: 'still-3', name: 'Scene 3 still.png', fileType: 'image/png' });
+        });
+        draw();
+        expect(screen.getAllByLabelText(/Scene [23] still\.png/)).toHaveLength(2);
+        expect(screen.queryByLabelText('being made')).toBeNull();
+        expect(screen.queryByText(/Image generated/)).toBeNull();
+    });
 });

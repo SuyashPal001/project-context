@@ -113,7 +113,8 @@ export function StepList({ steps, live = true }: { steps: LiveStep[]; live?: boo
     return (
         <ul className="flex flex-col gap-1 py-1 normal-case" data-testid="step-list">
             {rows.map(row => {
-                const pending = row.running && live && TILE_STEPS.has(row.key) ? Math.min(6, Math.max(0, row.total - row.done - row.failed - row.skipped - row.credits)) : 0;
+                // A file that arrived counts as made even when its step has not said so yet.
+                const pending = row.running && live && TILE_STEPS.has(row.key) ? Math.min(6, Math.max(0, row.total - Math.max(row.done, row.files.length) - row.failed - row.skipped - row.credits)) : 0;
                 const tiles = TILE_STEPS.has(row.key) ? row.files : [];
                 return (
                 <li key={row.key} className="flex flex-col min-w-0">
@@ -143,6 +144,35 @@ export function StepList({ steps, live = true }: { steps: LiveStep[]; live?: boo
 }
 
 /** Files that hang under a step row (pictures, edits, clips, casting), in order, once each. */
+// Which step row a finished picture or clip belongs to, by the tool that made it.
+const STEP_FOR_TOOL: Record<string, string[]> = {
+    generate_image: ['pictures', 'storyboard'], generate_images: ['pictures', 'storyboard'],
+    edit_image: ['edits'], generate_video: ['clips'], generate_videos: ['clips'],
+    roll_avatar_variations: ['casting'], roll_character_variations: ['casting'], roll_tvc_variations: ['casting'],
+};
+
+/** Steps with the finished pictures and clips that reached the chat on their
+ *  own hung under the step of their kind. The file arrives as its own result,
+ *  and the step's done (which carries the same file) sometimes never came, so
+ *  the tile stayed empty and the picture showed as a loose card (2026-10-07). */
+export function withMediaFiles<T extends { toolName: string; result?: Record<string, unknown> }>(steps: LiveStep[] | undefined, calls: T[]): LiveStep[] {
+    if (!steps?.length) return steps ?? [];
+    const owned = stepTileFileIds(steps);
+    const next = steps.map(s => ({ ...s, files: [...(s.files ?? [])] }));
+    for (const c of calls) {
+        const keys = STEP_FOR_TOOL[c.toolName.replace(/-/g, '_')];
+        if (!keys) continue;
+        const step = [...next].reverse().find(s => keys.includes(s.key));
+        if (!step) continue;
+        for (const f of extractResultFiles(c.toolName, c.result)) {
+            if (owned.has(f.fileId)) continue;
+            owned.add(f.fileId);
+            step.files.push({ fileId: f.fileId, name: f.name, type: f.fileType });
+        }
+    }
+    return next;
+}
+
 export function stepTileFiles(steps: LiveStep[]): Array<{ fileId: string; name: string; type: string }> {
     const seen = new Set<string>();
     return steps.filter(s => TILE_STEPS.has(s.key)).flatMap(s => s.files ?? []).filter(f => !seen.has(f.fileId) && !!seen.add(f.fileId));

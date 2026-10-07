@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { CompletedToolCall, LiveStep } from "./types";
-import { StepList, stepTileFiles, withoutStepOwned } from "./StepList";
+import { StepList, stepTileFiles, withMediaFiles, withoutStepOwned } from "./StepList";
 import { Branch, FileTile } from "./Branch";
 import { ToolCallCard, groupImageToolCalls, extractResultFiles, withoutRepeatedTraceFiles } from "./ToolCallCard";
 import { ReasoningRow } from "./ThinkingIndicator";
@@ -41,8 +41,9 @@ const madeLabel = (made?: { pictures: number; clips: number }) => [
 // clicking a tool card also fire the outer collapse toggle, leaving the
 // inner disclosure unusable. The tool call list is rendered as a sibling
 // <div>, shown/hidden off the same `collapsed` state instead.
-export function TraceSummary({ elapsedSec, toolCalls: allToolCalls, reasoningText, reasoningElapsedSec, defaultCollapsed = true, freshUrls, foldMedia = false, steps, made }: TraceSummaryProps) {
+export function TraceSummary({ elapsedSec, toolCalls: allToolCalls, reasoningText, reasoningElapsedSec, defaultCollapsed = true, freshUrls, foldMedia = false, steps: rawSteps, made }: TraceSummaryProps) {
     // Pictures and clips hang under their step row; the rows repeating them stay out.
+    const steps = rawSteps && withMediaFiles(rawSteps, allToolCalls);
     const toolCalls = withoutStepOwned(allToolCalls, steps);
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const [mediaOpen, setMediaOpen] = useState(false);

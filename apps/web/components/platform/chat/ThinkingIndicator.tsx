@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AgentOrb } from "./AgentOrb";
 import { ToolCall, CompletedToolCall, LiveStep } from "./types";
-import { StepList, withoutStepOwned } from "./StepList";
+import { StepList, withMediaFiles, withoutStepOwned } from "./StepList";
 import { Branch } from "./Branch";
 import { AwaitingApprovalContext, ToolCallCard, groupImageToolCalls, isMediaGenDelegateOrTool, withoutRepeatedTraceFiles } from "./ToolCallCard";
 import type { PersonaSummary } from "../personas/types";
@@ -279,10 +279,10 @@ export function LiveTrace({
                 {reasoningText
                     ? <ReasoningRow text={reasoningText} completed={awaitingUser} defaultOpen />
                     : !awaitingUser && <div className="my-1 flex items-center gap-2"><Chevron open /><span className="shimmer-text text-sm text-shimmer-accent-60">Thinking…</span></div>}
-                {steps.length > 0 && <StepList steps={steps} />}
+                {steps.length > 0 && <StepList steps={withMediaFiles(steps, completedToolCalls)} />}
                 {/* Pictures and clips hang under their step (branch style); the
                     Director's own row and the media rows that repeat them stay out. */}
-                {groupImageToolCalls(withoutStepOwned(withoutRepeatedTraceFiles(completedToolCalls), steps)).map((group, gi) => (
+                {groupImageToolCalls(withoutStepOwned(withoutRepeatedTraceFiles(completedToolCalls), withMediaFiles(steps, completedToolCalls))).map((group, gi) => (
                     group.length > 1 ? (
                         <div key={gi} className="flex flex-col gap-2">
                             {group.map(tc => (

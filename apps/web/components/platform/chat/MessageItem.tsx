@@ -11,7 +11,7 @@ import remarkGfm from 'remark-gfm';
 import { chatMarkdownComponents } from './markdownComponents';
 import { ToolCallCard, groupImageToolCalls, extractResultFiles } from "./ToolCallCard";
 import { TraceSummary } from "./TraceSummary";
-import { stepTileFileIds } from "./StepList";
+import { stepTileFileIds, withMediaFiles } from "./StepList";
 import { LiveTrace } from "./ThinkingIndicator";
 import { ApprovalCard } from "./ApprovalCard";
 import { ClarificationCard } from "./ClarificationCard";
@@ -126,7 +126,7 @@ export function MessageItem({
     const traceFileIds = new Set((message.completedTrace?.toolCalls ?? []).flatMap(tc => extractResultFiles(tc.toolName, tc.result)).map(f => f.fileId));
     // Pictures and clips that hang under a step in the trace are not repeated
     // as big cards (branch style); the finished ad stays one.
-    const stepFileIds = stepTileFileIds(message.completedTrace?.steps ?? []);
+    const stepFileIds = stepTileFileIds(withMediaFiles(message.completedTrace?.steps, message.completedTrace?.toolCalls ?? []));
     const visibleAttachments = message.attachments?.filter(file => !file.fileId || (!hiddenCreativeAttachmentIds.has(file.fileId) && !traceFileIds.has(file.fileId) && !stepFileIds.has(file.fileId)));
     // Working files (inputs to a later step this turn) fold behind one row, so
     // the finished result is what the reply shows (see workingFiles.ts).
