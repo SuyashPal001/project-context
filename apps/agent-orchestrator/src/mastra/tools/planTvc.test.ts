@@ -540,3 +540,14 @@ describe('runPlanTvc check — disclaimers', () => {
     expect(store.get(out.planFileId!)!.plan.legal[0]).toMatchObject({ startSeconds: 0, endSeconds: 6 })
   })
 })
+
+describe('plan_tvc get finish — refuses rather than dropping a disclaimer (E7)', () => {
+  it('refuses with the legalTimings errors instead of silently omitting the line', async () => {
+    const { deps } = fakeDeps()
+    const p = plan(); p.legal = [{ text: 'As per lab test. Results may vary.', forVoiceoverBlock: 1 }]
+    const planFileId = await deps.save({ version: 1, storageKey: deps.newKey(), plan: p })
+    const out = await runPlanTvc({ action: 'get', planFileId: planFileId!, slice: 'finish' }, deps)
+    expect(out.refused).toBe(true)
+    expect(out.refusalReason).toMatch(/^LEGAL_CLAIM_MISSING: legal line "As per lab test\. Results may vary\." points at voiceover block 1, which doesn't exist/)
+  })
+})

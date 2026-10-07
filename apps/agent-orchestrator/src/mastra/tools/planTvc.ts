@@ -6,7 +6,7 @@ import { fetchPresignedUrl } from './mediaCache.js'
 import { EXTRACTED_FRAME_KEY_MARKER } from './extractFrame.js'
 import { detectCutTimes } from './detectCuts.js'
 import { computeCreditPlan, priceFromRates, readBalanceForTenant } from './checkCreditPlan.js'
-import { recordOnPlan, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, jingleErrors, type TvcPlan } from './tvcPlan.js'
+import { recordOnPlan, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, jingleErrors, legalTimings, type TvcPlan } from './tvcPlan.js'
 import { stillPassedCheck } from './checkStill.js'
 
 // The TVC ad's plan lives in ONE file whose id never changes: it is always
@@ -299,6 +299,12 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
   if (!input.planFileId) return { refused: true, refusalReason: 'PLAN_FILE_ID_REQUIRED' }
   const doc = await deps.load(input.planFileId)
   if (input.action === 'get') {
+    // E7: the finish slice must never ship with a disclaimer silently
+    // dropped because its timing couldn't be placed — refuse instead.
+    if ((input.slice ?? '') === 'finish') {
+      const legal = legalTimings(doc.plan)
+      if (legal.errors.length) return { refused: true, refusalReason: legal.errors.join(' ') }
+    }
     try {
       return { planFileId: input.planFileId, slice: JSON.stringify(sliceTvcPlan(doc.plan, input.slice ?? '')) }
     } catch {

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { countWords, legalHoldSeconds, recordOnPlan, shotStarts, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, jingleErrors, lastSpeechEnd, signoffTiming, legalTimings, finishOrder, type TvcPlan } from './tvcPlan.js'
 import { generateSecondsFor, minShotSeconds, HARD_ACTION_RE } from './tvcPlan.js'
 import { shotPromptFor, varietySentence, locationName, CAMERA_GRAMMAR } from './tvcPlan.js'
+import { nominalFrame, legalLineCount } from './legalText.js'
 
 // A valid 15s ambassador spot: 7 shots summing to 15s, packshot last.
 function goodPlan(): TvcPlan {
@@ -166,6 +167,7 @@ describe('validateTvcPlan — warnings', () => {
 const HY = 'Hyaluronic acid as per lab tests. T&C apply.'          // 2 lines at 9:16, 8 words
 const SHORT = 'As per lab test. Results may vary.'                  // 1 line, 7 words
 const LONG_9_16 = 'Based on an independent lab test of moisture retention over eight hours. Results may vary.' // 3 lines at 9:16
+const VISUALISATION = 'Creative visualisation'
 
 describe('legal lines (L2, L3)', () => {
   it('starts at the claim\'s voiceover block and holds 4 s per line', () => {
@@ -226,9 +228,69 @@ describe('legal lines (L2, L3)', () => {
     const p = goodPlan(); p.legal = [{ text: SHORT, startSeconds: 2, linkedWith: 'spf' }, { text: 'T&C apply.', startSeconds: 3, linkedWith: 'spf' }]
     expect(validateTvcPlan(p).errors).toEqual([])
   })
-  it('an auto-added "Creative visualisation" that collides says how to place it yourself', () => {
+  it('an auto-added "Creative visualisation" that collides with a claim is auto-linked, not refused (E9)', () => {
     const p = goodPlan(); p.brief.market = 'india'; p.shots[2].type = 'mechanism'; p.legal = [{ text: HY, forVoiceoverBlock: 1 }]
-    expect(validateTvcPlan(p).errors.join(' ')).toMatch(/add "Creative visualisation" yourself as a legal line with a startSeconds that does not overlap/)
+    const r = validateTvcPlan(p)
+    expect(r.errors).toEqual([])
+    const auto = r.plan.legal.find((l) => l.text === VISUALISATION)!
+    const claim = r.plan.legal.find((l) => l.text === HY)!
+    expect(auto.linkedWith).toBeDefined()
+    expect(auto.linkedWith).toBe(claim.linkedWith)
+  })
+  it('clamps the auto-added line to the latest start that still fits (11.8s in a 15s ad)', () => {
+    const p = goodPlan()
+    // Shot 0 (the on-camera line) stays at 2s so it still ends exactly when
+    // the voiceover starts; only shots 1-4 are stretched to land shot 5 at 11.8s.
+    p.shots[1].durationSeconds = 2.5; p.shots[2].durationSeconds = 2.5; p.shots[3].durationSeconds = 2.4
+    p.shots[4].durationSeconds = 2.4; p.shots[5].durationSeconds = 1.2
+    p.shots[5].type = 'superpower'; p.shots[6].durationSeconds = 2.0
+    p.brief.market = 'india'
+    const r = validateTvcPlan(p)
+    expect(r.errors).toEqual([])
+    const auto = r.plan.legal.find((l) => l.text === VISUALISATION)!
+    expect(auto).toMatchObject({ startSeconds: 11, endSeconds: 15 })
+  })
+  it('the auto-added line\'s hold is never shorter than the formula', () => {
+    const p = goodPlan(); p.brief.market = 'india'; p.shots[2].type = 'mechanism'
+    const r = validateTvcPlan(p)
+    const auto = r.plan.legal.find((l) => l.text === VISUALISATION)!
+    const frame = nominalFrame(p.brief.aspectRatio)
+    const minHold = legalHoldSeconds(VISUALISATION, 0, { lines: legalLineCount(VISUALISATION, frame) })
+    expect(auto.endSeconds! - auto.startSeconds!).toBeGreaterThanOrEqual(minHold)
+  })
+  it('a 6s ad: the auto-added line overlaps a claim and is auto-linked, not refused', () => {
+    const p = tvcPlanSchema.parse({
+      brief: { message: 'Works fast, lasts long', category: 'personal_care', tier: 'mass', objective: 'launch', market: 'india', lengthSeconds: 6, aspectRatio: '16:9', productPhotoFileId: 'prod-1' },
+      look: 'bright, clean light',
+      locations: ['kitchen counter'],
+      shots: [
+        { n: 1, type: 'hook', size: 'wide', action: 'bottle drops onto the counter', durationSeconds: 1.5, brandVisible: true, productVisible: true, audio: 'silent' },
+        { n: 2, type: 'mechanism', size: 'medium', action: 'liquid flows through the filter', durationSeconds: 1.5, brandVisible: false, productVisible: false, audio: 'voiceover' },
+        { n: 3, type: 'packshot', size: 'close_up', action: 'bottle on the counter', durationSeconds: 3, brandVisible: true, productVisible: true, audio: 'silent' },
+      ],
+      voiceover: [{ text: 'Clinically tested formula works fast', startSeconds: 0 }],
+      packshot: { kind: 'product' },
+      legal: [{ text: SHORT, forVoiceoverBlock: 1 }],
+    })
+    const r = validateTvcPlan(p)
+    expect(r.errors).toEqual([])
+    const [claim, auto] = r.plan.legal
+    expect(auto.text).toBe(VISUALISATION)
+    expect(auto.linkedWith).toBeDefined()
+    expect(auto.linkedWith).toBe(claim.linkedWith)
+  })
+  it('a duplicate "Creative visualisation" line the Director wrote itself gets the generic overlap fix, not the auto-added hint', () => {
+    const p = goodPlan()
+    p.legal = [{ text: VISUALISATION, startSeconds: 2 }, { text: SHORT, startSeconds: 3 }]
+    const msg = validateTvcPlan(p).errors.join(' ')
+    expect(msg).toMatch(/^LEGAL_OVERLAP: only one disclaimer on screen at a time/)
+    expect(msg).toMatch(/start the second after the first ends/)
+    expect(msg).not.toMatch(/mechanism or superpower shot/)
+  })
+  it('LEGAL_TOO_MANY when there are more legal lines than overlay_text can take', () => {
+    const p = goodPlan()
+    p.legal = Array.from({ length: 13 }, (_, i) => ({ text: `Line ${i}`, wholeAd: true }))
+    expect(legalTimings(p).errors).toContain('LEGAL_TOO_MANY: there are 13 legal lines; overlay_text takes at most 12 overlays')
   })
   it('an old saved legal line ({ text, startSeconds } only) still validates and slices (Review Focus 3)', () => {
     const old = tvcPlanSchema.parse({ ...goodPlan(), legal: [{ text: 'Creative visualisation', startSeconds: 4 }] })
