@@ -12,7 +12,9 @@ import { refundOverlayTextCharge } from './overlayTextCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
 import { chooseTextPosition, faceBoxes, sampleFrames, type Box } from './tvcChecks.js'
-import { LEGAL_BOX_PADDING, LEGAL_FONT, LEGAL_MAX_LINES, LEGAL_TEXT_KEY_MARKER, firstWords, legalAssFontSize, legalLineCount, tooWideWord, wrapLegal, type Frame } from './legalText.js'
+import { LEGAL_BOX_PADDING, LEGAL_FONT, LEGAL_MAX_LINES, LEGAL_TEXT_KEY_MARKER, escapeAssText, firstWords, legalAssFontSize, legalLineCount, tooWideWord, wrapLegal, type Frame } from './legalText.js'
+
+export { escapeAssText }
 
 const execFile = promisify(execFileCb)
 
@@ -36,19 +38,6 @@ export interface TextOverlay {
   endSeconds: number
   position: keyof typeof ALIGNMENTS
   size?: OverlaySize
-}
-
-// Copy goes into an ASS Dialogue line, never into an inline ffmpeg filter
-// argument (drawtext's text= quoting is what breaks on apostrophes and
-// colons). Inside ASS text the only special syntax is `{...}` override
-// blocks and backslash escapes; the text field is the last comma-delimited
-// field, so commas in it are safe.
-export function escapeAssText(text: string): string {
-  return text
-    .replace(/\r\n|\r|\n/g, ' ')
-    .replace(/[{}]/g, '')
-    .replace(/\\/g, '')
-    .trim()
 }
 
 export function formatAssTimestamp(seconds: number): string {

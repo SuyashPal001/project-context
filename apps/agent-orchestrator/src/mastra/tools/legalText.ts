@@ -5,6 +5,22 @@
 
 export interface Frame { width: number; height: number }
 
+// Copy goes into an ASS Dialogue line, never into an inline ffmpeg filter
+// argument (drawtext's text= quoting is what breaks on apostrophes and
+// colons). Inside ASS text the only special syntax is `{...}` override
+// blocks and backslash escapes; the text field is the last comma-delimited
+// field, so commas in it are safe. Lives here (not overlay_text) so plan_tvc
+// measures the exact text overlay_text will render — a word that only
+// becomes too-wide after `{`, `}` or `\` are stripped must still agree
+// between the two.
+export function escapeAssText(text: string): string {
+  return text
+    .replace(/\r\n|\r|\n/g, ' ')
+    .replace(/[{}]/g, '')
+    .replace(/\\/g, '')
+    .trim()
+}
+
 export const LEGAL_FONT = 'Noto Sans'
 /** The em, as a share of the frame's SHORTER side (E2): x-height >= 2.64% of
  *  S, which clears every row of the ASCI table (14 px at 576, 26 px at 1080,

@@ -155,7 +155,7 @@ describe('validateTvcPlan — warnings', () => {
     const p = goodPlan(); p.brief.market = 'india'; p.shots[2].type = 'mechanism'
     const result = validateTvcPlan(p)
     expect(result.errors).toEqual([])
-    expect(result.plan.legal).toEqual([{ text: 'Creative visualisation', startSeconds: 4, endSeconds: 8 }])
+    expect(result.plan.legal).toEqual([{ text: 'Creative visualisation', startSeconds: 4, endSeconds: 8, auto: true }])
     expect(validateTvcPlan(result.plan).plan.legal).toHaveLength(1)
   })
   it('India food and beverage warns about the veg mark', () => {
@@ -217,6 +217,15 @@ describe('legal lines (L2, L3)', () => {
     const p = goodPlan(); p.legal = [{ text: `Visit ${url} for details.`, startSeconds: 0 }]
     expect(validateTvcPlan(p).errors).toContain(`LEGAL_TOO_LONG: the disclaimer "Visit ${url} for details." has a word too wide for one line ("${url}"); shorten it or write the URL shorter`)
   })
+  // Fix-wave regression: the plan must measure the same text overlay_text
+  // renders. `{...}` is ASS override syntax that escapeAssText strips, so a
+  // word that is only too wide WITH the braces (never actually rendered)
+  // must not be refused once they're gone.
+  it('measures the escaped text, not the raw text with ASS override braces', () => {
+    const wideWithBraces = '{AAAAAAAAAAAAAAAAAAAA}' // too wide at 9:16 raw; fits once {} are stripped
+    const p = goodPlan(); p.legal = [{ text: wideWithBraces, startSeconds: 0 }]
+    expect(validateTvcPlan(p).errors).toEqual([])
+  })
   it('LEGAL_CLAIM_MISSING for a block that does not exist (E7)', () => {
     const p = goodPlan(); p.legal = [{ text: SHORT, forVoiceoverBlock: 3 }]
     expect(validateTvcPlan(p).errors).toContain(`LEGAL_CLAIM_MISSING: legal line "${SHORT}" points at voiceover block 3, which doesn't exist`)
@@ -235,14 +244,24 @@ describe('legal lines (L2, L3)', () => {
     const p = goodPlan(); p.legal = [{ text: SHORT, startSeconds: 2, linkedWith: 'spf' }, { text: 'T&C apply.', startSeconds: 3, linkedWith: 'spf' }]
     expect(validateTvcPlan(p).errors).toEqual([])
   })
-  it('an auto-added "Creative visualisation" that collides with a claim is auto-linked, not refused (E9)', () => {
+  // F6 (corrected): the auto line shares the screen with the claim it
+  // collides with by being marked `auto: true`, not by linking — the
+  // claim's own linkedWith is left exactly as the Director wrote it.
+  it('an auto-added "Creative visualisation" that collides with a claim shares the screen without being linked (E9)', () => {
     const p = goodPlan(); p.brief.market = 'india'; p.shots[2].type = 'mechanism'; p.legal = [{ text: HY, forVoiceoverBlock: 1 }]
     const r = validateTvcPlan(p)
     expect(r.errors).toEqual([])
     const auto = r.plan.legal.find((l) => l.text === VISUALISATION)!
     const claim = r.plan.legal.find((l) => l.text === HY)!
-    expect(auto.linkedWith).toBeDefined()
-    expect(auto.linkedWith).toBe(claim.linkedWith)
+    expect(auto.auto).toBe(true)
+    expect(claim.linkedWith).toBeUndefined()
+  })
+  it('an existing claim\'s linkedWith is never modified by the auto-add pass', () => {
+    const p = goodPlan(); p.brief.market = 'india'; p.shots[2].type = 'mechanism'
+    p.legal = [{ text: HY, forVoiceoverBlock: 1, linkedWith: 'spf-claim' }]
+    const r = validateTvcPlan(p)
+    const claim = r.plan.legal.find((l) => l.text === HY)!
+    expect(claim.linkedWith).toBe('spf-claim')
   })
   it('clamps the auto-added line to the latest start that still fits (11.8s in a 15s ad)', () => {
     const p = goodPlan()
@@ -265,7 +284,7 @@ describe('legal lines (L2, L3)', () => {
     const minHold = legalHoldSeconds(VISUALISATION, 0, { lines: legalLineCount(VISUALISATION, frame) })
     expect(auto.endSeconds! - auto.startSeconds!).toBeGreaterThanOrEqual(minHold)
   })
-  it('a 6s ad: the auto-added line overlaps a claim and is auto-linked, not refused', () => {
+  it('a 6s ad: the auto-added line overlaps a claim and shares the screen, not refused', () => {
     const p = tvcPlanSchema.parse({
       brief: { message: 'Works fast, lasts long', category: 'personal_care', tier: 'mass', objective: 'launch', market: 'india', lengthSeconds: 6, aspectRatio: '16:9', productPhotoFileId: 'prod-1' },
       look: 'bright, clean light',
@@ -283,25 +302,28 @@ describe('legal lines (L2, L3)', () => {
     expect(r.errors).toEqual([])
     const [claim, auto] = r.plan.legal
     expect(auto.text).toBe(VISUALISATION)
-    expect(auto.linkedWith).toBeDefined()
-    expect(auto.linkedWith).toBe(claim.linkedWith)
+    expect(auto.auto).toBe(true)
+    expect(claim.linkedWith).toBeUndefined()
   })
-  // F6: the auto-added line links to EVERY claim it collides with, not only
-  // the first found, so a second overlapping claim is not left refused.
-  it('an auto-added line that overlaps two separate claims links both, not just the first', () => {
+  // F6 (corrected): the auto line may share the screen with a claim without
+  // being linked, but two CLAIMS that overlap each other still conflict —
+  // sharing the auto line's window does not exempt them from each other.
+  it('an auto line overlapping exactly one claim produces no overlap error', () => {
     const p = goodPlan()
-    p.brief.market = 'india'
-    p.shots[2].type = 'mechanism'
-    p.voiceover = [{ text: 'Clinically tested', startSeconds: 2 }, { text: 'Tested daily', startSeconds: 7 }]
-    p.legal = [{ text: SHORT, forVoiceoverBlock: 1 }, { text: 'T&C apply.', forVoiceoverBlock: 2 }]
-    const r = validateTvcPlan(p)
-    expect(r.errors).toEqual([])
-    const auto = r.plan.legal.find((l) => l.text === VISUALISATION)!
-    const claim1 = r.plan.legal.find((l) => l.text === SHORT)!
-    const claim2 = r.plan.legal.find((l) => l.text === 'T&C apply.')!
-    expect(auto.linkedWith).toBeDefined()
-    expect(claim1.linkedWith).toBe(auto.linkedWith)
-    expect(claim2.linkedWith).toBe(auto.linkedWith)
+    p.legal = [{ text: SHORT, startSeconds: 0 }, { text: VISUALISATION, startSeconds: 1, auto: true }]
+    expect(legalTimings(p).errors).toEqual([])
+  })
+  it('two claims that overlap each other still conflict, even when an auto line overlaps both', () => {
+    const p = goodPlan()
+    p.legal = [
+      { text: SHORT, startSeconds: 0 },
+      { text: 'T&C apply.', startSeconds: 2 },
+      { text: VISUALISATION, startSeconds: 1, auto: true },
+    ]
+    const r = legalTimings(p)
+    expect(r.errors).toHaveLength(1)
+    expect(r.errors[0]).toMatch(/^LEGAL_OVERLAP: only one disclaimer on screen at a time/)
+    expect(r.errors[0]).toMatch(/start the second after the first ends/)
   })
   it('a duplicate "Creative visualisation" line the Director wrote itself gets the generic overlap fix, not the auto-added hint', () => {
     const p = goodPlan()
@@ -325,13 +347,22 @@ describe('legal lines (L2, L3)', () => {
   })
   // F6: the auto-added line's own messages no longer tell Director to add or
   // move the line itself; they point at the claim's own disclaimer instead.
-  it('the auto-added line\'s HOLD_TOO_LONG offers wholeAd on the claim, not editing the auto line itself', () => {
+  it('the auto-added line\'s HOLD_TOO_LONG offers wholeAd on the claim when one exists, not editing the auto line itself', () => {
+    const p = goodPlan(); p.legal = [{ text: SHORT, startSeconds: 0 }, { text: HY, startSeconds: 9 }]
+    const errors = legalTimings(p, { autoAddedIndex: 1 }).errors
+    expect(errors).toContain(
+      `LEGAL_HOLD_TOO_LONG: "${HY}" was added automatically for a mechanism or superpower shot and needs 8s on screen, which does not fit; add wholeAd: true to the claim's disclaimer, or shorten the voiceover`,
+    )
+    expect(errors.join(' ')).not.toMatch(/add it yourself/)
+    expect(errors.join(' ')).not.toMatch(/which does not fit; the plan could not fit it/)
+  })
+  it('the auto-added line\'s HOLD_TOO_LONG offers a shorter voiceover or an earlier shot when there is no claim at all', () => {
     const p = goodPlan(); p.legal = [{ text: HY, startSeconds: 9 }]
     const errors = legalTimings(p, { autoAddedIndex: 0 }).errors
     expect(errors).toContain(
-      `LEGAL_HOLD_TOO_LONG: "${HY}" was added automatically for a mechanism or superpower shot and needs 8s on screen, which does not fit; the plan could not fit it — add wholeAd: true to the claim's disclaimer, or shorten the voiceover`,
+      `LEGAL_HOLD_TOO_LONG: "${HY}" was added automatically for a mechanism or superpower shot and needs 8s on screen, which does not fit; shorten the voiceover, or move the mechanism or superpower shot earlier`,
     )
-    expect(errors.join(' ')).not.toMatch(/add it yourself/)
+    expect(errors.join(' ')).not.toMatch(/add it yourself|wholeAd/)
   })
   it('the auto-added line\'s OVERLAP fix offers wholeAd on the claim, not adding or moving the line itself', () => {
     const p = goodPlan()
