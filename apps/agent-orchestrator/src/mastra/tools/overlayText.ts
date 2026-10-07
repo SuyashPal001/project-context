@@ -12,7 +12,7 @@ import { refundOverlayTextCharge } from './overlayTextCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
 import { chooseTextPosition, faceBoxes, sampleFrames, type Box } from './tvcChecks.js'
-import { LEGAL_BOX_PADDING, LEGAL_FONT, LEGAL_MAX_LINES, LEGAL_TEXT_KEY_MARKER, firstWords, legalAssFontSize, legalLineCount, wrapLegal, type Frame } from './legalText.js'
+import { LEGAL_BOX_PADDING, LEGAL_FONT, LEGAL_MAX_LINES, LEGAL_TEXT_KEY_MARKER, firstWords, legalAssFontSize, legalLineCount, tooWideWord, wrapLegal, type Frame } from './legalText.js'
 
 const execFile = promisify(execFileCb)
 
@@ -213,7 +213,12 @@ export const overlayText = createTool({
       }
       for (const o of requested) {
         if (o.size !== 'legal') continue
-        const lines = legalLineCount(escapeAssText(o.text), frame)
+        const text = escapeAssText(o.text)
+        const wide = tooWideWord(text, frame)
+        if (wide) {
+          return { refused: true, refusalReason: `LEGAL_TOO_LONG: the disclaimer "${firstWords(o.text)}" has a word too wide for one line ("${wide}"); shorten it or write the URL shorter`, jobId }
+        }
+        const lines = legalLineCount(text, frame)
         if (lines > LEGAL_MAX_LINES) {
           return { refused: true, refusalReason: `LEGAL_TOO_LONG: the disclaimer "${firstWords(o.text)}" needs ${lines} lines; ASCI allows 2. Shorten it`, jobId }
         }

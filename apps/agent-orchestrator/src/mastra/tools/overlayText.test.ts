@@ -266,6 +266,16 @@ describe('the legal style (L1)', () => {
     expect(spendCredits).not.toHaveBeenCalled()
     expect(execFile.mock.calls.map((c) => c[0])).toEqual(['ffprobe'])
   })
+  // F1: a single over-long word (a URL) never wraps under libass's
+  // WrapStyle 0, so it is refused by name, uncharged, not just by line count.
+  it('refuses LEGAL_TOO_LONG for a word too wide for one line, at 9:16, before charging or rendering', async () => {
+    probeAnd(1080, 1920)
+    const url = 'visitexamplebrandlongurl.co.in/terms'
+    const result = await overlayText.execute!({ videoFileId: 'v1', overlays: [{ ...okOverlay, endSeconds: 9, text: `Visit ${url} for details.`, size: 'legal' }] } as never, baseCtx())
+    expect(result).toMatchObject({ refused: true, refusalReason: `LEGAL_TOO_LONG: the disclaimer "Visit ${url} for details." has a word too wide for one line ("${url}"); shorten it or write the URL shorter` })
+    expect(spendCredits).not.toHaveBeenCalled()
+    expect(execFile.mock.calls.map((c) => c[0])).toEqual(['ffprobe'])
+  })
   it('refuses SOURCE_UNAVAILABLE, uncharged, when the frame cannot be probed', async () => {
     execFile.mockImplementation((_c: string, _a: string[], _o: unknown, cb: (err: Error | null) => void) => cb(new Error('probe failed')))
     const result = await overlayText.execute!({ videoFileId: 'v1', overlays: [{ ...okOverlay, size: 'legal' }] } as never, baseCtx())

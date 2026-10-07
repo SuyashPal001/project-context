@@ -48,6 +48,12 @@ const X_TEXT_16_9 = 'our new cream evens rare scars so an owner can wear more ma
 // 2 lines at 1080x1920 (the nominal 9:16 frame) — the narrower frame wraps a shorter phrase to 2 lines.
 const X_TEXT_9_16 = 'rare scars so an owner can wear more mascara'
 const HINDI = 'शर्तें लागू। परिणाम व्यक्ति के अनुसार अलग हो सकते हैं।'
+// F2: ALL-CAPS and digits now measure at the raised maxima (0.80 em, 0.60
+// em) — these two are each near the 2-line limit for their aspect, so a
+// width table that was too narrow would have under-counted and rendered a
+// third, clipped band.
+const CAPS_DIGITS_9_16 = 'LIMITED 2025 OFFER VALID TODAY ONLY'
+const CAPS_DIGITS_16_9 = 'LIMITED 2025 OFFER VALID TODAY ONLY WHILE STOCKS LAST'
 
 function grayFrame(video: string, at: number): Buffer {
   return execFileSync('ffmpeg', ['-loglevel', 'error', '-ss', String(at), '-i', video, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { maxBuffer: 1 << 24 })
@@ -96,6 +102,22 @@ describe.skipIf(!process.env.RUN_REAL_FFMPEG || !!why)('overlay_text legal style
     expect(m.boxTop).toBeLessThan(m.bands[0].top)
     expect(m.boxBottom).toBeGreaterThan(m.bands[1].top + m.bands[1].height)
     expect(m.boxBottom).toBeLessThanOrEqual(H - 60)          // inside the bottom safe margin
+  }, 120_000)
+
+  it.each([
+    ['16:9' as const, 1920, 1080, CAPS_DIGITS_16_9],
+    ['9:16' as const, 1080, 1920, CAPS_DIGITS_9_16],
+  ])('burns an ALL-CAPS-and-digits disclaimer at %s (%ix%i) in at most 2 bands (F2)', async (aspect, W, H, text) => {
+    expect(legalLineCount(text, nominalFrame(aspect))).toBeLessThanOrEqual(2)
+    const src = grayClip(`caps-${aspect.replace(':', '-')}`, W, H)
+    const rc = new RequestContext()
+    for (const [k, v] of Object.entries({ tenantId: 't', conversationId: 'c', idToken: 'tok' })) rc.set(k, v)
+    const result = await overlayText.execute!({ videoFileId: `caps-${aspect.replace(':', '-')}`, overlays: [{ text, startSeconds: 0, endSeconds: 3, position: 'bottom', size: 'legal' }] } as never, { requestContext: rc, agent: { toolCallId: `caps-${aspect}` } } as never)
+    expect(result).toMatchObject({ fileId: 'out', positions: ['bottom'] })
+    const out = join(dir, `caps-${aspect.replace(':', '-')}.mp4`); writeFileSync(out, uploaded[uploaded.length - 1])
+    const m = measure(grayFrame(out, 1.5), W, H)
+    console.log(`[overlayText.realffmpeg] measured caps ${aspect}`, JSON.stringify(m))
+    expect(m.bands.length).toBeLessThanOrEqual(2)             // the raised width table never under-counts into a clipped 3rd band
   }, 120_000)
 
   it('renders a Hindi disclaimer with no missing glyphs (no tofu)', () => {

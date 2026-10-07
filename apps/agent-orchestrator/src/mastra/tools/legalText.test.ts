@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { generatedFileKey } from '../../persistence.js'
 import {
-  LEGAL_FONT_HEIGHT_PER_EM, LEGAL_PLAY_RES_Y, LEGAL_TEXT_KEY_MARKER, NOTO_SANS_X_HEIGHT_PER_EM,
+  LEGAL_FONT_HEIGHT_PER_EM, LEGAL_MAX_LINES, LEGAL_PLAY_RES_Y, LEGAL_TEXT_KEY_MARKER, NOTO_SANS_X_HEIGHT_PER_EM,
   carriesLegalTextPath, countLegalWords, firstWords, legalAssFontSize, legalEmPx, legalHoldSeconds,
-  legalLineCount, nominalFrame, wrapLegal,
+  legalLineCount, nominalFrame, tooWideWord, wrapLegal,
 } from './legalText.js'
 
 const X_TEXT = 'our new cream evens rare scars so an owner can wear more mascara as summer comes even nervous users are serene'
@@ -56,6 +56,21 @@ describe('wrapping (L1)', () => {
   })
   it('counts a single word wider than the line as more than one line', () => {
     expect(legalLineCount('x'.repeat(120), nominalFrame('16:9'))).toBeGreaterThan(1)
+  })
+  // F1: libass (WrapStyle 0) only breaks at a space, so a URL whose width
+  // falls between one and two lines still renders as ONE clipped line, not
+  // the two the plain width arithmetic suggests — it must count as unfittable.
+  describe('a single over-wide word (F1)', () => {
+    const URL_WORD = 'visitexamplebrandlongurl.co.in/terms'
+    const text = `Visit ${URL_WORD} for details.`
+    it('is flagged at 9:16, where the word is wider than one line', () => {
+      expect(tooWideWord(text, nominalFrame('9:16'))).toBe(URL_WORD)
+      expect(legalLineCount(text, nominalFrame('9:16'))).toBeGreaterThan(LEGAL_MAX_LINES)
+    })
+    it('a normal line of the same length is unaffected at 16:9, where the word fits on one line', () => {
+      expect(tooWideWord(text, nominalFrame('16:9'))).toBeUndefined()
+      expect(legalLineCount(text, nominalFrame('16:9'))).toBeLessThanOrEqual(LEGAL_MAX_LINES)
+    })
   })
   it('measures Devanagari conservatively (never fewer lines than its Latin length suggests)', () => {
     expect(legalLineCount(HINDI, nominalFrame('16:9'))).toBe(1)
