@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MessageItem } from './MessageItem';
 import type { Message } from './types';
@@ -11,7 +11,7 @@ afterEach(() => cleanup());
 const att = (n: number, name: string, type: string, working = false) => ({ id: `a${n}`, fileId: `f${n}`, name, type, size: 1, ...(working ? { working: true } : {}) });
 
 describe('a finished ad shows its result, not its working files', () => {
-    it('folds the working files behind one row that opens on tap', () => {
+    it('shows the result under the reply and keeps working files out of sight', () => {
         const message: Message = {
             id: 'm1', conversationId: 'c1', role: 'assistant', content: 'Your ad is ready.', createdAt: '2026-10-06T10:00:00.000Z',
             attachments: [
@@ -23,9 +23,10 @@ describe('a finished ad shows its result, not its working files', () => {
         };
         render(<MessageItem message={message} freshUrls={{}} creatingPlanId={null} planErrors={{}} onCreateInSystem={vi.fn()} />);
         expect(screen.getByText('Final Video.mp4')).toBeTruthy();
+        // Still saved on the message for Olmo and the Director; just not shown here.
+        expect(screen.queryByText('Beat with Audio.mp4')).toBeNull();
         expect(screen.queryByLabelText('Beat with Audio.mp4')).toBeNull();
-        fireEvent.click(screen.getByText('3 working files'));
-        expect(screen.getByLabelText('Beat with Audio.mp4')).toBeTruthy();
+        expect(screen.queryByText(/working file/)).toBeNull();
     });
 });
 

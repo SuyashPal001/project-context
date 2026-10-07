@@ -24,7 +24,6 @@ import { GeneratedAssetCard } from "./GeneratedAssetCard";
 import { assetTypeForFile } from "@/lib/assetType";
 import { TYPE_ICONS, TYPE_STYLES, typeBadge } from "@/components/platform/canvas/assetTypeStyles";
 import { FollowUpChips } from "./FollowUpChips";
-import { FileTile } from "./Branch";
 import { SkillIcon } from "@/components/platform/skills/SkillIcon";
 import { CreativeBriefChips } from "./creative-library/CreativeBriefChips";
 import { creativeBriefAttachmentIds, parseCreativeBriefPresentation } from "./creative-library/creativeBrief";
@@ -144,13 +143,11 @@ export function MessageItem({
     // Working files (inputs to a later step this turn) fold behind one row, so
     // the finished result is what the reply shows (see workingFiles.ts).
     const resultAttachments = (visibleAttachments ?? []).filter(file => !file.working);
-    const workingAttachments = (visibleAttachments ?? []).filter(file => file.working);
     // Once the turn has a finished video, the pictures and clips shown along
     // the way fold too.
     const hasFinalVideo = resultAttachments.some(file => file.type.startsWith('video/'));
 
     const [userExpanded, setUserExpanded] = useState(false);
-    const [showWorking, setShowWorking] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [editContent, setEditContent] = useState('');
     const editTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -463,27 +460,9 @@ export function MessageItem({
                     </div>
                 )}
 
-                {workingAttachments.length > 0 && (
-                    <div className="flex flex-col w-full mt-1" data-testid="working-files">
-                        <button
-                            type="button"
-                            onClick={() => setShowWorking(v => !v)}
-                            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 self-start"
-                        >
-                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className={cn("shrink-0 transition-transform", showWorking ? "rotate-90" : "")}>
-                                <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                            <span>{workingAttachments.length} working file{workingAttachments.length === 1 ? '' : 's'}</span>
-                        </button>
-                        {showWorking && (
-                            <div className="flex flex-wrap gap-1.5 mt-1">
-                                {workingAttachments.map((file, index) => (
-                                    <WorkingFileTile key={file.id ?? `work-${index}`} file={file} />
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
+                {/* Working files (inputs to a later step this turn) stay marked and
+                    saved on the message, but are not shown under the reply: the
+                    user sees the result here and the work inside "Worked for" (2026-10-07). */}
 
                 {false && message.approvalRequest && (
                     <ApprovalCard
@@ -562,12 +541,5 @@ export function MessageItem({
 function ResultFileCard({ file, url, createdAt }: { file: MessageAttachment; url: string | null; createdAt: string }) {
     const loaded = useThumbnailUrl(file.fileId ?? '', !url && !!file.fileId);
     return <GeneratedAssetCard file={file} url={url ?? loaded ?? null} createdAt={createdAt} />;
-}
-
-// A folded working file is a small tile in the order it was made: the stills
-// and clips that led to the result, not a second gallery of full cards. Its
-// link loads only once the row is opened. Click opens it on the canvas.
-function WorkingFileTile({ file }: { file: MessageAttachment }) {
-    return <FileTile file={file} size="sm" />;
 }
 
