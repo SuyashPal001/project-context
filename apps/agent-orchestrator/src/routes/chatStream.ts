@@ -27,7 +27,7 @@ import { saveGenerationConfirmRequest, updateGenerationConfirmRequest, saveConve
 import { isClientHiddenTool } from '../toolVisibility.js'
 import { relayedDelegateMedia } from './nestedMedia.js'
 import { AD_FLOW_KEY, briefIsReviewedAdFlow, noteBriefRefs, noteMadeFile } from '../mastra/tools/reviewGate.js'
-import { inputFileIdsOf, markWorkingFiles } from './workingFiles.js'
+import { inputFileIdsOf, madeNewFile, markWorkingFiles } from './workingFiles.js'
 import { handoverLine } from './turnAnswer.js'
 import { stepStart, stepEnd, type StepEvent } from './stepEvents.js'
 import { buildCancelNotice, backgroundDeclineReason, trackBackgroundDecline, waitForBackgroundDecline } from './cancelNotice.js'
@@ -1102,10 +1102,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // render-canvas persists its content as a file (see renderCanvas.ts);
           // collect it into the assistant message's attachments alongside any
           // user-uploaded ones, so multiple canvas outputs in one turn all survive.
-          const madeHere = attachmentsFromToolResult(normName, result)
-          if (madeHere.length > 0) for (const id of callInputFileIds.get(toolCallId) ?? []) turnInputFileIds.add(id)
+          const callInputs = callInputFileIds.get(toolCallId) ?? new Set<string>()
+          if (madeNewFile(result, callInputs)) for (const id of callInputs) turnInputFileIds.add(id)
           callInputFileIds.delete(toolCallId)
-          addAttachments(madeHere)
+          addAttachments(attachmentsFromToolResult(normName, result))
 
           // A delegate wrapper's own tool-result (toolName agent-director/
           // agent-producer) never carries fileId at the top level — the real
@@ -1121,9 +1121,9 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             for (const entry of result.subAgentToolResults as Array<{ toolName?: unknown; result?: unknown; args?: unknown }>) {
               const innerName = typeof entry.toolName === 'string' ? entry.toolName.toLowerCase().replace(/_/g, '-') : ''
               const innerResult = (entry.result ?? {}) as Record<string, unknown>
-              const innerMade = attachmentsFromToolResult(innerName, innerResult)
-              if (innerMade.length > 0) inputFileIdsOf(typeof entry.toolName === 'string' ? entry.toolName : '', entry.args, turnInputFileIds)
-              addAttachments(innerMade)
+              const innerInputs = inputFileIdsOf(typeof entry.toolName === 'string' ? entry.toolName : '', entry.args, new Set())
+              if (madeNewFile(innerResult, innerInputs)) for (const id of innerInputs) turnInputFileIds.add(id)
+              addAttachments(attachmentsFromToolResult(innerName, innerResult))
             }
           }
           break

@@ -473,6 +473,46 @@ describe('runChatStream — delegate-produced attachments', () => {
       .toEqual({ [s2]: true, [s3]: false, [clip]: false })
   })
 
+  it('a finished ad leaves only the final in front, whatever tool made each step (Pip run)', async () => {
+    // 2026-10-07: mix_voiceover's clip is not an attachment, so its inputs (the
+    // joined clip and three narrations) were taken as unused and shown as big cards.
+    const u = (n: number) => `0000000${n}-aaaa-4bbb-8ccc-00000000000${n}`
+    const [joined, n1, n2, n3, voiced, carded, captioned, song, final] = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(u)
+    const file = (fileId: string, name: string, fileType: string) => ({ fileId, name, fileType, size: 1 })
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [
+        {
+          type: 'tool-result',
+          payload: {
+            toolCallId: 'tc-director-1',
+            toolName: 'agent-director',
+            result: {
+              text: 'Here is your finished ad.',
+              subAgentToolResults: [
+                { toolName: 'assemble_clips', args: { clipFileIds: [] }, result: file(joined, 'Pip 6 ad.mp4', 'video/mp4') },
+                { toolName: 'generate_narration', args: { text: 'a' }, result: file(n1, 'Generated Narration.wav', 'audio/wav') },
+                { toolName: 'generate_narration', args: { text: 'b' }, result: file(n2, 'Generated Narration.wav', 'audio/wav') },
+                { toolName: 'generate_narration', args: { text: 'c' }, result: file(n3, 'Generated Narration.wav', 'audio/wav') },
+                { toolName: 'mix_voiceover', args: { videoFileId: joined, blocks: [{ audioFileId: n1 }, { audioFileId: n2 }, { audioFileId: n3 }] }, result: { ...file(voiced, 'Pip 6 ad.mp4', 'video/mp4'), jobId: 'j1' } },
+                { toolName: 'composite_end_card', args: { videoFileId: voiced }, result: file(carded, 'Pip 6 ad.mp4', 'video/mp4') },
+                { toolName: 'transcribe_audio', args: { fileId: carded }, result: { text: 'hello' } },
+                { toolName: 'burn_captions', args: { videoFileId: carded }, result: file(captioned, 'Pip 6 ad.mp4', 'video/mp4') },
+                { toolName: 'generate_song', args: { prompt: 'upbeat' }, result: file(song, 'Upbeat.wav', 'audio/wav') },
+                { toolName: 'mix_music_bed', args: { musicFileId: song, videoFileId: captioned }, result: file(final, 'Pip 6 ad.mp4', 'video/mp4') },
+              ],
+            },
+          },
+        },
+        { type: 'finish', payload: { output: { usage: {} } } },
+      ],
+      'run-director-1',
+    ))
+    const sendEvent = vi.fn()
+    await runChatStream(baseOpts({ sendEvent }))
+    const done = sendEvent.mock.calls.find(c => c[0] === 'done')![1] as { attachments: Array<{ fileId: string; working?: boolean }> }
+    expect(done.attachments.filter(a => !a.working).map(a => a.fileId)).toEqual([final])
+  })
+
   it('does not add an attachment when the delegate produced no fileId anywhere', async () => {
     streamMock.mockResolvedValueOnce(fakeStream(
       [

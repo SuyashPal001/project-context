@@ -47,7 +47,7 @@ export function FileTile({ file, size = 'md' }: { file: TileFile; size?: 'sm' | 
 /** A tile still being made, with the big generating card's look at tile size:
  *  rose sweep, the estimated percentage and a progress bar. The first version
  *  was a faint grey that read as an empty gap (2026-10-07). */
-export function PendingTile({ kind = 'image' }: { kind?: 'image' | 'video' }) {
+export function PendingTile({ kind = 'image' }: { kind?: 'image' | 'video' | 'audio' }) {
     const [startedAt] = useState(() => Date.now());
     const [now, setNow] = useState(startedAt);
     useEffect(() => {

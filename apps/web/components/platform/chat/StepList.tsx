@@ -48,7 +48,9 @@ export interface StepRow {
 
 // Steps whose pictures and clips hang under their row. The finished ad
 // (joining, captions, end card…) stays the big card under the reply.
-const TILE_STEPS = new Set(['pictures', 'storyboard', 'edits', 'clips', 'casting']);
+// Every step that makes media hangs it under its row; songs and voice-overs
+// showed as loose cards below 'Music' (2026-10-07).
+const TILE_STEPS = new Set(['pictures', 'storyboard', 'edits', 'clips', 'casting', 'music', 'voice']);
 
 /** One row per step key, in the order each step first started. */
 export function groupSteps(steps: LiveStep[]): StepRow[] {
@@ -149,7 +151,7 @@ export function StepList({ steps, live = true }: { steps: LiveStep[]; live?: boo
                     <Branch>
                         <div className="flex flex-wrap gap-1.5" data-testid="step-files">
                             {tiles.map(f => <FileTile key={f.fileId} file={f} />)}
-                            {Array.from({ length: pending }, (_, i) => <PendingTile key={`p${i}`} kind={row.kind === 'video' ? 'video' : 'image'} />)}
+                            {Array.from({ length: pending }, (_, i) => <PendingTile key={`p${i}`} kind={row.kind === 'video' ? 'video' : row.key === 'music' || row.key === 'voice' ? 'audio' : 'image'} />)}
                         </div>
                     </Branch>
                 )}
@@ -166,6 +168,7 @@ const STEP_FOR_TOOL: Record<string, string[]> = {
     generate_image: ['pictures', 'storyboard'], generate_images: ['pictures', 'storyboard'],
     edit_image: ['edits'], generate_video: ['clips'], generate_videos: ['clips'],
     roll_avatar_variations: ['casting'], roll_character_variations: ['casting'], roll_tvc_variations: ['casting'],
+    generate_song: ['music'], generate_jingle: ['music'], generate_narration: ['voice'],
 };
 
 /** Steps with the finished pictures and clips that reached the chat on their

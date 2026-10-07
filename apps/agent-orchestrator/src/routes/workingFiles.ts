@@ -36,3 +36,14 @@ export function fileIdsIn(value: unknown, into: Set<string> = new Set()): Set<st
 export function markWorkingFiles(attachments: AttachmentPayload[], inputIds: Set<string>): AttachmentPayload[] {
   return attachments.map((a) => (inputIds.has(a.fileId.toLowerCase()) ? { ...a, working: true } : a))
 }
+
+/**
+ * Whether a call made a file: its result carries a file id it was not given.
+ * Any tool, attached to the reply or not — mix_voiceover's new clip is not an
+ * attachment, and missing it left the joined clip and three narrations as big
+ * cards under the finished ad (2026-10-07). A check or review returns no new id.
+ */
+export function madeNewFile(result: unknown, inputs: Set<string>): boolean {
+  for (const id of fileIdsIn(result)) if (!inputs.has(id)) return true
+  return false
+}

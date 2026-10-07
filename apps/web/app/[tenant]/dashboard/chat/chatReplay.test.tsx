@@ -236,6 +236,24 @@ describe('replay: Lakmē ad in Ask mode', () => {
         expect(screen.getAllByLabelText('Scene 1 Still — Meera Hook.png')).toHaveLength(1);
     });
 
+    it('a song hangs under its Music step like a picture (2026-10-07)', () => {
+        const { draw } = setup();
+        act(() => {
+            tick(); ev().onToolCall('agent-director', 'dir-m', { prompt: 'Music bed' });
+            ev().onStep({ id: 's-m', key: 'music', label: 'Music', kind: 'finish', state: 'running', count: 1, detail: 'Upbeat playful background music' });
+        });
+        draw();
+        expect(screen.getAllByLabelText('being made')).toHaveLength(1);
+        act(() => {
+            tick(20_000); ev().onToolCall('generate_song', 'sub-song', {});
+            ev().onToolDone('sub-song', 'generate_song', { fileId: 'song-1', name: 'Upbeat playful background music.wav', fileType: 'audio/wav' });
+        });
+        draw();
+        expect(screen.getAllByLabelText('Upbeat playful background music.wav')).toHaveLength(1);
+        expect(screen.queryByLabelText('being made')).toBeNull();
+        expect(screen.queryByText(/Song generated/)).toBeNull();
+    });
+
     it('a finished picture fills its step\'s tile even when the step never says done', () => {
         // 2026-10-07: "Pictures 0 of 2" kept two empty tiles while both stills
         // showed as loose "Image generated" cards below it.
