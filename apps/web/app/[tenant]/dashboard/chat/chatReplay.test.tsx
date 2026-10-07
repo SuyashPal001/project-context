@@ -177,6 +177,47 @@ describe('replay: Lakmē ad in Ask mode', () => {
         expect(screen.getAllByLabelText('Scene 1 still.png')).toHaveLength(1);
     });
 
+    it('a picture made in one part never shows again in the next (Meera run, 2026-10-07)', () => {
+        // Part 2 made nothing, yet showed part 1's Scene 1 still as a big
+        // "Image generated" card while it worked and after it stopped.
+        const { draw, answerCard, decideCost } = setup();
+        act(() => {
+            tick(); ev().onToolCall('agent-director', 'dir-1', { prompt: 'Scene 1 still' });
+            ev().onStep({ id: 's-1', key: 'pictures', label: 'Pictures', kind: 'image', state: 'running', count: 1, detail: 'Scene 1 Still — Meera Hook' });
+            tick(20_000); ev().onToolCall('generate_image', 'sub-g1', {});
+            ev().onToolDone('sub-g1', 'generate_image', { fileId: 'still-1', name: 'Scene 1 Still — Meera Hook.png', fileType: 'image/png' });
+            ev().onStep({ id: 's-1', key: 'pictures', label: 'Pictures', kind: 'image', state: 'done', count: 1, files: [{ fileId: 'still-1', name: 'Scene 1 Still — Meera Hook.png', type: 'image/png' }] });
+            ev().onToolDone('dir-1', 'agent-director', { text: 'Here is the still for Scene 1!' });
+            tick(); ev().onToolCall('review_shots', 'rev-1', { kind: 'still' });
+            ev().onClarificationRequired('cl-1', [{ prompt: 'Does this still for Scene 1 look right?', options: [{ label: 'Looks good — continue' }] }], 'part-1');
+            ev().onDelta("Here's Scene 1 Still — Meera Hook.", 'part-1');
+            ev().onTurnPause('part-1', { text: '', attachments: [{ fileId: 'still-1', name: 'Scene 1 Still — Meera Hook.png', type: 'image/png', size: 1 }] });
+        });
+        act(() => { tick(); answerCard('cl-1'); ev().onTurnResume({ text: 'Looks good — continue' }); ev().onToolDone('rev-1', 'review_shots', {}); });
+
+        // Part 2: the Director starts Scenes 2 and 3, and the Scene 1 still comes in again.
+        act(() => {
+            tick(); ev().onToolCall('agent-director', 'dir-2', { prompt: 'Scenes 2 and 3' });
+            ev().onStep({ id: 's-2', key: 'pictures', label: 'Pictures', kind: 'image', state: 'running', count: 2, detail: 'Scene 2 +1' });
+            ev().onToolCall('generate_image', 'sub-g1-again', {});
+            ev().onToolDone('sub-g1-again', 'generate_image', { fileId: 'still-1', name: 'Scene 1 Still — Meera Hook.png', fileType: 'image/png' });
+        });
+        draw();
+        expect(screen.queryByText(/Image generated/)).toBeNull();
+        expect(screen.getAllByLabelText('being made')).toHaveLength(2);
+
+        act(() => {
+            tick(); ev().onGenerationConfirmRequired('conf-2', 'image_generation', 'img', 'Generate 2 images');
+            ev().onTurnPause('part-2', { text: '', elapsedSec: 91 });
+        });
+        act(() => { tick(); decideCost('conf-2'); ev().onTurnResume({ text: 'Approve' }); });
+        draw();
+        for (const header of screen.getAllByText(/^Worked for/)) fireEvent.click(header.closest('button')!);
+        expect(screen.queryByText(/Image generated/)).toBeNull();
+        // Once as part 1's card, once as its tile under part 1's step.
+        expect(screen.getAllByLabelText('Scene 1 Still — Meera Hook.png')).toHaveLength(1);
+    });
+
     it('a finished picture fills its step\'s tile even when the step never says done', () => {
         // 2026-10-07: "Pictures 0 of 2" kept two empty tiles while both stills
         // showed as loose "Image generated" cards below it.

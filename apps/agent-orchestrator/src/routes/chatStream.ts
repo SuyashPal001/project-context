@@ -252,7 +252,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const {
     message, displayMessage, attachments, conversationId, tenantId,
     internalUserId, idToken, agentId, sessionId, startTime,
-    workingMemoryPromise, sendEvent, sendHeartbeat, closeStream, isStreamClosed, onClientStop,
+    workingMemoryPromise, sendEvent: sendToBrowser, sendHeartbeat, closeStream, isStreamClosed, onClientStop,
     folderId, folderPrefix, allowMode, skillsUsed, isFirstMessage,
   } = opts
   // The newest id token for this conversation — see freshIdToken.ts.
@@ -299,6 +299,17 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   // A turn that stops to ask the user is saved as several messages, one per
   // part (see pauseTurn below); this is the id of the part now streaming.
   let assistantMessageId = crypto.randomUUID()
+  // One line per event the browser gets, names only, so the order a part's
+  // rows and cards arrived in can be read back from pm2 logs (2026-10-07: a
+  // picture from one part showed in the next and nothing recorded why).
+  const sendEvent = (event: string, data: object): void => {
+    if (event !== 'delta' && event !== 'reasoning') {
+      const d = data as { toolName?: unknown; toolCallId?: unknown; key?: unknown; state?: unknown }
+      const id = typeof d.toolCallId === 'string' ? d.toolCallId.slice(-10) : ''
+      console.log(`[sse:${sessionId}] event=${event} part=${assistantMessageId.slice(0, 8)}${d.toolName ? ` tool=${String(d.toolName)}` : ''}${id ? ` call=${id}` : ''}${d.key ? ` step=${String(d.key)}:${String(d.state ?? '')}` : ''}`)
+    }
+    sendToBrowser(event, data)
+  }
   let pendingArtifactRef: ArtifactRefPayload | null = null
   // This part's files; earlier parts' files were saved with those parts.
   const pendingAttachments: AttachmentPayload[] = []
@@ -317,6 +328,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   }
   // File ids this turn's tool calls took as inputs (see workingFiles.ts).
   const turnInputFileIds = new Set<string>()
+  // A call's input files count only once its result shows it made a file:
+  // a check or a review only looks (2026-10-07: check_clip folded the stills
+  // it checked away, so their part had no hand-over and no card).
+  const callInputFileIds = new Map<string, Set<string>>()
   // Live step list (stepEvents.ts): running steps by tool call id, Olmo's own and nested.
   const runningSteps = new Map<string, StepEvent>()
   const runningStepKeys = new Map<string, string>()
@@ -853,7 +868,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const args = (p.args ?? {}) as Record<string, unknown>
           const toolCallId = (p.toolCallId ?? toolName) as string
           if (toolCallId && toolName) toolCallNames.set(toolCallId, toolName)
-          inputFileIdsOf(toolName, args, turnInputFileIds)
+          callInputFileIds.set(toolCallId, inputFileIdsOf(toolName, args, new Set()))
           startStep(toolName, toolCallId, args)
           // The Director's tools learn they are in a reviewed ad flow before
           // any approval card is shown (see reviewGate.ts).
@@ -1087,7 +1102,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // render-canvas persists its content as a file (see renderCanvas.ts);
           // collect it into the assistant message's attachments alongside any
           // user-uploaded ones, so multiple canvas outputs in one turn all survive.
-          addAttachments(attachmentsFromToolResult(normName, result))
+          const madeHere = attachmentsFromToolResult(normName, result)
+          if (madeHere.length > 0) for (const id of callInputFileIds.get(toolCallId) ?? []) turnInputFileIds.add(id)
+          callInputFileIds.delete(toolCallId)
+          addAttachments(madeHere)
 
           // A delegate wrapper's own tool-result (toolName agent-director/
           // agent-producer) never carries fileId at the top level — the real
@@ -1101,10 +1119,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // dropped this way.
           if (Array.isArray(result.subAgentToolResults)) {
             for (const entry of result.subAgentToolResults as Array<{ toolName?: unknown; result?: unknown; args?: unknown }>) {
-              inputFileIdsOf(typeof entry.toolName === 'string' ? entry.toolName : '', entry.args, turnInputFileIds)
               const innerName = typeof entry.toolName === 'string' ? entry.toolName.toLowerCase().replace(/_/g, '-') : ''
               const innerResult = (entry.result ?? {}) as Record<string, unknown>
-              addAttachments(attachmentsFromToolResult(innerName, innerResult))
+              const innerMade = attachmentsFromToolResult(innerName, innerResult)
+              if (innerMade.length > 0) inputFileIdsOf(typeof entry.toolName === 'string' ? entry.toolName : '', entry.args, turnInputFileIds)
+              addAttachments(innerMade)
             }
           }
           break

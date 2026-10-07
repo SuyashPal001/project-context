@@ -430,6 +430,49 @@ describe('runChatStream — delegate-produced attachments', () => {
     }))
   })
 
+  it('a still is a working file only when a call that made something used it, not when a check looked at it (Meera run)', async () => {
+    const s2 = 'b2afa519-a2cc-4bad-ba7c-c5d6c08c7906'
+    const s3 = '9512cd60-a2ca-4063-b1fd-9598e23a7833'
+    const master = '9b3a7d1d-8143-4801-9049-e58c6f133bb4'
+    const clip = 'c87bc8e6-33f0-464f-8d39-a346f678b286'
+    const run = async (extra: Array<{ toolName: string; args: unknown; result: unknown }>) => {
+      streamMock.mockResolvedValueOnce(fakeStream(
+        [
+          {
+            type: 'tool-result',
+            payload: {
+              toolCallId: 'tc-director-1',
+              toolName: 'agent-director',
+              result: {
+                text: 'Stills done.',
+                subAgentToolResults: [
+                  { toolName: 'generate_image', args: { prompt: 'Scene 2' }, result: { fileId: s2, name: 'Scene 2 Still.png', fileType: 'image/png', size: 1 } },
+                  { toolName: 'generate_image', args: { prompt: 'Scene 3' }, result: { fileId: s3, name: 'Scene 3 Still.png', fileType: 'image/png', size: 1 } },
+                  { toolName: 'check_clip', args: { clipFileId: s2, masterStillFileId: master }, result: { passed: true } },
+                  { toolName: 'check_clip', args: { clipFileId: s3, masterStillFileId: master }, result: { passed: true } },
+                  ...extra,
+                ],
+              },
+            },
+          },
+          { type: 'finish', payload: { output: { usage: {} } } },
+        ],
+        'run-director-1',
+      ))
+      const sendEvent = vi.fn()
+      await runChatStream(baseOpts({ sendEvent }))
+      const done = sendEvent.mock.calls.find(c => c[0] === 'done')![1] as { attachments: Array<{ fileId: string; working?: boolean }> }
+      return Object.fromEntries(done.attachments.map(a => [a.fileId, !!a.working]))
+    }
+
+    expect(await run([])).toEqual({ [s2]: false, [s3]: false })
+    // Any tool that only reads a file, listed anywhere or not.
+    expect(await run([{ toolName: 'analyze_video', args: { fileId: s3 }, result: { summary: 'fine' } }])).toEqual({ [s2]: false, [s3]: false })
+    // A clip made from the Scene 2 still does use it.
+    expect(await run([{ toolName: 'generate_video', args: { startImageFileId: s2 }, result: { fileId: clip, name: 'Scene 2 clip.mp4', fileType: 'video/mp4', size: 1 } }]))
+      .toEqual({ [s2]: true, [s3]: false, [clip]: false })
+  })
+
   it('does not add an attachment when the delegate produced no fileId anywhere', async () => {
     streamMock.mockResolvedValueOnce(fakeStream(
       [

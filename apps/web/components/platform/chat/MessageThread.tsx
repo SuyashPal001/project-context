@@ -10,6 +10,7 @@ import { useRouter, useParams } from "next/navigation";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { AwaitingApprovalContext, extractResultFiles } from "./ToolCallCard";
 import { AskedLine, MessageItem, askedPrompts, isAnsweredQuestionRow, messageHasDisplayedContent } from "./MessageItem";
+import { filesMadeBefore, withoutCallsMadeEarlier, withoutFilesMadeEarlier, withoutStepFilesMadeEarlier } from "./partFiles";
 import { findPendingClarification, findPendingGenerationConfirm, findPendingUpload } from "./pendingRequests";
 import { ClarificationCard } from "./ClarificationCard";
 import { UploadRequestCard } from "./UploadRequestCard";
@@ -142,6 +143,10 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     // once the row exists, MessageItem renders the same content itself,
     // inside that row, so the two must never both render at once.
     const hasStreamingMessage = messages.some(m => m.isStreaming);
+    // A file shows only in the part that made it (see partFiles.ts).
+    const madeBefore = filesMadeBefore(messages);
+    const liveCompletedToolCalls = withoutCallsMadeEarlier(completedToolCalls ?? [], madeBefore.all);
+    const liveStepsShown = liveSteps && withoutStepFilesMadeEarlier(liveSteps, madeBefore.all);
     const hiddenAnsweredRows = new Set(messages.flatMap((m, i) => {
         if (!isAnsweredQuestionRow(m)) return [];
         const next = messages.slice(i + 1).find(messageHasDisplayedContent);
@@ -441,7 +446,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                         <MessageItem
                             answerShownBelow={answerShownBelow}
                             key={message.id}
-                            message={message}
+                            message={withoutFilesMadeEarlier(message, madeBefore.before[i])}
                             isFirstInSequence={prevRole === null || prevRole !== message.role}
                             isNewExchange={prevRole !== null && prevRole !== message.role}
                             isLastMessage={isLastMessage}
@@ -459,8 +464,8 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                             planErrors={planErrors}
                             onCreateInSystem={handleCreateInSystem}
                             activeToolCalls={message.isStreaming ? activeToolCalls : undefined}
-                            completedToolCalls={message.isStreaming ? completedToolCalls : undefined}
-                            liveSteps={message.isStreaming ? liveSteps : undefined}
+                            completedToolCalls={message.isStreaming ? liveCompletedToolCalls : undefined}
+                            liveSteps={message.isStreaming ? liveStepsShown : undefined}
                             liveReasoningText={message.isStreaming ? reasoningText : undefined}
                             liveTraceAfterSeq={message.isStreaming ? (traceAfterSeq ?? undefined) : undefined}
                         />
@@ -480,8 +485,8 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                         isRetrying={isRetrying ?? false}
                         isStreaming={isStreaming ?? false}
                         activeToolCalls={activeToolCalls ?? []}
-                        completedToolCalls={completedToolCalls ?? []}
-                        steps={liveSteps}
+                        completedToolCalls={liveCompletedToolCalls}
+                        steps={liveStepsShown}
                         reasoningText={reasoningText ?? ''}
                         agentAvatarUrl={agentAvatarUrl}
                         agentPersona={agentPersona}
