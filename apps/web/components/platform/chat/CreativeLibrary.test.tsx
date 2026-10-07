@@ -51,6 +51,10 @@ describe('creative library', () => {
         renderLibrary('avatars');
         expect(await screen.findByRole('button', { name: 'Use Bolt avatar' })).toBeTruthy();
 
+        // Yours: only the tenant's own, any category.
+        fireEvent.click(screen.getByRole('button', { name: 'Yours' }));
+        expect(screen.getAllByRole('button', { name: /avatar$/ }).map(b => b.getAttribute('aria-label'))).toEqual(['Use Bolt avatar', 'Use Upload avatar']);
+
         fireEvent.click(screen.getByRole('button', { name: 'Animation' }));
         expect(screen.getByRole('button', { name: 'Use Lumo avatar' })).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Use Bolt avatar' })).toBeTruthy();
@@ -141,7 +145,7 @@ describe('creative library', () => {
         vi.mocked(api.post).mockResolvedValue({ data: own({ id: 'asset-2', fileId: 'file-2', name: 'Kabir' }) });
         const { onSelect } = renderLibrary('avatars');
 
-        expect(await screen.findByText('Yours')).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Yours' })).toBeTruthy();
         expect(screen.getByText('Naming…')).toBeTruthy();
         await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/v1/creative-library-assets/avatars/asset-2/describe'));
         fireEvent.click(screen.getByRole('button', { name: 'Use Riya avatar' }));
