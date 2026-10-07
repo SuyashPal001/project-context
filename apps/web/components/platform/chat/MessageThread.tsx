@@ -152,6 +152,18 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
         const next = messages.slice(i + 1).find(messageHasDisplayedContent);
         return next?.role === 'user' ? [i] : [];
     }));
+    // A settled card's row is saved after the part that stopped on it; its
+    // line is drawn inside that part, above the part's feedback row, so the
+    // thumbs never sit between a part and its question (2026-10-07).
+    const askedBelow = new Map<number, string[]>();
+    const askedOwned = new Set<number>();
+    for (const i of hiddenAnsweredRows) {
+        let j = i - 1;
+        while (j >= 0 && (hiddenAnsweredRows.has(j) || !messageHasDisplayedContent(messages[j]))) j--;
+        if (j < 0 || messages[j].role !== 'assistant') continue;
+        askedBelow.set(j, [...(askedBelow.get(j) ?? []), ...askedPrompts(messages[i])]);
+        askedOwned.add(i);
+    }
     // The bottom spacer (rendered below) needs full-pane room not just while
     // a reply is streaming, but also in the brief window right after you hit
     // send — the anchor-to-top-of-your-message effect in MessageThread fires
@@ -429,7 +441,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     // the user's answer stands for the rest (2026-10-07: the
                     // whole card again read as asking twice; nothing at all
                     // read as Olmo saying nothing).
-                    if (hiddenAnsweredRows.has(i)) return <AskedLine key={message.id} prompts={askedPrompts(message)} />;
+                    if (hiddenAnsweredRows.has(i)) return askedOwned.has(i) ? null : <AskedLine key={message.id} prompts={askedPrompts(message)} />;
                     // Walk back past any empty placeholder messages (approval/
                     // clarification/generation-confirm) — MessageItem doesn't
                     // render them at all, so they must not occupy the
@@ -445,6 +457,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     return (
                         <MessageItem
                             answerShownBelow={answerShownBelow}
+                            askedBelow={askedBelow.get(i)}
                             key={message.id}
                             message={withoutFilesMadeEarlier(message, madeBefore.before[i])}
                             isFirstInSequence={prevRole === null || prevRole !== message.role}

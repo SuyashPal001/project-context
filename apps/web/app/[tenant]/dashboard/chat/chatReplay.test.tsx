@@ -221,6 +221,14 @@ describe('replay: Lakmē ad in Ask mode', () => {
         // The part that stopped on the cost OK did work, and says what it asked.
         expect(screen.queryByText(/^Thought for/)).toBeNull();
         expect(screen.getByText('Generate 2 images?')).toBeTruthy();
+        // The line is the end of its part: no feedback row between the part and its question.
+        const costLine = screen.getByText('Generate 2 images?');
+        const thumbsAfter = screen.getAllByLabelText('Thumbs up').filter(t => costLine.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING);
+        const thumbsBefore = screen.getAllByLabelText('Thumbs up').filter(t => costLine.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_PRECEDING);
+        expect(thumbsAfter.length).toBeGreaterThan(0);
+        expect(thumbsBefore).toHaveLength(screen.getAllByLabelText('Thumbs up').length - thumbsAfter.length);
+        const partOf = (el: Element) => el.closest('[id^="message-"]');
+        expect(thumbsAfter.some(t => partOf(t) === partOf(costLine))).toBe(true);
         for (const header of screen.getAllByText(/^Worked for/)) fireEvent.click(header.closest('button')!);
         expect(screen.queryByText(/Image generated/)).toBeNull();
         expect(screen.queryByText(/Checked the scenes with you/)).toBeNull();

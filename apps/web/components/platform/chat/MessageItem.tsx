@@ -104,6 +104,9 @@ interface MessageItemProps {
     isNewExchange?: boolean;
     /** The user's answer is the next message: answered cards show only their question. */
     answerShownBelow?: boolean;
+    /** What the card rows right after this part asked, shown as this part's
+     *  line, above its feedback row (see MessageThread). */
+    askedBelow?: string[];
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
     onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean }, allAnswered?: boolean) => void;
@@ -137,6 +140,7 @@ export function MessageItem({
     isFirstInSequence,
     isNewExchange,
     answerShownBelow,
+    askedBelow,
     onApprove,
     onDismiss,
     onClarificationAnswer,
@@ -551,6 +555,8 @@ export function MessageItem({
                         ))}
                     </div>
                 )}
+
+                {askedBelow && askedBelow.length > 0 && <AskedLine prompts={askedBelow} />}
 
                 {isAssistant && !message.isStreaming && hasDisplayedContent && (
                     <MessageFeedback
