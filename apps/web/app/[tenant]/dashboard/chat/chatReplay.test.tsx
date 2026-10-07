@@ -154,11 +154,13 @@ describe('replay: Lakmē ad in Ask mode', () => {
         draw();
         // Every answer is the user's own message.
         for (const answer of ['Approve', 'Looks good — continue']) expect(screen.getByText(answer)).toBeTruthy();
-        // The plan part keeps its text. A question is asked once, on its card:
-        // once answered it is not repeated in the chat.
+        // The plan part keeps its text. An answered question stays in the chat
+        // as one line, once, with the answer as the user's message below it.
         expect(screen.getByText('Here is the plan: 3 scenes, 15s.')).toBeTruthy();
         expect(screen.queryByText('Generate image?')).toBeNull();
-        expect(screen.queryByText('Does Scene 1 look right?')).toBeNull();
+        expect(screen.getAllByText('Does Scene 1 look right?')).toHaveLength(1);
+        expect(screen.getByTestId('asked-line').textContent).toBe('Does Scene 1 look right?');
+        expect(screen.queryByText(/Looks good — continue \(Recommended\)/)).toBeNull();
         // The Director's part hands its work over: one line and the still as the
         // big output card. Folded, the part is just its "Worked for" line; the
         // still's small tile shows under its step once the part is opened.

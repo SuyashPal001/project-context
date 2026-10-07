@@ -65,6 +65,29 @@ export function isAnsweredQuestionRow(message: Message): boolean {
     return asks.every(r => settled(r.status)) && uploads.every(r => settled(r.status)) && (!cost || settled(cost.status));
 }
 
+/** What a settled question row asked: its questions, or what it asked to upload. */
+export function askedPrompts(message: Message): string[] {
+    return [
+        ...(message.clarificationRequests ?? []).filter(r => r.status !== 'pending').flatMap(r => r.questions.map(q => q.prompt)),
+        ...(message.uploadRequests ?? []).filter(r => r.status !== 'pending').map(r => r.prompt),
+    ].filter(p => p.trim());
+}
+
+/**
+ * An answered question, kept in the chat as one muted line under the part
+ * that asked it; the user's answer is their own message below. While it
+ * waits, the question is on the card at the composer (2026-10-07: hidden
+ * outright, a part that only asked read as Olmo saying nothing).
+ */
+export function AskedLine({ prompts }: { prompts: string[] }) {
+    if (prompts.length === 0) return null;
+    return (
+        <div className="flex flex-col gap-0.5 pl-4 text-sm text-muted-foreground" data-testid="asked-line">
+            {prompts.map((p, i) => <p key={i} className="whitespace-pre-wrap">{p}</p>)}
+        </div>
+    );
+}
+
 interface MessageItemProps {
     message: Message;
     freshUrls: Record<string, string>;
@@ -244,9 +267,11 @@ export function MessageItem({
     // fixed slots at the bottom — never both.
     // Pending requests render as a panel-wide takeover overlay (see
     // MessageThread) instead of inline, which is why they're skipped here.
-    // Answered, with the answer as the next message: the question was asked
-    // once, on its card; repeating it in the chat read as asking twice (2026-10-07).
-    const renderClarificationCard = (request: ClarificationRequest) => request.status === 'pending' || (answerShownBelow && (request.status === 'answered' || request.status === 'skipped')) ? null : (
+    // Answered, with the answer as the next message: only the question stays,
+    // as one line; the full card again read as asking twice (2026-10-07).
+    const renderClarificationCard = (request: ClarificationRequest) => request.status === 'pending' ? null : answerShownBelow && (request.status === 'answered' || request.status === 'skipped') ? (
+        <AskedLine prompts={request.questions.map(q => q.prompt).filter(p => p.trim())} />
+    ) : (
         <ClarificationCard
             request={request}
             onAnswer={(answer, allAnswered) => onClarificationAnswer?.(

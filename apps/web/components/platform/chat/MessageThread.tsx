@@ -9,7 +9,7 @@ import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { useRouter, useParams } from "next/navigation";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { AwaitingApprovalContext, extractResultFiles } from "./ToolCallCard";
-import { MessageItem, isAnsweredQuestionRow, messageHasDisplayedContent } from "./MessageItem";
+import { AskedLine, MessageItem, askedPrompts, isAnsweredQuestionRow, messageHasDisplayedContent } from "./MessageItem";
 import { findPendingClarification, findPendingGenerationConfirm, findPendingUpload } from "./pendingRequests";
 import { ClarificationCard } from "./ClarificationCard";
 import { UploadRequestCard } from "./UploadRequestCard";
@@ -419,11 +419,12 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                 )}
 
                 {messages.map((message, i) => {
-                    // A question row whose answer is the next message is not
-                    // shown: the question was asked once, on its card, and the
-                    // user's answer stands for it (2026-10-07: shown again as
-                    // its own message, it read as asking twice).
-                    if (hiddenAnsweredRows.has(i)) return null;
+                    // A question row whose answer is the next message shows
+                    // only its question, as one line under the part that asked;
+                    // the user's answer stands for the rest (2026-10-07: the
+                    // whole card again read as asking twice; nothing at all
+                    // read as Olmo saying nothing).
+                    if (hiddenAnsweredRows.has(i)) return <AskedLine key={message.id} prompts={askedPrompts(message)} />;
                     // Walk back past any empty placeholder messages (approval/
                     // clarification/generation-confirm) — MessageItem doesn't
                     // render them at all, so they must not occupy the
