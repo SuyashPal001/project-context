@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { countWords, legalHoldSeconds, recordOnPlan, shotStarts, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, jingleErrors, lastSpeechEnd, signoffTiming, type TvcPlan } from './tvcPlan.js'
+import { countWords, legalHoldSeconds, recordOnPlan, shotStarts, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, jingleErrors, lastSpeechEnd, signoffTiming, legalTimings, finishOrder, type TvcPlan } from './tvcPlan.js'
 import { generateSecondsFor, minShotSeconds, HARD_ACTION_RE } from './tvcPlan.js'
 import { shotPromptFor, varietySentence, locationName, CAMERA_GRAMMAR } from './tvcPlan.js'
 
@@ -154,12 +154,113 @@ describe('validateTvcPlan — warnings', () => {
     const p = goodPlan(); p.brief.market = 'india'; p.shots[2].type = 'mechanism'
     const result = validateTvcPlan(p)
     expect(result.errors).toEqual([])
-    expect(result.plan.legal).toEqual([{ text: 'Creative visualisation', startSeconds: 4 }])
+    expect(result.plan.legal).toEqual([{ text: 'Creative visualisation', startSeconds: 4, endSeconds: 8 }])
     expect(validateTvcPlan(result.plan).plan.legal).toHaveLength(1)
   })
   it('India food and beverage warns about the veg mark', () => {
     const p = goodPlan(); p.brief.market = 'india'; p.brief.category = 'beverage'
     expect(validateTvcPlan(p).warnings.join(' ')).toMatch(/veg mark/)
+  })
+})
+
+const HY = 'Hyaluronic acid as per lab tests. T&C apply.'          // 2 lines at 9:16, 8 words
+const SHORT = 'As per lab test. Results may vary.'                  // 1 line, 7 words
+const LONG_9_16 = 'Based on an independent lab test of moisture retention over eight hours. Results may vary.' // 3 lines at 9:16
+
+describe('legal lines (L2, L3)', () => {
+  it('starts at the claim\'s voiceover block and holds 4 s per line', () => {
+    const p = goodPlan(); p.legal = [{ text: HY, forVoiceoverBlock: 1 }]
+    const r = validateTvcPlan(p)
+    expect(r.errors).toEqual([])
+    expect(r.plan.legal[0]).toMatchObject({ startSeconds: 2, endSeconds: 10 })
+  })
+  it('Director\'s own times are overwritten (Review Focus 4)', () => {
+    const p = goodPlan(); p.legal = [{ text: HY, forVoiceoverBlock: 1, startSeconds: 7, endSeconds: 3 }]
+    expect(validateTvcPlan(p).plan.legal[0]).toMatchObject({ startSeconds: 2, endSeconds: 10 })
+  })
+  it('re-check recomputes the start from the current voiceover (E7, E12)', () => {
+    const p = goodPlan(); p.legal = [{ text: HY, forVoiceoverBlock: 1 }]
+    const first = validateTvcPlan(p).plan
+    first.voiceover[0].startSeconds = 3
+    expect(validateTvcPlan(first).plan.legal[0]).toMatchObject({ startSeconds: 3, endSeconds: 11 })
+  })
+  it('counts the shot text on screen during it', () => {
+    const p = goodPlan(); p.shots[3].text = 'Soft for hours'; p.legal = [{ text: SHORT, startSeconds: 4 }]
+    expect(validateTvcPlan(p).plan.legal[0]).toMatchObject({ startSeconds: 4, endSeconds: 9.4 })  // 7 + 2 + 3 words = 12: 12/5 + 3
+    const q = goodPlan(); delete q.shots[2].text; q.legal = [{ text: SHORT, startSeconds: 4 }]
+    expect(validateTvcPlan(q).plan.legal[0]).toMatchObject({ endSeconds: 8 })
+  })
+  it('does not count the brand name in the tagline', () => {
+    const p = goodPlan(); p.brief.brandName = 'Hya'; p.packshot.tagline = 'Hya. Soft all day, every day, for you'
+    p.legal = [{ text: SHORT, startSeconds: 11 }]
+    // 7 own + 7 tagline words (Hya not counted) = 14: 14/5 + 3 = 5.8, ends 16.8 > 15
+    expect(validateTvcPlan(p).errors.join(' ')).toMatch(/needs 5\.8s/)
+  })
+  it('LEGAL_HOLD_TOO_LONG names both fixes (E3); wholeAd keeps it on from 0 to the end', () => {
+    const p = goodPlan(); p.legal = [{ text: HY, startSeconds: 9 }]
+    expect(validateTvcPlan(p).errors).toContain(`LEGAL_HOLD_TOO_LONG: "${HY}" needs 8s on screen; start it earlier, shorten it, or keep it on for the whole ad`)
+    const q = goodPlan(); q.legal = [{ text: HY, wholeAd: true }]
+    const r = validateTvcPlan(q)
+    expect(r.errors).toEqual([])
+    expect(r.plan.legal[0]).toMatchObject({ startSeconds: 0, endSeconds: 15 })
+  })
+  it('LEGAL_TOO_LONG at plan time, before anything is paid', () => {
+    const p = goodPlan(); p.legal = [{ text: LONG_9_16, startSeconds: 0 }]
+    expect(validateTvcPlan(p).errors).toContain('LEGAL_TOO_LONG: the disclaimer "Based on an independent lab test…" needs 3 lines; ASCI allows 2. Shorten it')
+  })
+  it('LEGAL_CLAIM_MISSING for a block that does not exist (E7)', () => {
+    const p = goodPlan(); p.legal = [{ text: SHORT, forVoiceoverBlock: 3 }]
+    expect(validateTvcPlan(p).errors).toContain(`LEGAL_CLAIM_MISSING: legal line "${SHORT}" points at voiceover block 3, which doesn't exist`)
+  })
+  it('LEGAL_START_MISSING when there is no block, start or wholeAd', () => {
+    const p = goodPlan(); p.legal = [{ text: SHORT }]
+    expect(validateTvcPlan(p).errors.join(' ')).toMatch(/^LEGAL_START_MISSING/)
+  })
+  it('two claims in one block overlap and the error suggests combining them (E6)', () => {
+    const p = goodPlan(); p.legal = [{ text: SHORT, forVoiceoverBlock: 1 }, { text: 'T&C apply.', forVoiceoverBlock: 1 }]
+    const msg = validateTvcPlan(p).errors.join(' ')
+    expect(msg).toMatch(/^LEGAL_OVERLAP: only one disclaimer on screen at a time/)
+    expect(msg).toMatch(/combine them into one disclaimer \(at most 2 lines\) or move the second claim to its own voiceover block/)
+  })
+  it('lines linked to the same claim may share the screen', () => {
+    const p = goodPlan(); p.legal = [{ text: SHORT, startSeconds: 2, linkedWith: 'spf' }, { text: 'T&C apply.', startSeconds: 3, linkedWith: 'spf' }]
+    expect(validateTvcPlan(p).errors).toEqual([])
+  })
+  it('an auto-added "Creative visualisation" that collides says how to place it yourself', () => {
+    const p = goodPlan(); p.brief.market = 'india'; p.shots[2].type = 'mechanism'; p.legal = [{ text: HY, forVoiceoverBlock: 1 }]
+    expect(validateTvcPlan(p).errors.join(' ')).toMatch(/add "Creative visualisation" yourself as a legal line with a startSeconds that does not overlap/)
+  })
+  it('an old saved legal line ({ text, startSeconds } only) still validates and slices (Review Focus 3)', () => {
+    const old = tvcPlanSchema.parse({ ...goodPlan(), legal: [{ text: 'Creative visualisation', startSeconds: 4 }] })
+    expect(validateTvcPlan(old).errors).toEqual([])
+    expect((sliceTvcPlan(old, 'finish') as { legal: unknown }).legal).toEqual([{ text: 'Creative visualisation', startSeconds: 4, endSeconds: 8, style: 'legal' }])
+  })
+  it('legalTimings returns null for a line it could not place', () => {
+    const p = goodPlan(); p.legal = [{ text: SHORT, forVoiceoverBlock: 9 }]
+    expect(legalTimings(p).timings).toEqual([null])
+  })
+})
+
+describe('the finish slice and its order (L4, E4)', () => {
+  it('passes each legal line with its computed times and the legal style, and the finish order', () => {
+    const p = goodPlan(); p.legal = [{ text: HY, forVoiceoverBlock: 1 }]
+    const slice = sliceTvcPlan(validateTvcPlan(p).plan, 'finish') as { legal: unknown; finishOrder: string[] }
+    expect(slice.legal).toEqual([{ text: HY, startSeconds: 2, endSeconds: 10, style: 'legal' }])
+    expect(slice.finishOrder).toEqual(['composite_end_card', 'assemble_clips', 'mix_voiceover', 'overlay_text', 'mix_music_bed'])
+    expect(slice.finishOrder.indexOf('composite_end_card')).toBeLessThan(slice.finishOrder.indexOf('overlay_text'))
+  })
+  it('skips mix_voiceover in the order when there is no voiceover and no jingle', () => {
+    const p = goodPlan(); p.voiceover = []
+    expect(finishOrder(p)).toEqual(['composite_end_card', 'assemble_clips', 'overlay_text', 'mix_music_bed'])
+  })
+})
+
+describe('veg mark wording (L5)', () => {
+  it('says recommended, never required', () => {
+    const p = goodPlan(); p.brief.market = 'india'; p.brief.category = 'food'
+    const w = validateTvcPlan(p).warnings.join(' ')
+    expect(w).toMatch(/veg mark is recommended for food and drink \(an FSSAI packaging rule; common practice in TV ads\)/)
+    expect(w).not.toMatch(/required/)
   })
 })
 

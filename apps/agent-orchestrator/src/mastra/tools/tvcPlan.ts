@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { LEGAL_MAX_LINES, countLegalWords, firstWords, legalHoldSeconds, legalLineCount, nominalFrame } from './legalText.js'
 
 // The TVC ad's plan and its craft rules, checked in code so a long skill text
 // is not the only thing holding them (spec 2026-10-05-tvc-ad-design.md §4-5).
@@ -10,6 +11,8 @@ const SHOT_MIN = 1.2, SHOT_MAX = 2.5, PACK_MIN = 2, PACK_MAX = 4
 const BRAND_BY = 2.0, PRODUCT_BY = 3.0, VO_TAIL = 2.0, MAX_LINES = 2, MAX_LOCATIONS = 2
 const EPS = 0.05
 const JINGLE_GAP = 0.75, JINGLE_OVER_PACK = 2.0, BED_CLEAR = 0.3
+const MAX_OVERLAYS = 12
+export { legalHoldSeconds }
 
 export const productTypeSchema = z.object({
   material: z.enum(['glass', 'plastic', 'metal', 'paper', 'other']),
@@ -54,6 +57,15 @@ export const jingleSchema = z.object({
   language: z.string().optional().describe('The language it is sung in, when not English'),
 })
 
+export const legalLineSchema = z.object({
+  text: z.string().min(1).describe('The disclaimer, exactly as it should read'),
+  forVoiceoverBlock: z.number().int().min(1).optional().describe('The voiceover block that makes the claim (1 = the first block). plan_tvc sets the start to that block\'s start'),
+  startSeconds: z.number().min(0).optional().describe('Only for a claim made on screen with no voiceover block: when the disclaimer appears'),
+  wholeAd: z.boolean().optional().describe('Keep it on screen for the whole ad, from 0 to the end'),
+  linkedWith: z.string().optional().describe('Rare: the same label on disclaimers of one interlinked claim; only those may share the screen'),
+  endSeconds: z.number().min(0).optional().describe('Set by plan_tvc check from the ASCI hold rule; never write it'),
+})
+
 export const tvcPlanSchema = z.object({
   brief: z.object({
     message: z.string().min(1).describe('The one message: one sentence of 12 words or fewer'),
@@ -75,6 +87,7 @@ export const tvcPlanSchema = z.object({
     }).optional().describe('When recreating a reference ad: its product type, the reference video (videoFileId), and its real cut times (read from the file by plan_tvc check)'),
     product: productTypeSchema.optional().describe('This product\'s type; must match the reference\'s when one is given'),
     actorLook: z.string().optional().describe('The lead\'s look, e.g. "long dark wavy hair, magenta shirt"; extras never share it'),
+    brandName: z.string().optional().describe('The brand name as it appears on screen; not counted in a disclaimer\'s hold time'),
     jingle: jingleSchema.optional().describe('A sung sign-off over the ending; only when the user wants one or the reference ad has one'),
   }),
   look: z.string().min(1),
@@ -88,7 +101,7 @@ export const tvcPlanSchema = z.object({
     kind: z.enum(['product', 'product_range', 'actor_product_tagline', 'logo_over_scene']),
     tagline: z.string().optional(),
   }),
-  legal: z.array(z.object({ text: z.string().min(1), startSeconds: z.number().min(0) })).default([]),
+  legal: z.array(legalLineSchema).default([]),
   // Saved by plan_tvc record during the finish, so a second finish reuses
   // them instead of paying for the narration and the song again.
   narrationFileIds: z.array(z.string()).optional().describe('Set by plan_tvc record: one narration per voiceover block, in order'),
@@ -150,8 +163,6 @@ export function shotStarts(plan: TvcPlan): number[] {
   return starts
 }
 
-export const legalHoldSeconds = (text: string): number => Math.max(4, countWords(text) / 5 + 3)
-
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x))
 export function minShotSeconds(plan: TvcPlan, shot: TvcShot): number {
   if (shot.flashCut) return 0.3
@@ -165,6 +176,86 @@ export function generateSecondsFor(shot: TvcShot): number {
 }
 
 const VISUALISATION = 'Creative visualisation'
+
+export interface LegalTiming { text: string; startSeconds: number; endSeconds: number; lines: number }
+
+/** L2/L3: every disclaimer's start and hold, computed (never chosen by Director). */
+export function legalTimings(plan: TvcPlan): { timings: Array<LegalTiming | null>; errors: string[] } {
+  const errors: string[] = []
+  const length = plan.brief.lengthSeconds
+  const frame = nominalFrame(plan.brief.aspectRatio)
+  const brandName = plan.brief.brandName
+  const starts = shotStarts(plan)
+  // Other words on screen while [a, b) is showing: shot texts and the packshot tagline.
+  const otherWords = (a: number, b: number): number => plan.shots.reduce((n, s, i) => {
+    if (!(starts[i] < b - EPS && starts[i] + s.durationSeconds > a + EPS)) return n
+    const shotText = s.text ? countLegalWords(s.text, brandName) : 0
+    const tagline = s.type === 'packshot' && plan.packshot.tagline ? countLegalWords(plan.packshot.tagline, brandName) : 0
+    return n + shotText + tagline
+  }, 0)
+  if (plan.legal.length > MAX_OVERLAYS) errors.push(`there are ${plan.legal.length} legal lines; overlay_text takes at most ${MAX_OVERLAYS} overlays`)
+  const timings = plan.legal.map((l): LegalTiming | null => {
+    const lines = legalLineCount(l.text, frame)
+    if (lines > LEGAL_MAX_LINES) {
+      errors.push(`LEGAL_TOO_LONG: the disclaimer "${firstWords(l.text)}" needs ${lines} lines; ASCI allows 2. Shorten it`)
+      return null
+    }
+    if (l.wholeAd) return { text: l.text, startSeconds: 0, endSeconds: length, lines }
+    let start: number
+    if (l.forVoiceoverBlock !== undefined) {
+      const block = plan.voiceover[l.forVoiceoverBlock - 1]
+      if (!block) {
+        errors.push(`LEGAL_CLAIM_MISSING: legal line "${l.text}" points at voiceover block ${l.forVoiceoverBlock}, which doesn't exist`)
+        return null
+      }
+      start = block.startSeconds
+    } else if (l.startSeconds !== undefined) {
+      start = l.startSeconds
+    } else {
+      errors.push(`LEGAL_START_MISSING: legal line "${l.text}" needs forVoiceoverBlock (the voiceover block that makes the claim), startSeconds (an on-screen-only claim) or wholeAd`)
+      return null
+    }
+    // The hold counts the words on screen during it, and the window depends on
+    // the hold: grow both until they agree (monotone, so this settles).
+    let others = 0
+    let hold = legalHoldSeconds(l.text, 0, { lines, brandName })
+    for (let k = 0; k < 50; k++) {
+      const next = otherWords(start, start + hold)
+      if (next === others) break
+      others = next
+      hold = legalHoldSeconds(l.text, others, { lines, brandName })
+    }
+    const end = r2(start + hold)
+    if (end > length + EPS) errors.push(`LEGAL_HOLD_TOO_LONG: "${l.text}" needs ${hold}s on screen; start it earlier, shorten it, or keep it on for the whole ad`)
+    return { text: l.text, startSeconds: start, endSeconds: end, lines }
+  })
+  // L3/E6: one disclaimer on screen at a time, unless linked to the same claim.
+  const placed = timings.flatMap((t, i) => (t ? [{ ...t, i }] : [])).sort((a, b) => a.startSeconds - b.startSeconds)
+  for (let x = 0; x < placed.length; x++) {
+    for (let y = x + 1; y < placed.length; y++) {
+      const a = placed[x], b = placed[y]
+      if (!(b.startSeconds < a.endSeconds - EPS && a.startSeconds < b.endSeconds - EPS)) continue
+      const la = plan.legal[a.i], lb = plan.legal[b.i]
+      if (la.linkedWith && la.linkedWith === lb.linkedWith) continue
+      let fix = '; start the second after the first ends'
+      if (la.forVoiceoverBlock !== undefined && la.forVoiceoverBlock === lb.forVoiceoverBlock) {
+        fix = `; both explain voiceover block ${la.forVoiceoverBlock}: combine them into one disclaimer (at most 2 lines) or move the second claim to its own voiceover block`
+      } else if ([la.text, lb.text].some((t) => t.toLowerCase() === VISUALISATION.toLowerCase())) {
+        fix = `; "${VISUALISATION}" is added for a mechanism or superpower shot: add "${VISUALISATION}" yourself as a legal line with a startSeconds that does not overlap`
+      }
+      errors.push(`LEGAL_OVERLAP: only one disclaimer on screen at a time ("${firstWords(a.text)}" ${a.startSeconds}–${a.endSeconds}s and "${firstWords(b.text)}" from ${b.startSeconds}s)${fix}`)
+    }
+  }
+  return { timings, errors }
+}
+
+/** E4: the end card is laid first and the text last, so a disclaimer is always the top layer. */
+export function finishOrder(plan: TvcPlan): string[] {
+  const order = ['composite_end_card', 'assemble_clips']
+  if (plan.voiceover.length > 0 || plan.brief.jingle) order.push('mix_voiceover')
+  order.push('overlay_text', 'mix_music_bed')
+  return order
+}
 
 export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: string[]; plan: TvcPlan } {
   const plan: TvcPlan = structuredClone(input)
@@ -332,14 +423,18 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
         warnings.push(`added "${VISUALISATION}" from ${starts[i]}s for shot ${s.n}`)
       }
     })
-    if (brief.category === 'food' || brief.category === 'beverage') warnings.push('the veg mark is required for food and drink in India but cannot be added yet; tell the user')
+    if (brief.category === 'food' || brief.category === 'beverage') warnings.push('the veg mark is recommended for food and drink (an FSSAI packaging rule; common practice in TV ads) but cannot be added yet; tell the user')
   }
   plan.locations.forEach((loc) => {
     if (PUBLIC_PLACE_RE.test(locationName(loc)) && !locationExtras(loc)) warnings.push(`"${locationName(loc)}" is a public place; add extras (who is in the background) so it does not look empty`)
   })
-  plan.legal.forEach((l) => {
-    const hold = legalHoldSeconds(l.text)
-    if (l.startSeconds + hold > length + EPS) warnings.push(`the legal line "${l.text}" needs ${hold}s on screen but only has ${r1(length - l.startSeconds)}s`)
+  // L2/L3: the hold is an error now, and the plan stores the computed times.
+  const legal = legalTimings(plan)
+  errors.push(...legal.errors)
+  legal.timings.forEach((t, i) => {
+    if (!t) return
+    plan.legal[i].startSeconds = t.startSeconds
+    plan.legal[i].endSeconds = t.endSeconds
   })
 
   // P10: the payoff (the shot before the packshot) must be a checkable move.
@@ -390,12 +485,14 @@ export function sliceTvcPlan(plan: TvcPlan, slice: string): unknown {
     return {
       brief: { lengthSeconds: plan.brief.lengthSeconds, aspectRatio: plan.brief.aspectRatio, productPhotoFileId: plan.brief.productPhotoFileId, market: plan.brief.market, tier: plan.brief.tier, category: plan.brief.category, voiceId: plan.brief.voiceId },
       shots: plan.shots.map((s) => ({ n: s.n, type: s.type, startSeconds: starts[s.n - 1], durationSeconds: s.durationSeconds, text: s.text, clipFileId: s.clipFileId })),
-      voiceover: plan.voiceover, packshot: plan.packshot, legal: plan.legal,
+      voiceover: plan.voiceover, packshot: plan.packshot,
+      legal: legalTimings(plan).timings.flatMap((t) => (t ? [{ text: t.text, startSeconds: t.startSeconds, endSeconds: t.endSeconds, style: 'legal' as const }] : [])),
       narrationFileIds: plan.narrationFileIds, songFileId: plan.songFileId,
       ...(plan.brief.jingle ? { jingle: plan.brief.jingle } : {}),
       ...(plan.signoffSeconds !== undefined
         ? { jingleFileId: plan.jingleFileId, signoffFileId: plan.signoffFileId, signoffSeconds: plan.signoffSeconds, ...signoffTiming(plan) }
         : {}),
+      ...(plan.legal.length > 0 ? { finishOrder: finishOrder(plan) } : {}),
     }
   }
   const m = /^shots (\d+)-(\d+)$/.exec(slice.trim())

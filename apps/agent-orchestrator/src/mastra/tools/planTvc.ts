@@ -341,7 +341,7 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
 
 export const planTvc = createTool({
   id: 'plan-tvc',
-  description: 'Free. The TVC ad plan: "check" validates the plan against the TVC craft rules and saves it (returns the plan id and cost, or plain errors to fix); "get" returns only the slice one step needs; "record" attaches finished stills or clips to their shots (all of a step\'s files in one call, with records) and the finish narration and song to the plan. The finish can also record the sung sign-off (jingleFileId, signoffFileId, signoffSeconds); record refuses one that overlaps speech or is too long. Use only in the TVC ad flow.',
+  description: 'Free. The TVC ad plan: "check" validates the plan against the TVC craft rules and saves it (returns the plan id and cost, or plain errors to fix); "get" returns only the slice one step needs; "record" attaches finished stills or clips to their shots (all of a step\'s files in one call, with records) and the finish narration and song to the plan. The finish can also record the sung sign-off (jingleFileId, signoffFileId, signoffSeconds); record refuses one that overlaps speech or is too long. Use only in the TVC ad flow. check also works out every disclaimer\'s start (from the voiceover block that makes the claim) and its ASCI hold, and refuses LEGAL_TOO_LONG, LEGAL_HOLD_TOO_LONG, LEGAL_OVERLAP or LEGAL_CLAIM_MISSING; the finish slice lists the legal lines with their times and the finish order.',
   inputSchema: planTvcInputSchema,
   outputSchema: z.object({
     planFileId: z.string().optional(),

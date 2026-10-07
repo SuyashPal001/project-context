@@ -522,3 +522,21 @@ describe('plan_tvc record: async still records (K1)', () => {
     expect(await runPlanTvc({ action: 'record', planFileId: planFileId!, shot: 1, stillFileId: 'good' }, deps)).toEqual({ planFileId })
   })
 })
+
+describe('runPlanTvc check — disclaimers', () => {
+  const TWO_LINES = 'Based on an independent lab test of moisture retention over eight hours. Results may vary.'
+  it('refuses a 6 s ad whose 2-line disclaimer needs 8 s, and saves nothing (E3)', async () => {
+    const { deps, store } = fakeDeps()
+    const p = plan(); p.legal = [{ text: TWO_LINES, startSeconds: 0 }]
+    const out = await runPlanTvc({ action: 'check', plan: p }, deps)
+    expect(out.errors?.join(' ')).toMatch(/^LEGAL_HOLD_TOO_LONG: .* needs 8s on screen/)
+    expect(store.size).toBe(0)
+  })
+  it('saves wholeAd with the computed times', async () => {
+    const { deps, store } = fakeDeps()
+    const p = plan(); p.legal = [{ text: TWO_LINES, wholeAd: true }]
+    const out = await runPlanTvc({ action: 'check', plan: p }, deps)
+    expect(out.errors).toEqual([])
+    expect(store.get(out.planFileId!)!.plan.legal[0]).toMatchObject({ startSeconds: 0, endSeconds: 6 })
+  })
+})
