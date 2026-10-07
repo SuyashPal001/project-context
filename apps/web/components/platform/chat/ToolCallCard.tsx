@@ -434,7 +434,7 @@ function domainColor(domain: string): string {
 // finished file. So the bar is an estimate from typical duration, like ChatGPT's.
 // It eases toward 95% and holds there until the real result replaces the
 // skeleton, so it never claims done early and never goes backwards.
-const EXPECTED_MS = { image: 22_000, audio: 35_000, video: 90_000 } as const;
+export const EXPECTED_MS = { image: 22_000, audio: 35_000, video: 90_000 } as const;
 
 export function estimatedProgress(elapsedMs: number, expectedMs: number): number {
   if (elapsedMs <= 0) return 0;

@@ -131,7 +131,7 @@ export function StepList({ steps, live = true }: { steps: LiveStep[]; live?: boo
                     <Branch>
                         <div className="flex flex-wrap gap-1.5" data-testid="step-files">
                             {tiles.map(f => <FileTile key={f.fileId} file={f} />)}
-                            {Array.from({ length: pending }, (_, i) => <PendingTile key={`p${i}`} />)}
+                            {Array.from({ length: pending }, (_, i) => <PendingTile key={`p${i}`} kind={row.kind === 'video' ? 'video' : 'image'} />)}
                         </div>
                     </Branch>
                 )}

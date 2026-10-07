@@ -1,10 +1,11 @@
 'use client';
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useThumbnailUrl } from "@/hooks/useAssetThumbnail";
 import { cn } from "@/lib/utils";
 import { assetTypeForFile } from "@/lib/assetType";
 import { TYPE_ICONS, TYPE_STYLES, typeBadge } from "@/components/platform/canvas/assetTypeStyles";
+import { EXPECTED_MS, estimatedProgress } from "./ToolCallCard";
 
 // Branch style (2026-10-07, after the reference the user showed): what a step
 // made, or what the thinking said, hangs off its row behind a └ connector,
@@ -43,7 +44,24 @@ export function FileTile({ file, size = 'md' }: { file: TileFile; size?: 'sm' | 
     );
 }
 
-/** A tile still being made: same size, a soft shimmer, no fake percentage. */
-export function PendingTile() {
-    return <div aria-label="being made" className="h-28 w-[63px] shrink-0 rounded-md bg-muted/60 ring-1 ring-border/40 animate-pulse" />;
+/** A tile still being made, with the big generating card's look at tile size:
+ *  rose sweep, the estimated percentage and a progress bar. The first version
+ *  was a faint grey that read as an empty gap (2026-10-07). */
+export function PendingTile({ kind = 'image' }: { kind?: 'image' | 'video' }) {
+    const [startedAt] = useState(() => Date.now());
+    const [now, setNow] = useState(startedAt);
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), 500);
+        return () => clearInterval(id);
+    }, []);
+    const pct = estimatedProgress(now - startedAt, EXPECTED_MS[kind]);
+    return (
+        <div aria-label="being made" className={cn("relative h-28 w-[63px] shrink-0 rounded-md overflow-hidden border border-border/60 flex items-center justify-center", TYPE_STYLES[kind].bg)}>
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#E69DB8]/25 to-transparent animate-shimmer" />
+            <span className="relative z-10 text-[10px] font-medium tabular-nums text-muted-foreground">{pct}%</span>
+            <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-foreground/10">
+                <div className="h-full bg-[var(--shimmer-accent)] transition-[width] duration-300 ease-out" style={{ width: `${pct}%` }} />
+            </div>
+        </div>
+    );
 }
