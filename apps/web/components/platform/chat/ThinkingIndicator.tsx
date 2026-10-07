@@ -56,7 +56,7 @@ export function ReasoningRow({ text, completed = false, elapsedSec, defaultOpen 
                     // Sized to the word, not flex-1: the shimmer band is as wide as the
                     // span, and across a full-width span it crossed the short word as one
                     // quick flash (a blink) instead of a sweep.
-                    <span className="shimmer-text text-sm min-w-0 truncate text-shimmer-accent-60">Thinking…</span>
+                    <span className="shimmer-text text-sm min-w-0 truncate text-shimmer-accent-60">Reasoning…</span>
                 )}
             </button>
             {expanded && (
@@ -278,7 +278,7 @@ export function LiveTrace({
                     waits on the user nothing is thinking: the row settles. */}
                 {reasoningText
                     ? <ReasoningRow text={reasoningText} completed={awaitingUser} defaultOpen />
-                    : !awaitingUser && <div className="my-1 flex items-center gap-2"><Chevron open /><span className="shimmer-text text-sm text-shimmer-accent-60">Thinking…</span></div>}
+                    : !awaitingUser && <div className="my-1 flex items-center gap-2"><Chevron open /><span className="shimmer-text text-sm text-shimmer-accent-60">Reasoning…</span></div>}
                 {steps.length > 0 && <StepList steps={withMediaFiles(steps, completedToolCalls)} />}
                 {/* Pictures and clips hang under their step (branch style); the
                     Director's own row and the media rows that repeat them stay out. */}
