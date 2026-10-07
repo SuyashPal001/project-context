@@ -73,7 +73,25 @@ export function TraceSummary({ elapsedSec, toolCalls: allToolCalls, reasoningTex
 
     return (
         <div className="flex flex-col w-full min-w-0">
-            {mediaCalls.length > 0 && foldMedia && (
+            <button
+                type="button"
+                onClick={() => setCollapsed(c => !c)}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 self-start"
+            >
+                <svg
+                    width="10" height="10" viewBox="0 0 10 10" fill="none"
+                    className={cn("shrink-0 transition-transform", collapsed ? "" : "rotate-90")}
+                >
+                    <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span>{header}</span>
+            </button>
+            {/* "Worked for" always heads the part; what it made hangs under it
+                (2026-10-07: media were drawn above the header, so the header sat
+                at the top of parts that made nothing and below the rest). */}
+            {mediaCalls.length > 0 && (
+            <Branch>
+                {mediaCalls.length > 0 && foldMedia && (
                 <button
                     type="button"
                     onClick={() => setMediaOpen(o => !o)}
@@ -86,7 +104,7 @@ export function TraceSummary({ elapsedSec, toolCalls: allToolCalls, reasoningTex
                     <span>{mediaFileCount} picture{mediaFileCount === 1 ? '' : 's'} and clip{mediaFileCount === 1 ? '' : 's'} made along the way</span>
                 </button>
             )}
-            {mediaCalls.length > 0 && (!foldMedia || mediaOpen) && (
+                {mediaCalls.length > 0 && (!foldMedia || mediaOpen) && (
                 <div className="flex flex-col gap-1 normal-case">
                     {groupImageToolCalls(mediaCalls).map((group, gi) => (
                         group.length > 1 ? (
@@ -101,19 +119,8 @@ export function TraceSummary({ elapsedSec, toolCalls: allToolCalls, reasoningTex
                     ))}
                 </div>
             )}
-            <button
-                type="button"
-                onClick={() => setCollapsed(c => !c)}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 self-start"
-            >
-                <svg
-                    width="10" height="10" viewBox="0 0 10 10" fill="none"
-                    className={cn("shrink-0 transition-transform", collapsed ? "" : "rotate-90")}
-                >
-                    <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <span>{header}</span>
-            </button>
+            </Branch>
+            )}
             {/* Folded, the part still shows what it made: its pictures and clips
                 hang under the header; opened, each sits under its own step. */}
             {collapsed && steps && stepTileFiles(steps).length > 0 && (

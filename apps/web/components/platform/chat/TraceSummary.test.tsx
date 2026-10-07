@@ -54,3 +54,12 @@ describe('TraceSummary collapse', () => {
         expect(screen.queryByText(/Searched the web/)).toBeNull();
     });
 });
+
+describe('TraceSummary order', () => {
+    it('puts "Worked for" above the pictures the part made', () => {
+        render(<TraceSummary elapsedSec={9} toolCalls={[imageCall, searchCall]} freshUrls={{ f1: 'https://x/a.png' }} />);
+        const header = screen.getByText(/^Worked for 9s/);
+        const picture = screen.getByRole('img', { name: 'a.png' });
+        expect(header.compareDocumentPosition(picture) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+});
