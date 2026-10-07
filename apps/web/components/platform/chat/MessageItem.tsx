@@ -74,7 +74,7 @@ export function askedPrompts(message: Message): string[] {
 }
 
 /**
- * An answered question, kept in the chat as one muted line under the part
+ * An answered question, kept in the chat as one line, in reply text, under the part
  * that asked it; the user's answer is their own message below. While it
  * waits, the question is on the card at the composer (2026-10-07: hidden
  * outright, a part that only asked read as Olmo saying nothing).
@@ -82,7 +82,7 @@ export function askedPrompts(message: Message): string[] {
 export function AskedLine({ prompts }: { prompts: string[] }) {
     if (prompts.length === 0) return null;
     return (
-        <div className="flex flex-col gap-0.5 pl-4 text-sm text-muted-foreground" data-testid="asked-line">
+        <div className="flex flex-col gap-0.5 pl-4 text-[15px] leading-relaxed text-foreground [overflow-wrap:anywhere]" data-testid="asked-line">
             {prompts.map((p, i) => <p key={i} className="whitespace-pre-wrap">{p}</p>)}
         </div>
     );
