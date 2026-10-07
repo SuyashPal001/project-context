@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildVoiceoverFilter, inputSchema, loudnessProbeArgs, voiceoverFitsVideo, jingleGainDb, jingleWindow, speechInWindow, jingleOverlapErrors, clampJingleToVideo } from './mixVoiceover.js'
+import { buildVoiceoverFilter, inputSchema, loudnessProbeArgs, voiceoverFitsVideo, jingleGainDb, jingleWindow, speechInWindow, jingleOverlapErrors, clampJingleToVideo, spaceVoiceBlocks, VOICE_GAP_SECONDS } from './mixVoiceover.js'
 
 describe('mixVoiceover inputSchema', () => {
   it('needs a video and 1-5 blocks with non-negative starts', () => {
@@ -144,5 +144,26 @@ describe('buildVoiceoverFilter room voice', () => {
     expect(g).toContain(`[1:a]${ROOM_VOICE}adelay=300|300[vo0]`)
     expect(g).toContain(`[2:a]${ROOM_VOICE}adelay=5000|5000[vo1]`)
     expect(buildVoiceoverFilter([{ start: 1, duration: 2, kind: 'jingle' as const }], true, undefined, false, true)).not.toContain('aecho')
+  })
+})
+
+describe('spaceVoiceBlocks', () => {
+  it('never lets two narration lines play at once (Pip ad: lines overlapped by 0.66s and 1.5s)', () => {
+    const pip = [{ start: 4, duration: 2.96 }, { start: 6.3, duration: 4.8 }, { start: 9.6, duration: 3.32 }]
+    const out = spaceVoiceBlocks(pip, 14.058)!
+    for (let i = 1; i < out.length; i++) expect(out[i].start).toBeGreaterThanOrEqual(out[i - 1].start + out[i - 1].duration + VOICE_GAP_SECONDS - 0.01)
+    expect(out[2].start + out[2].duration).toBeLessThanOrEqual(14.058 + 0.01)
+    expect(out[0].start).toBeGreaterThanOrEqual(0)
+  })
+  it('keeps lines that already fit where the plan put them', () => {
+    const fine = [{ start: 1, duration: 2 }, { start: 4, duration: 2 }]
+    expect(spaceVoiceBlocks(fine, 10)).toEqual(fine)
+  })
+  it('leaves a jingle where it is, and says when the lines cannot all fit', () => {
+    const withJingle = [{ start: 0, duration: 3 }, { start: 1, duration: 2 }, { start: 8, duration: 2, kind: 'jingle' as const }]
+    const out = spaceVoiceBlocks(withJingle, 10)!
+    expect(out[2]).toEqual(withJingle[2])
+    expect(out[1].start).toBeCloseTo(3.15)
+    expect(spaceVoiceBlocks([{ start: 0, duration: 6 }, { start: 1, duration: 6 }], 10)).toBeNull()
   })
 })

@@ -9,6 +9,7 @@ import type { ToolCall, CompletedToolCall, Message, MessagePart, MessagesRespons
 import type { Conversation, ConversationsResponse } from '@/components/platform/chat/types';
 import type { ClarificationRequest, ClarificationQuestion, UploadRequest } from '@/components/platform/chat/types';
 import { normalizeMessages } from '@/components/platform/chat/normalizeMessages';
+import { isQuestionTool } from '@/components/platform/chat/ToolCallCard';
 import type { Attachment } from '@/types/agent-events';
 import type { ChatStreamEventType } from '@/components/platform/personas/usePersonaAnimationState';
 import { buildCreativeBriefMessage, creativeMessageDisplayText, parseCreativeBriefPresentation } from '@/components/platform/chat/creative-library/creativeBrief';
@@ -467,11 +468,15 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             emitStreamEvent('error');
             if (code === 'AGENT_TIMEOUT') { setAgentTimedOut(true); return; }
             if (code === 'WARMUP_TIMEOUT') { setWarmupMessage(message); return; }
-            // A run that broke mid-way saved what it made; show the saved copy.
-            if (code === 'STREAM_ERROR') queryClient.invalidateQueries({ queryKey: ['messages'] });
+            // A run that broke mid-way saved what it made; show the saved copy,
+            // and drop its live rows — nothing is running any more.
+            if (code === 'STREAM_ERROR') {
+                resetTrace();
+                queryClient.invalidateQueries({ queryKey: ['messages'] });
+            }
             setEventError(`[${code}] ${message}`);
             toast.error(message);
-        }, [queryClient]),
+        }, [queryClient, resetTrace]),
 
         onToolCall: useCallback((toolName: string, toolCallId: string, args: Record<string, unknown>) => {
             emitStreamEvent('tool_call');
@@ -590,6 +595,8 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 kind: (raw.kind as LiveStep['kind']) ?? 'finish',
                 state: (['waiting', 'done', 'failed', 'skipped', 'credits'] as const).find(s => s === raw.state) ?? 'running',
                 count: typeof raw.count === 'number' ? raw.count : 1,
+                ...(typeof raw.detail === 'string' && raw.detail ? { detail: raw.detail } : {}),
+                ...(Array.isArray(raw.files) && raw.files.length ? { files: raw.files as NonNullable<LiveStep['files']> } : {}),
             };
             const prev = liveStepsRef.current;
             const i = prev.findIndex(s => s.id === step.id);
@@ -693,6 +700,86 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 return { data };
             });
         }, [queryClient]),
+
+        // A question or approval ends this part of the turn, the way a reply
+        // that asks something ends: the work so far settles into its own
+        // message with its own "Worked for", and the answer becomes the user's
+        // next message (2026-10-07: one ever-growing block hid every answer and
+        // picture inside one fold). Calls still running carry on into the next
+        // part; only what finished is settled here.
+        onTurnPause: useCallback((messageId: string | null, payload: Record<string, unknown>) => {
+            const startedAt = streamStartRef.current;
+            const elapsedSec = typeof payload.elapsedSec === 'number'
+                ? payload.elapsedSec
+                : startedAt !== null ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
+            const reasoning = reasoningTextRef.current;
+            const reasoningElapsedSec = reasoningStartRef.current !== null && reasoningLastRef.current !== null
+                ? Math.max(1, Math.round((reasoningLastRef.current - reasoningStartRef.current) / 1000))
+                : undefined;
+            // The question that ended this part is answered by the user, not by
+            // the next part: its row closes here instead of carrying over and
+            // showing up done in the next block (2026-10-07).
+            const asking = [...startedCallsRef.current.values()].filter(c => isQuestionTool(c.toolName));
+            for (const c of asking) startedCallsRef.current.delete(c.id);
+            if (asking.length) setActiveToolCalls(prev => { const next = new Map(prev); for (const c of asking) next.delete(c.id); return next; });
+            const toolCalls = [...completedToolCallsRef.current, ...asking.map((c): CompletedToolCall => ({ id: c.id, toolName: c.toolName, query: c.query ?? '' }))];
+            const settledSteps = liveStepsRef.current.filter(s => s.state !== 'running' && s.state !== 'waiting');
+            const hadTrace = toolCalls.length > 0 || settledSteps.length > 0 || !!reasoning;
+            // The server's count of the part's calls: a call still running when
+            // the part stopped (the Director, held on a cost OK) is not in
+            // toolCalls, and the part read "Thought for 26s" (2026-10-07).
+            const toolCallCount = typeof payload.toolCallCount === 'number' ? payload.toolCallCount : undefined;
+            const trace = hadTrace || !!toolCallCount ? { completedTrace: { elapsedSec, afterSeq: traceAfterSeqRef.current ?? undefined, toolCalls, toolCallCount, reasoningText: reasoning || undefined, reasoningElapsedSec, ...(settledSteps.length ? { steps: settledSteps } : {}) } } : {};
+            const text = typeof payload.text === 'string' ? payload.text : '';
+            const attachmentsRaw = Array.isArray(payload.attachments) ? payload.attachments : [];
+            const atts = attachmentsRaw.length > 0
+                ? { attachments: mapStreamAttachments(attachmentsRaw as Array<{ fileId: string; name: string; type: string; size?: number; generation?: MessageAttachment['generation'] }>) }
+                : {};
+
+            queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
+                const data = old ? [...old.data] : [];
+                const idx = messageId ? data.findIndex(m => m.id === messageId) : data.findIndex(m => m.isStreaming === true && m.role === 'assistant');
+                if (idx >= 0) {
+                    const m = data[idx];
+                    data[idx] = { ...m, content: text || m.content, isStreaming: false, parts: reconcileParts(m.parts, text || m.content), ...trace, ...atts };
+                } else if (hadTrace || toolCallCount || text || 'attachments' in atts) {
+                    // Nothing streamed as text yet (a delegate working silently):
+                    // the part still gets its own message, placed before the card
+                    // that ended it.
+                    const at = startedAt ?? Date.now() - 1;
+                    data.push({ id: messageId ?? crypto.randomUUID(), conversationId: conversationIdRef.current!, role: 'assistant', content: text, createdAt: new Date(at).toISOString(), isStreaming: false, ...trace, ...atts });
+                }
+                return { data: [...data].sort(sortByDate) };
+            });
+
+            setCompletedToolCalls([]);
+            completedToolCallsRef.current = [];
+            const carried = liveStepsRef.current.filter(s => s.state === 'running' || s.state === 'waiting');
+            liveStepsRef.current = carried;
+            setLiveSteps(carried);
+            setReasoningText('');
+            reasoningTextRef.current = '';
+            reasoningStartRef.current = null;
+            reasoningLastRef.current = null;
+            traceAfterSeqRef.current = null;
+            setTraceAfterSeq(null);
+            partSeqRef.current = 0;
+            streamStartRef.current = null;
+        }, [queryClient]),
+
+        onTurnResume: useCallback((payload: Record<string, unknown>) => {
+            const text = typeof payload.text === 'string' && payload.text.trim() ? payload.text : 'OK';
+            const files = Array.isArray(payload.attachments)
+                ? (payload.attachments as Array<{ fileId: string; name: string; type: string }>).map(f => ({ id: crypto.randomUUID(), fileId: f.fileId, name: f.name, type: f.type } satisfies MessageAttachment))
+                : [];
+            const now = Date.now();
+            queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
+                const answer: Message = { id: crypto.randomUUID(), conversationId: conversationIdRef.current!, role: 'user', content: text, createdAt: new Date(now).toISOString(), ...(files.length ? { attachments: files } : {}) };
+                return { data: [...(old?.data ?? []), answer].sort(sortByDate) };
+            });
+            // The next part's "Worked for" counts from the answer.
+            streamStartRef.current = now;
+        }, [queryClient]),
     });
 
     // Cancel any in-flight stream when SWITCHING to a different conversation —
@@ -779,9 +866,10 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             setWarmupMessage(null);
             streamStartRef.current = Date.now();
             partSeqRef.current = 0;
-            traceAfterSeqRef.current = null;
-            setTraceAfterSeq(null);
-            setReasoningText('');
+            // A new message starts a clean trace: a run that broke mid-way left
+            // its rows marked running, and they were carried into the next
+            // message as a second "Preparing your image…" (2026-10-07).
+            resetTrace();
             // useChat marks the transport as streaming synchronously before its
             // first await, so control passes directly from preparation to the
             // existing streaming state without enabling the composer between.

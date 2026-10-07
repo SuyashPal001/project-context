@@ -227,7 +227,9 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
     // For user messages: deduplicate within a 60-second window by (conversationId, content).
     // The frontend pre-saves with fileId; the GCP relay also saves (without fileId).
     // Whichever arrives first wins the INSERT; the second caller merges fileId if available.
-    if (result.data.role === 'user') {
+    // A row the relay names by id is never a double save: it is an answer
+    // given mid-turn, and two "Approve" answers a few seconds apart are both real.
+    if (result.data.role === 'user' && !result.data.id) {
         const windowStart = new Date(Date.now() - 60_000);
         const [existing] = await db
             .select()

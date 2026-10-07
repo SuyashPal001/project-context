@@ -51,3 +51,13 @@ describe('StepList', () => {
         expect(screen.getByTestId('pixel-loader').getAttribute('data-kind')).toBe('step');
     });
 });
+
+describe('step detail chip', () => {
+    it('shows what the running call makes beside its row', () => {
+        const rows = groupSteps([
+            { id: 'a', key: 'pictures', label: 'Pictures', kind: 'image', state: 'done', count: 1, detail: 'Scene 1' },
+            { id: 'b', key: 'pictures', label: 'Pictures', kind: 'image', state: 'running', count: 2, detail: 'Scene 2 +1' },
+        ]);
+        expect(rows[0].detail).toBe('Scene 2 +1');
+    });
+});

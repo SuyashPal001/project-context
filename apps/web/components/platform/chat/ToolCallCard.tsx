@@ -133,6 +133,14 @@ function isDirectorDelegateTool(toolName: string): boolean {
 function isProducerDelegateTool(toolName: string): boolean {
   return toolName === 'agent-producer' || toolName === 'agent_producer';
 }
+/** The Director / Producer's own row: while step rows show, they already say what it is doing. */
+export function isMediaDelegateTool(toolName: string): boolean {
+  return isDirectorDelegateTool(toolName) || isProducerDelegateTool(toolName);
+}
+/** A tool that asks the user something; it belongs to the part of the turn that asked. */
+export function isQuestionTool(toolName: string): boolean {
+  return /^(ask_clarifying_questions|review_shots|request_upload)$/.test(toolName.replace(/-/g, '_'));
+}
 function isPmDelegateTool(toolName: string): boolean {
   return toolName === 'agent-pm' || toolName === 'agent_pm';
 }
@@ -426,7 +434,7 @@ function domainColor(domain: string): string {
 // finished file. So the bar is an estimate from typical duration, like ChatGPT's.
 // It eases toward 95% and holds there until the real result replaces the
 // skeleton, so it never claims done early and never goes backwards.
-const EXPECTED_MS = { image: 22_000, audio: 35_000, video: 90_000 } as const;
+export const EXPECTED_MS = { image: 22_000, audio: 35_000, video: 90_000 } as const;
 
 export function estimatedProgress(elapsedMs: number, expectedMs: number): number {
   if (elapsedMs <= 0) return 0;
@@ -561,7 +569,7 @@ export function groupImageToolCalls<T extends { toolName: string }>(items: T[]):
   return groups;
 }
 
-function isMediaGenDelegateOrTool(toolName: string): boolean {
+export function isMediaGenDelegateOrTool(toolName: string): boolean {
   return isImageGenTool(toolName) || isSongGenTool(toolName) || isVideoGenTool(toolName)
     || isDirectorDelegateTool(toolName) || isProducerDelegateTool(toolName);
 }

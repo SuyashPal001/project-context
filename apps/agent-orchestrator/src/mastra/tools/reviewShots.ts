@@ -86,10 +86,17 @@ export function reviewOutcome(kind: ShotKind, shots: Array<{ fileId: string; lab
     }
   }
   if (fix.length === 0) {
-    return { decision: 'continue', fix: [], nextStep: kind === 'still' ? 'Continue: make the remaining stills, or if every still exists, the clips.' : 'Continue: make the remaining clips, or if every clip exists, finish the ad.' }
+    return {
+      decision: 'continue', fix: [],
+      nextStep: kind === 'still' ? 'Continue: make the remaining stills, or if every still exists, the clips.'
+        : kind === 'voice' ? 'Continue: delegate to agent-director to make the rest of the narration as ONE generate_narration call — every remaining line in one script, same voiceId and direction — then lay the first line and that one take with mix_voiceover and finish the ad.'
+        : 'Continue: make the remaining clips, or if every clip exists, finish the ad.',
+    }
   }
   const names = fix.map((f) => `${f.label} (${f.fileId})`).join(', ')
-  const how = kind === 'still'
+  const how = kind === 'voice'
+    ? `Delegate to agent-director: remake ONLY the first narration line with generate_narration${note ? ` — the change: "${note}"` : ''}; keep the script unless the note changes it.`
+    : kind === 'still'
     ? `Delegate to agent-director: fix ONLY ${names} with edit_image on that still${note ? ` — the change: "${note}"` : ''}; keep everything else exactly as it is. Never generate_image a fresh one and never touch the other scenes.`
     : `Delegate to agent-director: remake ONLY ${names} with generate_video from that scene's approved still${note ? ` — the change: "${note}"` : ''}. Do not touch the other clips.`
   return { decision: 'fix', fix, note, nextStep: `${how} Then call review_shots again with just the fixed ${kind}${fix.length > 1 ? 's' : ''}.` }
@@ -98,11 +105,11 @@ export function reviewOutcome(kind: ShotKind, shots: Array<{ fileId: string; lab
 export const reviewShotsTool = createTool({
   id: 'review_shots',
   description:
-    'Show the user an ad\'s stills or clips and ask whether they look right — the ONLY way to review them in an ad flow (never ask_clarifying_questions for this). ' +
+    'Show the user an ad\'s stills, clips or first narration line (kind "voice") and ask whether they look right — the ONLY way to review them in an ad flow (never ask_clarifying_questions for this). ' +
     'Call it with the first scene\'s still (or clip) alone as soon as Director returns it, before any more are made, and again with the rest once they exist. ' +
     'One shot: asks "does this look right?". Several: the user picks the scenes that need a fix. Returns decision, the scenes to fix, the user\'s note and the exact next step. Free.',
   inputSchema: z.object({
-    kind: z.enum(['still', 'clip']).describe('"still" for pictures, "clip" for videos'),
+    kind: z.enum(['still', 'clip', 'voice']).describe('"still" for pictures, "clip" for videos, "voice" for the first narration line'),
     shots: z.array(shotSchema).min(1).max(8).describe('In scene order'),
     question: z.string().max(200).optional().describe('Optional wording for the question; a plain default is used without it'),
     productFileId: z.string().optional().describe('The product photo, when the ad has one; stills are checked against it before the user sees them. Taken from the brief when left out.'),
@@ -111,7 +118,7 @@ export const reviewShotsTool = createTool({
     const given = inputData as { kind: ShotKind; shots: Array<{ fileId: string; label: string }>; question?: string; productFileId?: string }
     const { kind, question } = given
     const shots = given.shots.map((s) => ({ ...s, label: shotLabel(s.label) }))
-    const noun = kind === 'still' ? 'picture' : 'clip'
+    const noun = kind === 'still' ? 'picture' : kind === 'voice' ? 'voice' : 'clip'
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
     const missing = notMadeHere(conversationId, shots.map((s) => s.fileId))
     if (missing.length) {
@@ -123,13 +130,16 @@ export const reviewShotsTool = createTool({
     // Stills are checked here, so a wrong product (scene 1 held a pink tube,
     // not the Lakmē bullet, 2026-10-06) is flagged before it is animated.
     const brief = briefRefsFor(conversationId)
-    const failed = kind === 'clip'
+    const failed = kind === 'voice' ? shots.map(() => undefined)
+      : kind === 'clip'
       ? shots.map((s) => clipCheckFailure(s.fileId))
       : await stillFaults(shots, given.productFileId ?? brief.productFileId, brief.avatarFileId, execContext)
     const anyFailed = failed.some(Boolean)
     const q = shots.length === 1
       ? {
-          prompt: `${question ?? `Does ${shots[0].label} look right?`} The other scenes are built from this ${noun}, so anything off here would carry into them.`,
+          prompt: kind === 'voice'
+            ? `${question ?? 'Does this voice sound right?'} The rest of the narration is read in this voice.`
+            : `${question ?? `Does ${shots[0].label} look right?`} The other scenes are built from this ${noun}, so anything off here would carry into them.`,
           options: anyFailed
             ? [{ label: FIX_IT_RECOMMENDED, rationale: `The check found: ${failed[0]}` }, { label: LOOKS_GOOD_PLAIN }]
             : [{ label: LOOKS_GOOD }, { label: FIX_IT, rationale: 'Say what to change below' }],

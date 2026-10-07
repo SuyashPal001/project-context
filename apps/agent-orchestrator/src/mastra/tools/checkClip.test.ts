@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { droppedCheckInputsFallback as droppedCheckInputs, lineMatchScore, extraWordCount, parseVerdict, buildCheckQuestion, judgeVerdict, narrowWanted, droppedCheckInputsFallback as dropped2 } from './checkClip.js'
+import { droppedCheckInputsFallback as droppedCheckInputs, lineMatchScore, extraWordCount, parseVerdict, buildCheckQuestion, judgeVerdict, narrowWanted, droppedCheckInputsFallback as dropped2, STRICT_QUESTION, NO_PERSON_QUESTION } from './checkClip.js'
 
 describe('lineMatchScore', () => {
   it('passes the exact line and small transcription differences', () => {
@@ -86,6 +86,15 @@ describe('expectNoSpeech', () => {
   })
   it('asks for a transcript when audio is sent', () => {
     expect(buildCheckQuestion({ product: false, audio: true, noPerson: false })).toMatch(/transcribe/)
+  })
+  it('fails a frame that shows the storyboard sheet, for presenter and no-person shots (Pip board clip, 2026-10-07)', () => {
+    for (const noPerson of [false, true]) {
+      const q = buildCheckQuestion({ product: true, audio: false, noPerson })
+      expect(q).toContain('storyboard leak')
+      expect(q).toContain(noPerson ? NO_PERSON_QUESTION : STRICT_QUESTION)
+    }
+    // The model's "glitch" on such a frame fails the clip.
+    expect(judgeVerdict({ ...v(''), glitch: true, reason: 'Storyboard leak: stacked pencil panels' }, { audioChecked: false, expectNoSpeech: false, noPerson: false }).passed).toBe(false)
   })
   it('keeps the shipped transcript sentence byte-identical for a presenter/line check, and only adds the silence wording when the shot is expected to be silent', () => {
     const plain = buildCheckQuestion({ product: false, audio: true, noPerson: false })

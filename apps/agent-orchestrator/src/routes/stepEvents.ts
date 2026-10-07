@@ -21,6 +21,8 @@ export interface StepEvent {
   state: StepState
   /** Items in this call (a batch of 4 stills counts 4). */
   count: number
+  /** What this call is making, as the chip beside the row: "Scene 1 — mirror", "Scene 2 +1". */
+  detail?: string
 }
 
 const STEPS: Record<string, { key: string; label: string; kind: StepKind }> = {
@@ -58,6 +60,16 @@ const isStoryboard = (args: Record<string, unknown>): boolean => {
   return titles.some((t) => typeof t === 'string' && /storyboard/i.test(t))
 }
 
+/** The file titles a call was given, shortened to one chip: the first, then "+N". */
+export function stepDetail(args: Record<string, unknown>): string | undefined {
+  const titles = [args.title, ...(Array.isArray(args.items) ? args.items.map((i) => (i as Record<string, unknown>)?.title) : [])]
+    .filter((t): t is string => typeof t === 'string' && !!t.trim())
+    .map((t) => t.trim())
+  if (titles.length === 0) return undefined
+  const first = titles[0].length > 40 ? `${titles[0].slice(0, 39).trimEnd()}…` : titles[0]
+  return titles.length > 1 ? `${first} +${titles.length - 1}` : first
+}
+
 /** The step a tool call starts, or null for tools that are not a visible step. */
 export function stepStart(toolName: string, toolCallId: string, args: Record<string, unknown> = {}): StepEvent | null {
   const step = STEPS[norm(toolName)]
@@ -69,6 +81,7 @@ export function stepStart(toolName: string, toolCallId: string, args: Record<str
     ...(storyboard ? { key: 'storyboard', label: 'Storyboard', kind: 'image' as const } : step),
     state: 'running',
     count,
+    ...(stepDetail(args) ? { detail: stepDetail(args) } : {}),
   }
 }
 

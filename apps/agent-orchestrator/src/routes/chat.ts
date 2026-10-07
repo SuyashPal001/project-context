@@ -4,7 +4,7 @@ import type { AuthPayload } from '../auth.js'
 import { validateToken } from '../auth.js'
 import { agentBelongsToTenant, fetchAgentMemory } from '../usage.js'
 import { checkCreditBalance } from '../credits.js'
-import { filterPII } from '../pii-filter.js'
+import { filterTypedPII } from '../pii-filter.js'
 import { runChatStream } from './chatStream.js'
 import { isInternalServiceKey } from '../service-key.js'
 import { releaseMCPClientForSession } from '../mastra/tools.js'
@@ -103,7 +103,7 @@ chatRouter.post('/api/chat', async (c) => {
     return c.json({ error: 'conversationId and message or attachments are required' }, 400)
   }
 
-  const { sanitized: filteredMessage, detections: chatPiiDetections } = filterPII(rawMessage)
+  const { sanitized: filteredMessage, detections: chatPiiDetections } = filterTypedPII(rawMessage)
   if (chatPiiDetections.length > 0) {
     console.log(`[pii-filter] chat userId=${payload.sub} masked: ${chatPiiDetections.map(d => `${d.type}×${d.count}`).join(' ')}`)
   }

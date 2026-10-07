@@ -1,4 +1,4 @@
-import { ArrowUp, Loader2, Plus, Video, Mic, Square, Bot, Puzzle, Check, Sparkles, FolderOpen, ChevronsRight, Hand, ChevronDown } from "lucide-react";
+import { ArrowUp, Loader2, Plus, Video, Mic, Square, Bot, Puzzle, Check, Sparkles, FolderOpen, ChevronsRight, Hand, ChevronDown, Clock, Pencil, X } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -598,11 +598,19 @@ export function ChatInput({
                     <div className="px-4 pb-2 text-xs text-muted-foreground">{TEST_CHAT_SKILL_HINT}</div>
                 )}
                 {queued && (
-                    <div className="flex items-center gap-2 px-4 pb-2 text-xs text-muted-foreground" data-testid="queued-message">
-                        <span className="shrink-0">Queued, sends when this step finishes:</span>
-                        <span className="min-w-0 truncate text-foreground/80">{queued.text || `${queued.attachments.length} file${queued.attachments.length === 1 ? '' : 's'}`}</span>
-                        <button type="button" onClick={editQueued} className="shrink-0 hover:text-foreground" aria-label="Edit queued message">Edit</button>
-                        <button type="button" onClick={() => setQueued(null)} className="shrink-0 hover:text-foreground" aria-label="Remove queued message">✕</button>
+                    // The user's own words lead; the state is a quiet label and the
+                    // actions are icons, inline under nothing (2026-10-07: a long
+                    // faint sentence came first and the message read as an afterthought).
+                    <div className="flex items-center gap-2 px-5 pb-2 text-sm min-w-0" data-testid="queued-message" title="Sends when this step finishes">
+                        <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                        <span className="shrink-0 text-xs text-muted-foreground">Queued</span>
+                        <span className="min-w-0 flex-1 truncate text-foreground">{queued.text || `${queued.attachments.length} file${queued.attachments.length === 1 ? '' : 's'}`}</span>
+                        <button type="button" onClick={editQueued} className="shrink-0 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" aria-label="Edit queued message" title="Edit">
+                            <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button type="button" onClick={() => setQueued(null)} className="shrink-0 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" aria-label="Remove queued message" title="Remove">
+                            <X className="h-3.5 w-3.5" />
+                        </button>
                     </div>
                 )}
                 {(() => {

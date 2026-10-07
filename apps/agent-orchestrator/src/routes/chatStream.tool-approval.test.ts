@@ -430,6 +430,89 @@ describe('runChatStream — delegate-produced attachments', () => {
     }))
   })
 
+  it('a still is a working file only when a call that made something used it, not when a check looked at it (Meera run)', async () => {
+    const s2 = 'b2afa519-a2cc-4bad-ba7c-c5d6c08c7906'
+    const s3 = '9512cd60-a2ca-4063-b1fd-9598e23a7833'
+    const master = '9b3a7d1d-8143-4801-9049-e58c6f133bb4'
+    const clip = 'c87bc8e6-33f0-464f-8d39-a346f678b286'
+    const run = async (extra: Array<{ toolName: string; args: unknown; result: unknown }>) => {
+      streamMock.mockResolvedValueOnce(fakeStream(
+        [
+          {
+            type: 'tool-result',
+            payload: {
+              toolCallId: 'tc-director-1',
+              toolName: 'agent-director',
+              result: {
+                text: 'Stills done.',
+                subAgentToolResults: [
+                  { toolName: 'generate_image', args: { prompt: 'Scene 2' }, result: { fileId: s2, name: 'Scene 2 Still.png', fileType: 'image/png', size: 1 } },
+                  { toolName: 'generate_image', args: { prompt: 'Scene 3' }, result: { fileId: s3, name: 'Scene 3 Still.png', fileType: 'image/png', size: 1 } },
+                  { toolName: 'check_clip', args: { clipFileId: s2, masterStillFileId: master }, result: { passed: true } },
+                  { toolName: 'check_clip', args: { clipFileId: s3, masterStillFileId: master }, result: { passed: true } },
+                  ...extra,
+                ],
+              },
+            },
+          },
+          { type: 'finish', payload: { output: { usage: {} } } },
+        ],
+        'run-director-1',
+      ))
+      const sendEvent = vi.fn()
+      await runChatStream(baseOpts({ sendEvent }))
+      const done = sendEvent.mock.calls.find(c => c[0] === 'done')![1] as { attachments: Array<{ fileId: string; working?: boolean }> }
+      return Object.fromEntries(done.attachments.map(a => [a.fileId, !!a.working]))
+    }
+
+    expect(await run([])).toEqual({ [s2]: false, [s3]: false })
+    // Any tool that only reads a file, listed anywhere or not.
+    expect(await run([{ toolName: 'analyze_video', args: { fileId: s3 }, result: { summary: 'fine' } }])).toEqual({ [s2]: false, [s3]: false })
+    // A clip made from the Scene 2 still does use it.
+    expect(await run([{ toolName: 'generate_video', args: { startImageFileId: s2 }, result: { fileId: clip, name: 'Scene 2 clip.mp4', fileType: 'video/mp4', size: 1 } }]))
+      .toEqual({ [s2]: true, [s3]: false, [clip]: false })
+  })
+
+  it('a finished ad leaves only the final in front, whatever tool made each step (Pip run)', async () => {
+    // 2026-10-07: mix_voiceover's clip is not an attachment, so its inputs (the
+    // joined clip and three narrations) were taken as unused and shown as big cards.
+    const u = (n: number) => `0000000${n}-aaaa-4bbb-8ccc-00000000000${n}`
+    const [joined, n1, n2, n3, voiced, carded, captioned, song, final] = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(u)
+    const file = (fileId: string, name: string, fileType: string) => ({ fileId, name, fileType, size: 1 })
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [
+        {
+          type: 'tool-result',
+          payload: {
+            toolCallId: 'tc-director-1',
+            toolName: 'agent-director',
+            result: {
+              text: 'Here is your finished ad.',
+              subAgentToolResults: [
+                { toolName: 'assemble_clips', args: { clipFileIds: [] }, result: file(joined, 'Pip 6 ad.mp4', 'video/mp4') },
+                { toolName: 'generate_narration', args: { text: 'a' }, result: file(n1, 'Generated Narration.wav', 'audio/wav') },
+                { toolName: 'generate_narration', args: { text: 'b' }, result: file(n2, 'Generated Narration.wav', 'audio/wav') },
+                { toolName: 'generate_narration', args: { text: 'c' }, result: file(n3, 'Generated Narration.wav', 'audio/wav') },
+                { toolName: 'mix_voiceover', args: { videoFileId: joined, blocks: [{ audioFileId: n1 }, { audioFileId: n2 }, { audioFileId: n3 }] }, result: { ...file(voiced, 'Pip 6 ad.mp4', 'video/mp4'), jobId: 'j1' } },
+                { toolName: 'composite_end_card', args: { videoFileId: voiced }, result: file(carded, 'Pip 6 ad.mp4', 'video/mp4') },
+                { toolName: 'transcribe_audio', args: { fileId: carded }, result: { text: 'hello' } },
+                { toolName: 'burn_captions', args: { videoFileId: carded }, result: file(captioned, 'Pip 6 ad.mp4', 'video/mp4') },
+                { toolName: 'generate_song', args: { prompt: 'upbeat' }, result: file(song, 'Upbeat.wav', 'audio/wav') },
+                { toolName: 'mix_music_bed', args: { musicFileId: song, videoFileId: captioned }, result: file(final, 'Pip 6 ad.mp4', 'video/mp4') },
+              ],
+            },
+          },
+        },
+        { type: 'finish', payload: { output: { usage: {} } } },
+      ],
+      'run-director-1',
+    ))
+    const sendEvent = vi.fn()
+    await runChatStream(baseOpts({ sendEvent }))
+    const done = sendEvent.mock.calls.find(c => c[0] === 'done')![1] as { attachments: Array<{ fileId: string; working?: boolean }> }
+    expect(done.attachments.filter(a => !a.working).map(a => a.fileId)).toEqual([final])
+  })
+
   it('does not add an attachment when the delegate produced no fileId anywhere', async () => {
     streamMock.mockResolvedValueOnce(fakeStream(
       [
@@ -878,5 +961,76 @@ describe('runChatStream — "/" skill invocation gates', () => {
     expect(declineToolCall).toHaveBeenCalledTimes(1)
     expect(declineToolCall.mock.calls[0][0]).not.toHaveProperty('prepareStep')
     expect(approveToolCall).not.toHaveBeenCalled()
+  })
+})
+
+describe('runChatStream — a question ends the part of the turn before it', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    pendingToolApprovals.clear()
+    agents.current = 'other'
+  })
+
+  it('saves the work before the approval, then the answer as the user\'s message, then the rest as a new message', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream([
+      { type: 'text-delta', payload: { text: 'Here is the plan.' } },
+      { type: 'tool-call-approval', payload: { toolName: 'generate-image', toolCallId: 'tc-s', args: { prompt: 'a cat' } } },
+    ], 'run-s'))
+    approveToolCall.mockResolvedValueOnce(fakeStream([
+      { type: 'text-delta', payload: { text: 'Done — the cat.' } },
+      { type: 'finish', payload: { output: { usage: {} } } },
+    ], 'run-s'))
+
+    const sendEvent = vi.fn()
+    const runPromise = runChatStream(baseOpts({ sendEvent, startTime: 1_000 }))
+    await vi.waitFor(() => expect(sendEvent).toHaveBeenCalledWith('turn_pause', expect.objectContaining({ text: 'Here is the plan.' })))
+    pendingToolApprovals.get('tc-s')?.resolve({ confirmed: true })
+    await runPromise
+
+    const order = sendEvent.mock.calls.map(([e]) => e).filter((e) => ['generation_confirm_request', 'turn_pause', 'turn_resume', 'done'].includes(e))
+    expect(order).toEqual(['generation_confirm_request', 'turn_pause', 'turn_resume', 'done'])
+    expect(sendEvent).toHaveBeenCalledWith('turn_resume', expect.objectContaining({ text: 'Approve' }))
+    expect(sendEvent.mock.calls.find(([e]) => e === 'done')?.[1]).toMatchObject({ text: 'Done — the cat.' })
+
+    const users = vi.mocked(persistence.saveUserMessage).mock.calls
+    expect(users.map((c) => c[2])).toEqual(['draw a cat', 'Approve'])
+    // The original message keeps its send time; the answer gets its own id so a
+    // second "Approve" a few seconds later is not merged into the first.
+    expect(users[0][5]).toEqual({ createdAt: new Date(1_000).toISOString() })
+    expect(users[1][5]).toMatchObject({ id: expect.any(String) })
+
+    const parts = vi.mocked(persistence.saveAssistantMessage).mock.calls
+    expect(parts.map((c) => c[2])).toEqual(['Here is the plan.', 'Done — the cat.'])
+    expect(parts[0][3]).not.toBe(parts[1][3])
+    // The first part sorts right after the user's message, before the card.
+    expect(parts[0][7]).toBe(new Date(1_001).toISOString())
+  })
+})
+
+describe('runChatStream — a part with no words hands its work over', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    pendingToolApprovals.clear()
+    agents.current = 'other'
+  })
+
+  it('sends one line naming the picture before the question, and saves it with the part', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream([
+      { type: 'tool-result', payload: { toolName: 'generate-image', toolCallId: 'g-1', result: { fileId: '11111111-2222-3333-4444-555555555555', name: 'Scene 1 Still — Ishita.png', fileType: 'image/png', size: 10 } } },
+      { type: 'tool-call-approval', payload: { toolName: 'generate-image', toolCallId: 'tc-h', args: { prompt: 'scene 2' } } },
+    ], 'run-h'))
+    approveToolCall.mockResolvedValueOnce(fakeStream([{ type: 'finish', payload: { output: { usage: {} } } }], 'run-h'))
+
+    const sendEvent = vi.fn()
+    const runPromise = runChatStream(baseOpts({ sendEvent }))
+    await vi.waitFor(() => expect(sendEvent).toHaveBeenCalledWith('turn_pause', expect.anything()))
+    pendingToolApprovals.get('tc-h')?.resolve({ confirmed: true })
+    await runPromise
+
+    const events = sendEvent.mock.calls.map(([e, d]) => (e === 'delta' ? `delta:${(d as { text: string }).text}` : e))
+    const i = events.indexOf("delta:Here's Scene 1 Still — Ishita.")
+    expect(i).toBeGreaterThan(-1)
+    expect(i).toBeLessThan(events.indexOf('turn_pause'))
+    expect(vi.mocked(persistence.saveAssistantMessage).mock.calls[0][2]).toBe("Here's Scene 1 Still — Ishita.")
   })
 })

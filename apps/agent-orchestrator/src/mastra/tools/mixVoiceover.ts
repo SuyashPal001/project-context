@@ -126,6 +126,27 @@ export function clampJingleToVideo(blocks: MixBlock[], videoSeconds: number): Mi
   return blocks.map((b) => (b.kind === 'jingle' ? { ...b, start: Math.max(0, Math.min(b.start, videoSeconds - b.duration)) } : b))
 }
 
+// Voice blocks never talk over each other. Start times come from the plan,
+// but the real narrations run longer: in the Pip ad, line 1 (2.96s at 4.0s)
+// still played when line 2 started at 6.3s, and line 2 (4.8s) when line 3
+// started at 9.6s — two voices at once (2026-10-07). Each block is moved to
+// start after the one before it with a short breath, and pulled earlier from
+// the end when that would run past the video. null: they cannot all fit.
+export const VOICE_GAP_SECONDS = 0.15
+export function spaceVoiceBlocks(blocks: MixBlock[], videoSeconds: number): MixBlock[] | null {
+  const order = blocks.map((b, i) => ({ b, i })).filter(({ b }) => b.kind !== 'jingle').sort((x, y) => x.b.start - y.b.start)
+  const starts = order.map(({ b }) => b.start)
+  for (let k = 1; k < order.length; k++) starts[k] = Math.max(starts[k], starts[k - 1] + order[k - 1].b.duration + VOICE_GAP_SECONDS)
+  for (let k = order.length - 1; k >= 0; k--) {
+    const latestEnd = k === order.length - 1 ? videoSeconds : starts[k + 1] - VOICE_GAP_SECONDS
+    starts[k] = Math.min(starts[k], latestEnd - order[k].b.duration)
+  }
+  if (starts.some((t) => t < 0)) return null
+  const out = blocks.slice()
+  order.forEach(({ b, i }, k) => { out[i] = { ...b, start: r2(starts[k]) } })
+  return out
+}
+
 // F2: checked against the MEASURED duration of each voice block, before the
 // charge — the plan-time estimate (tvcPlan's JINGLE_WONT_FIT) is a guess;
 // this is the real audio.
@@ -219,6 +240,9 @@ export const mixVoiceover = createTool({
       console.error(`[session:${sessionId}] mixVoiceover: probe failed:`, (err as Error).message)
       return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE', jobId }
     }
+    const spaced = spaceVoiceBlocks(timed, videoSeconds)
+    if (!spaced) return { refused: true, refusalReason: 'VOICEOVER_TOO_LONG', jobId }
+    timed = spaced
     if (!voiceoverFitsVideo(timed, videoSeconds)) return { refused: true, refusalReason: 'VOICEOVER_TOO_LONG', jobId }
     const jingleOverlap = jingleOverlapErrors(timed)
     if (jingleOverlap.length) return { refused: true, refusalReason: jingleOverlap.join(' '), jobId }

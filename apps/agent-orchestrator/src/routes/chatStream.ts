@@ -27,7 +27,8 @@ import { saveGenerationConfirmRequest, updateGenerationConfirmRequest, saveConve
 import { isClientHiddenTool } from '../toolVisibility.js'
 import { relayedDelegateMedia } from './nestedMedia.js'
 import { AD_FLOW_KEY, briefIsReviewedAdFlow, noteBriefRefs, noteMadeFile } from '../mastra/tools/reviewGate.js'
-import { fileIdsIn, markWorkingFiles } from './workingFiles.js'
+import { inputFileIdsOf, madeNewFile, markWorkingFiles } from './workingFiles.js'
+import { handoverLine } from './turnAnswer.js'
 import { stepStart, stepEnd, type StepEvent } from './stepEvents.js'
 import { buildCancelNotice, backgroundDeclineReason, trackBackgroundDecline, waitForBackgroundDecline } from './cancelNotice.js'
 
@@ -251,7 +252,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const {
     message, displayMessage, attachments, conversationId, tenantId,
     internalUserId, idToken, agentId, sessionId, startTime,
-    workingMemoryPromise, sendEvent, sendHeartbeat, closeStream, isStreamClosed, onClientStop,
+    workingMemoryPromise, sendEvent: sendToBrowser, sendHeartbeat, closeStream, isStreamClosed, onClientStop,
     folderId, folderPrefix, allowMode, skillsUsed, isFirstMessage,
   } = opts
   // The newest id token for this conversation — see freshIdToken.ts.
@@ -295,23 +296,46 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   let pendingMetrics: Parameters<typeof fireMetrics>[0] | null = null
   let pendingEval: Parameters<typeof fireAutoEval>[0] | null = null
   const toolCallNames = new Map<string, string>()
-  const assistantMessageId = crypto.randomUUID()
+  // A turn that stops to ask the user is saved as several messages, one per
+  // part (see pauseTurn below); this is the id of the part now streaming.
+  let assistantMessageId = crypto.randomUUID()
+  // One line per event the browser gets, names only, so the order a part's
+  // rows and cards arrived in can be read back from pm2 logs (2026-10-07: a
+  // picture from one part showed in the next and nothing recorded why).
+  const sendEvent = (event: string, data: object): void => {
+    if (event !== 'delta' && event !== 'reasoning') {
+      const d = data as { toolName?: unknown; toolCallId?: unknown; key?: unknown; state?: unknown }
+      const id = typeof d.toolCallId === 'string' ? d.toolCallId.slice(-10) : ''
+      console.log(`[sse:${sessionId}] event=${event} part=${assistantMessageId.slice(0, 8)}${d.toolName ? ` tool=${String(d.toolName)}` : ''}${id ? ` call=${id}` : ''}${d.key ? ` step=${String(d.key)}:${String(d.state ?? '')}` : ''}`)
+    }
+    sendToBrowser(event, data)
+  }
   let pendingArtifactRef: ArtifactRefPayload | null = null
+  // This part's files; earlier parts' files were saved with those parts.
   const pendingAttachments: AttachmentPayload[] = []
   // One card per file: a delegate's media are relayed as each finishes and
-  // then come back again inside the delegate's own result.
+  // then come back again inside the delegate's own result, possibly after
+  // the user answered a question in between — so this spans the whole turn.
+  const shownFileIds = new Set<string>()
   const addAttachments = (list: AttachmentPayload[]): void => {
     for (const a of list) {
       // Only tool results come through here, so this is what was really made.
       noteMadeFile(conversationId, a.fileId)
+      if (a.fileId && shownFileIds.has(a.fileId)) continue
+      if (a.fileId) shownFileIds.add(a.fileId)
       if (!pendingAttachments.some(p => p.fileId === a.fileId)) pendingAttachments.push(a)
     }
   }
   // File ids this turn's tool calls took as inputs (see workingFiles.ts).
   const turnInputFileIds = new Set<string>()
+  // A call's input files count only once its result shows it made a file:
+  // a check or a review only looks (2026-10-07: check_clip folded the stills
+  // it checked away, so their part had no hand-over and no card).
+  const callInputFileIds = new Map<string, Set<string>>()
   // Live step list (stepEvents.ts): running steps by tool call id, Olmo's own and nested.
   const runningSteps = new Map<string, StepEvent>()
   const runningStepKeys = new Map<string, string>()
+  const runningStepTools = new Map<string, string>()
   // Mastra re-emits an approved call under a new id with the same tool and
   // arguments; it is the same step, not a new one ("Pictures 1 of 4" for 3
   // stills, 2026-10-06). The running step moves to the new id instead.
@@ -324,6 +348,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         runningStepKeys.delete(id)
         runningSteps.set(toolCallId, running)
         runningStepKeys.set(toolCallId, key)
+        runningStepTools.set(toolCallId, toolName)
         sendEvent('step', { ...running, state: 'running', conversationId })
         return
       }
@@ -332,14 +357,22 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     if (!s) return
     runningSteps.set(toolCallId, s)
     runningStepKeys.set(toolCallId, key)
+    runningStepTools.set(toolCallId, toolName)
     sendEvent('step', { ...s, conversationId })
   }
   const endStep = (toolCallId: string, result: unknown) => {
     const s = runningSteps.get(toolCallId)
     if (!s) return
+    const toolName = runningStepTools.get(toolCallId) ?? ''
     runningSteps.delete(toolCallId)
     runningStepKeys.delete(toolCallId)
-    sendEvent('step', { ...stepEnd(s, result), conversationId })
+    runningStepTools.delete(toolCallId)
+    // The files a step made ride on its done event, so the chat hangs them
+    // under that step's row (branch style, 2026-10-07).
+    const files = result && typeof result === 'object'
+      ? attachmentsFromToolResult(toolName.toLowerCase().replace(/_/g, '-'), result as Record<string, unknown>).map(f => ({ fileId: f.fileId, name: f.name, type: f.type }))
+      : []
+    sendEvent('step', { ...stepEnd(s, result), ...(files.length ? { files } : {}), conversationId })
   }
   // A step held on the user's OK shows as waiting, not as running.
   const holdStep = (toolName: string, toolCallId: string, args: unknown, state: 'waiting' | 'running') => {
@@ -355,6 +388,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   // running only to let the declined Mastra run finish. Everything user-facing
   // (events, persistence, chips, metrics) is skipped from then on.
   let backgroundDecline = false
+  // Whether the user's own message is saved (see saveUserOnce).
+  let userSaved = false
   // Anything generated (or started, or approved) earlier in this turn means a
   // later cancel is mid-flow, so the instant "Nothing was generated" reply
   // would be false — Olmo answers instead. Counted from several signals because
@@ -601,23 +636,88 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // Persists the user message and this turn's assistant message. Shared by the
     // normal finish path and the instant-cancel path.
     let turnSaved = false
-    const saveTurn = (): void => {
-      if (turnSaved) return
-      turnSaved = true
+    // The user's own message is saved once, stamped with when it was sent, so
+    // every part of the turn and every answer in it sorts after it.
+    const saveUserOnce = (content: string): void => {
+      if (userSaved) return
+      userSaved = true
       const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
-      saveUserMessage(liveIdToken(), conversationId, displayMessage, atts, skillsUsed)
+      saveUserMessage(liveIdToken(), conversationId, content, atts, skillsUsed, { createdAt: new Date(startTime).toISOString() })
+    }
+    // When the part now streaming began: the turn's start, then just after each answer.
+    let segmentStart = startTime
+    const segmentTrace = () => {
       // Mirrors the frontend's own hadTrace gate (useChatStream.ts onDone) so a
       // turn that's too fast/toolless to show a summary live doesn't get one
       // materialize after a reload either.
-      const elapsedSec = Math.max(0, Math.floor((Date.now() - startTime) / 1000))
+      const elapsedSec = Math.max(0, Math.floor((Date.now() - segmentStart) / 1000))
       const reasoningElapsedSec = reasoningStartMs !== null && reasoningLastMs !== null
         ? Math.max(1, Math.round((reasoningLastMs - reasoningStartMs) / 1000))
         : undefined
-      const completedTrace = (toolCallCount > 0 || elapsedSec >= 2 || !!reasoningText)
+      return (toolCallCount > 0 || elapsedSec >= 2 || !!reasoningText)
         ? { elapsedSec, toolCallCount, ...(reasoningText ? { reasoningText } : {}), ...(reasoningElapsedSec !== undefined ? { reasoningElapsedSec } : {}) }
         : null
-      saveAssistantMessage(liveIdToken(), conversationId, redactUnverifiedFileIds(fullText, pendingAttachments), assistantMessageId, pendingArtifactRef, completedTrace, markWorkingFiles(pendingAttachments, turnInputFileIds))
     }
+    // Saves the part now streaming. Stamped with the part's start, so it sorts
+    // before the question card that ended it (saved when it was asked).
+    const saveSegment = (): void => {
+      saveUserOnce(displayMessage)
+      const completedTrace = segmentTrace()
+      if (!fullText.trim() && pendingAttachments.length === 0 && !completedTrace && !pendingArtifactRef) return
+      saveAssistantMessage(liveIdToken(), conversationId, redactUnverifiedFileIds(fullText, pendingAttachments), assistantMessageId, pendingArtifactRef, completedTrace, markWorkingFiles(pendingAttachments, turnInputFileIds), new Date(segmentStart + 1).toISOString())
+    }
+    const saveTurn = (): void => {
+      if (turnSaved) return
+      turnSaved = true
+      saveSegment()
+    }
+
+    // A question or an approval ends the part of the turn before it, like a
+    // reply that asks something; the answer is the user's next message and
+    // what follows is a new part with its own "Worked for". The Mastra run is
+    // the same one throughout — only how the turn is saved and shown changes
+    // (2026-10-07: one ever-growing block hid every answer and picture inside it).
+    let paused = false
+    const pauseTurn = (): void => {
+      if (paused || backgroundDecline || isStreamClosed()) return
+      paused = true
+      // A part that made pictures or clips but has no words hands them over
+      // in one line before the question (handoverLine, turnAnswer.ts).
+      if (!fullText.trim()) {
+        const line = handoverLine(markWorkingFiles(pendingAttachments, turnInputFileIds))
+        const out = line ? appendText('handover', line) : ''
+        if (out) sendEvent('delta', { text: out, conversationId })
+      }
+      const trace = segmentTrace()
+      sendEvent('turn_pause', {
+        conversationId, messageId: assistantMessageId, text: fullText,
+        ...(pendingAttachments.length > 0 ? { attachments: markWorkingFiles(pendingAttachments, turnInputFileIds) } : {}),
+        ...(trace ? { elapsedSec: trace.elapsedSec, toolCallCount: trace.toolCallCount } : {}),
+      })
+      saveSegment()
+      fullText = ''
+      lastTextSource = null
+      pendingAttachments.length = 0
+      pendingArtifactRef = null
+      toolCallCount = 0
+      reasoningText = ''
+      reasoningStartMs = null
+      reasoningLastMs = null
+      assistantMessageId = crypto.randomUUID()
+    }
+    const resumeTurn = (answer: string, files?: Array<{ fileId: string; name: string; type: string }>): void => {
+      if (!paused) return
+      paused = false
+      // The page closed while the question was open: nothing was answered.
+      if (isStreamClosed()) return
+      const at = Date.now()
+      const text = answer.trim() || 'OK'
+      sendEvent('turn_resume', { conversationId, text, ...(files?.length ? { attachments: files } : {}) })
+      saveUserMessage(liveIdToken(), conversationId, text, files ?? [], undefined, { id: crypto.randomUUID(), createdAt: new Date(at).toISOString() })
+      segmentStart = at + 1
+    }
+    requestContext.set('pauseTurn' as never, pauseTurn as never)
+    requestContext.set('resumeTurn' as never, resumeTurn as never)
 
     // Stop mid-turn: keep what was already made. The stills and clips shown so
     // far are paid for and sit in Drive; without this save the whole turn,
@@ -625,7 +725,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // "if i stop all these cards will be lost"). Saved at the moment of Stop,
     // so it never lands after a message the user sends next.
     onClientStop?.(() => {
-      if (backgroundDecline || (pendingAttachments.length === 0 && !fullText.trim())) return
+      if (backgroundDecline || (pendingAttachments.length === 0 && !fullText.trim())) {
+        // Stopped while a question was open: the parts before it are saved; the user's own message may not be yet.
+        if (!backgroundDecline) saveUserOnce(displayMessage)
+        return
+      }
       console.log(`[sse:${sessionId}] stopped by the user at +${Date.now() - startTime}ms; saving ${pendingAttachments.length} file(s) made so far`)
       saveTurn()
     })
@@ -676,6 +780,21 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
       // TEMP INSTRUMENTATION — task 8 delegate approval test
       console.log(`[task8:${sessionId}] +${Date.now() - startTime}ms chunk type=${part.type}${part.payload?.toolName ? ` toolName=${part.payload.toolName}` : ''}${part.payload?.toolCallId ? ` toolCallId=${part.payload.toolCallId}` : ''}${part.payload?.agentId ? ` agentId=${part.payload.agentId}` : ''}`)
+
+      // The Director's own thinking, while it works for Olmo, shows in the same
+      // live thinking row as Olmo's (2026-10-07: long silent waits).
+      const delegateReasoning = part.type === 'agent-execution-event-reasoning-delta'
+        ? (part.payload?.payload?.text ?? part.payload?.text ?? part.payload?.delta ?? '')
+        : part.type === 'tool-output' && part.payload?.output?.type === 'reasoning-delta'
+          ? (part.payload.output.payload?.text ?? part.payload.output.text ?? part.payload.output.delta ?? '')
+          : ''
+      if (delegateReasoning) {
+        const text = redactReasoningText(delegateReasoning as string)
+        reasoningText += text
+        if (reasoningStartMs === null) reasoningStartMs = Date.now()
+        reasoningLastMs = Date.now()
+        sendEvent('reasoning', { text, conversationId })
+      }
 
       if (part.type === 'tool-output') {
         const nested = part.payload?.output
@@ -749,7 +868,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const args = (p.args ?? {}) as Record<string, unknown>
           const toolCallId = (p.toolCallId ?? toolName) as string
           if (toolCallId && toolName) toolCallNames.set(toolCallId, toolName)
-          fileIdsIn(args, turnInputFileIds)
+          callInputFileIds.set(toolCallId, inputFileIdsOf(toolName, args, new Set()))
           startStep(toolName, toolCallId, args)
           // The Director's tools learn they are in a reviewed ad flow before
           // any approval card is shown (see reviewGate.ts).
@@ -788,8 +907,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // set requireApproval, and all 8 have a metadata entry from Task
           // 1). Fail open rather than hang the turn on an invisible card.
           if (!meta || !toolCallId) {
-            console.error(`[sse:${sessionId}] tool-call-approval for unmapped tool="${toolName}" toolCallId="${toolCallId}" — auto-approving`)
-            currentStream = await (activeAgent as any).approveToolCall({ runId, toolCallId, requestContext, memory: titleMemory, ...olmoOptions })
+            console.error(`[sse:${sessionId}] tool-call-approval for unmapped tool="${toolName}" toolCallId="${toolCallId}" — declining (no card to show)`)
+            currentStream = await (activeAgent as any).declineToolCall({ runId, toolCallId, reason: 'This action needs approval the app cannot show, so it was not run. Do not retry it.', requestContext, memory: titleMemory, ...olmoOptions })
             continue turnLoop
           }
 
@@ -827,6 +946,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             sessionActiveToolApprovals.set(sessionId, approvalSet)
           }
           approvalSet.add(toolCallId)
+          pauseTurn()
 
           // No timeout here — unlike the old CONFIRM_TIMEOUT_MS, this waits
           // until the human answers (sessions.ts's /api/chat/generation-confirm
@@ -844,6 +964,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
           sessionActiveToolApprovals.get(sessionId)?.delete(toolCallId)
           if (sessionActiveToolApprovals.get(sessionId)?.size === 0) sessionActiveToolApprovals.delete(sessionId)
+          resumeTurn(confirmed ? 'Approve' : declineReason?.trim() || 'Cancel')
 
           // The user just answered the card, so the browser handed over a fresh
           // token (sessions.ts) — everything after this, tools included, uses it.
@@ -899,7 +1020,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // after earlier generations, still gets Olmo's own reply.
           let reason = declineReason ?? DECLINED_BY_USER_REASON
           if (confirmed) generationActivity++
-          if (!confirmed && !declineReason && pendingAttachments.length === 0 && generationActivity === 0 && !isStreamClosed()) {
+          if (!confirmed && !declineReason && shownFileIds.size === 0 && generationActivity === 0 && !isStreamClosed()) {
             const notice = buildCancelNotice(toolName, args, displayMessage)
             const out = appendText('parent', notice)
             if (out) sendEvent('delta', { text: out, conversationId })
@@ -981,6 +1102,9 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // render-canvas persists its content as a file (see renderCanvas.ts);
           // collect it into the assistant message's attachments alongside any
           // user-uploaded ones, so multiple canvas outputs in one turn all survive.
+          const callInputs = callInputFileIds.get(toolCallId) ?? new Set<string>()
+          if (madeNewFile(result, callInputs)) for (const id of callInputs) turnInputFileIds.add(id)
+          callInputFileIds.delete(toolCallId)
           addAttachments(attachmentsFromToolResult(normName, result))
 
           // A delegate wrapper's own tool-result (toolName agent-director/
@@ -995,9 +1119,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // dropped this way.
           if (Array.isArray(result.subAgentToolResults)) {
             for (const entry of result.subAgentToolResults as Array<{ toolName?: unknown; result?: unknown; args?: unknown }>) {
-              fileIdsIn(entry.args, turnInputFileIds)
               const innerName = typeof entry.toolName === 'string' ? entry.toolName.toLowerCase().replace(/_/g, '-') : ''
               const innerResult = (entry.result ?? {}) as Record<string, unknown>
+              const innerInputs = inputFileIdsOf(typeof entry.toolName === 'string' ? entry.toolName : '', entry.args, new Set())
+              if (madeNewFile(innerResult, innerInputs)) for (const id of innerInputs) turnInputFileIds.add(id)
               addAttachments(attachmentsFromToolResult(innerName, innerResult))
             }
           }
@@ -1104,8 +1229,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       // Save the user message even on error so attachments aren't lost.
       // The finish path is never reached when the turn throws, so this is the only
       // opportunity to durably persist the user turn.
-      const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
-      saveUserMessage(liveIdToken(), conversationId, message, atts, skillsUsed)
+      // Parts already saved before the error (a question was answered) stay.
+      if (!userSaved) {
+        const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
+        saveUserMessage(liveIdToken(), conversationId, message, atts, skillsUsed)
+      }
     }
     closeStream()
   } finally {

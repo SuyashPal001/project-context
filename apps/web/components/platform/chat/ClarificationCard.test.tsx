@@ -149,3 +149,11 @@ describe('single choice', () => {
         expect(onAnswer.mock.calls[0][0]).toMatchObject({ freeText: 'wait' });
     });
 });
+
+it('shows only the question once answered when the answer is the next message', () => {
+    const answered = { id: 'q2', status: 'answered' as const, questions: [{ prompt: 'Does Scene 1 look right?', options: [{ label: 'Looks good — continue' }], allowSkip: true }], answers: { 0: { selectedIndex: 0 } } };
+    render(<ClarificationCard request={answered} onAnswer={vi.fn()} promptOnly />);
+    expect(screen.getByText('Does Scene 1 look right?')).toBeTruthy();
+    expect(screen.queryByText('Looks good — continue')).toBeNull();
+    expect(screen.queryByText('1 answer')).toBeNull();
+});

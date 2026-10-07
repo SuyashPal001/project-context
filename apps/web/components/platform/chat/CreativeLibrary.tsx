@@ -118,10 +118,12 @@ function AvatarsPanel({ selected, onSelect, onCreateAvatar, createAvatarDisabled
     const namingAttempted = useRef(new Set<string>());
     const queryClient = useQueryClient();
     const [search, setSearch] = useState('');
-    const [category, setCategory] = useState<AvatarCategory | null>(null);
+    // 'yours' shows only the tenant's own avatars (2026-10-07).
+    const [filter, setFilter] = useState<AvatarCategory | 'yours' | null>(null);
+    const category = filter === 'yours' ? null : filter;
     const [uploading, setUploading] = useState<string | null>(null);
     const query = search.toLowerCase();
-    const matches = CREATIVE_AVATARS.filter(avatar => (category === null || avatarCategory(avatar) === category)
+    const matches = filter === 'yours' ? [] : CREATIVE_AVATARS.filter(avatar => (category === null || avatarCategory(avatar) === category)
         && `${avatar.name} ${avatar.role} ${avatar.tone}`.toLowerCase().includes(query));
     // The tenant's own avatars (anything in Drive's Avatars folder); platform
     // presets above stay static. A failed load just shows presets only.
@@ -189,9 +191,9 @@ function AvatarsPanel({ selected, onSelect, onCreateAvatar, createAvatarDisabled
             <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" aria-label="Upload presenter image" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadOwnImage(file); event.target.value = ''; }} />
         </div>
         <div className="flex flex-wrap gap-2" role="group" aria-label="Filter avatars">
-            {([null, ...AVATAR_CATEGORIES] as const).map(value => <Button key={value ?? 'all'} type="button" size="sm" className="rounded-full"
-                variant={category === value ? 'outline' : 'ghost'} aria-pressed={category === value} onClick={() => setCategory(value)}>
-                {value ?? 'All'}
+            {([null, ...(ownAvatars.length > 0 ? ['yours' as const] : []), ...AVATAR_CATEGORIES] as const).map(value => <Button key={value ?? 'all'} type="button" size="sm" className="rounded-full"
+                variant={filter === value ? 'outline' : 'ghost'} aria-pressed={filter === value} onClick={() => setFilter(value)}>
+                {value === 'yours' ? 'Yours' : value ?? 'All'}
             </Button>)}
         </div>
         {ownMatches.length > 0 && <section className="space-y-3">

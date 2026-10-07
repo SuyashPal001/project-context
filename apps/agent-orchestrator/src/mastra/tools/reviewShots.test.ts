@@ -4,7 +4,7 @@ vi.mock('./checkClip.js', () => ({ checkClip: { execute: vi.fn() } }))
 import { reviewOutcome, reviewShotsTool, shotLabel } from './reviewShots.js'
 import { checkClip } from './checkClip.js'
 import { askClarifyingQuestionsTool } from './askClarifyingQuestions.js'
-import { firstShotUnreviewed, markShotReviewed, briefIsReviewedAdFlow, noteClipCheck, noteBriefRefs, briefRefsFor, noteMadeFile, AD_FLOW_KEY } from './reviewGate.js'
+import { firstShotUnreviewed, firstVoiceUnreviewed, noteNarrationMade, markShotReviewed, briefIsReviewedAdFlow, noteClipCheck, noteBriefRefs, briefRefsFor, noteMadeFile, AD_FLOW_KEY } from './reviewGate.js'
 
 const shots = [
   { fileId: '11111111-1111-4111-8111-111111111111', label: 'Scene 1' },
@@ -127,5 +127,39 @@ describe('a picture that was never made', () => {
     expect(ask).not.toHaveBeenCalled()
     expect(out.decision).toBe('skipped')
     expect(out.nextStep).toContain('NOT_MADE')
+  })
+})
+
+describe('narration: the voice is heard first, then the rest in one take (Pip ad, 2026-10-07)', () => {
+  const ctx = (conv: string, extra: Record<string, unknown> = {}) => ({ conversationId: conv, [AD_FLOW_KEY]: true, allowMode: 'ask', ...extra })
+  it('lets the first line through, holds the second until the voice was heard', () => {
+    expect(firstVoiceUnreviewed(ctx('conv-voice'))).toBe(false)
+    noteNarrationMade('conv-voice')
+    expect(firstVoiceUnreviewed(ctx('conv-voice'))).toBe(true)
+    expect(firstVoiceUnreviewed(ctx('conv-voice', { allowMode: 'auto' }))).toBe(false)
+    expect(firstVoiceUnreviewed(ctx('conv-voice', { [AD_FLOW_KEY]: false }))).toBe(false)
+    markShotReviewed('conv-voice', 'voice')
+    expect(firstVoiceUnreviewed(ctx('conv-voice'))).toBe(false)
+  })
+  it('asks about the voice, and on continue says to make the rest as one take', async () => {
+    const line = { fileId: '2852975a-fcce-4ae3-99f2-5cce91b9a84f', label: 'Narration' }
+    noteMadeFile('conv-voice-ask', line.fileId)
+    const ask = askClarifyingQuestionsTool.execute as unknown as ReturnType<typeof vi.fn>
+    ask.mockReset()
+    ask.mockResolvedValueOnce({ answers: [{ selectedLabel: 'Looks good — continue (Recommended)' }] })
+    const out = await (reviewShotsTool as unknown as { execute: (i: unknown, c: unknown) => Promise<{ decision: string; nextStep: string }> })
+      .execute({ kind: 'voice', shots: [line] }, { requestContext: new Map([['conversationId', 'conv-voice-ask']]) })
+    const q = ask.mock.calls[0][0].questions[0]
+    expect(q.prompt).toBe('Does this voice sound right? The rest of the narration is read in this voice.')
+    expect(out.decision).toBe('continue')
+    expect(out.nextStep).toContain('ONE generate_narration')
+    expect(vi.mocked(checkClip.execute as never)).not.toHaveBeenCalledWith(expect.objectContaining({ clipFileId: line.fileId }), expect.anything())
+    expect(firstVoiceUnreviewed({ conversationId: 'conv-voice-ask', [AD_FLOW_KEY]: true, allowMode: 'ask' })).toBe(false)
+  })
+  it('a fix remakes only the first line', () => {
+    const out = reviewOutcome('voice', [{ fileId: 'f', label: 'Narration' }], { selectedLabel: 'Fix it', freeText: 'warmer, slower' })
+    expect(out.decision).toBe('fix')
+    expect(out.nextStep).toContain('remake ONLY the first narration line')
+    expect(out.nextStep).toContain('warmer, slower')
   })
 })

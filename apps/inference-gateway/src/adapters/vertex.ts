@@ -425,6 +425,10 @@ function buildGeminiRequest(openaiReq: OpenAIRequest): GenerateContentRequest {
       thinkingBudget: openaiReq.thinkingBudget,
       includeThoughts: openaiReq.thinkingBudget > 0,
     };
+  } else if (openaiReq.includeThoughts) {
+    // The Director's thoughts shown in chat while it works: summaries only,
+    // the amount of thinking stays the model's own default (2026-10-07).
+    generationConfig.thinkingConfig = { includeThoughts: true };
   }
 
   const request: GenerateContentRequest = { contents };

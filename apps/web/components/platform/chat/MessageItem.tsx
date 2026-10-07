@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from "react";
-import { Terminal, Info, RotateCcw, Pencil, Check, X } from "lucide-react";
+import { Terminal, Info, Pencil, Check, X } from "lucide-react";
 import { ClarificationRequest, LiveStep, Message, MessageAttachment, MessagePart, PlanResult, ToolCall, CompletedToolCall, UploadRequest } from "./types";
 import { useThumbnailUrl } from "@/hooks/useAssetThumbnail";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ import remarkGfm from 'remark-gfm';
 import { chatMarkdownComponents } from './markdownComponents';
 import { ToolCallCard, groupImageToolCalls, extractResultFiles } from "./ToolCallCard";
 import { TraceSummary } from "./TraceSummary";
+import { withMediaFiles, withoutStepOwned } from "./StepList";
 import { LiveTrace } from "./ThinkingIndicator";
 import { ApprovalCard } from "./ApprovalCard";
 import { ClarificationCard } from "./ClarificationCard";
@@ -22,7 +23,6 @@ import { ChatArtifactCard } from "../canvas/ChatArtifactCard";
 import { GeneratedAssetCard } from "./GeneratedAssetCard";
 import { assetTypeForFile } from "@/lib/assetType";
 import { TYPE_ICONS, TYPE_STYLES, typeBadge } from "@/components/platform/canvas/assetTypeStyles";
-import { CitationStrip } from "./CitationStrip";
 import { FollowUpChips } from "./FollowUpChips";
 import { SkillIcon } from "@/components/platform/skills/SkillIcon";
 import { CreativeBriefChips } from "./creative-library/CreativeBriefChips";
@@ -43,8 +43,57 @@ export function messageHasDisplayedContent(message: Message): boolean {
         message.artifactRef ||
         message.planResult ||
         (message.toolCalls && message.toolCalls.length > 0) ||
+        // A part of a turn where the Director worked without Olmo writing
+        // anything still has its steps and the stills or clip it made
+        // (see useChatStream onTurnPause); it was hidden as empty (2026-10-07).
+        !!message.completedTrace ||
+        (message.attachments ?? []).length > 0 ||
         (message.clarificationRequests ?? []).some(r => r.status !== 'pending') ||
+        (!!message.generationConfirmRequest && message.generationConfirmRequest.status !== 'pending') ||
         (message.uploadRequests ?? []).some(r => r.status !== 'pending')
+    );
+}
+
+/** A row that is only a question card the user has already answered or decided. */
+export function isAnsweredQuestionRow(message: Message): boolean {
+    if (message.role !== 'assistant' || message.content.trim() || message.completedTrace || (message.attachments ?? []).length > 0) return false;
+    const asks = message.clarificationRequests ?? [];
+    const uploads = message.uploadRequests ?? [];
+    const cost = message.generationConfirmRequest;
+    if (asks.length === 0 && uploads.length === 0 && !cost) return false;
+    const settled = (s: string) => s === 'answered' || s === 'skipped' || s === 'approved' || s === 'declined';
+    return asks.every(r => settled(r.status)) && uploads.every(r => settled(r.status)) && (!cost || settled(cost.status));
+}
+
+/** A cost card's question as a sentence: "Generate image" -> "Generate image?". */
+const costPrompt = (label: string) => (/[.?!]$/.test(label.trim()) ? label.trim() : `${label.trim()}?`);
+
+/**
+ * What a part asked on its cards once they are settled — questions, uploads
+ * and the cost OK alike. Every part that stopped on a card keeps this as its
+ * line, so no part reads as Olmo saying nothing (2026-10-07).
+ */
+export function askedPrompts(message: Message): string[] {
+    const cost = message.generationConfirmRequest;
+    return [
+        ...(message.clarificationRequests ?? []).filter(r => r.status !== 'pending').flatMap(r => r.questions.map(q => q.prompt)),
+        ...(message.uploadRequests ?? []).filter(r => r.status !== 'pending').map(r => r.prompt),
+        ...(cost && cost.status !== 'pending' ? [costPrompt(cost.label)] : []),
+    ].filter(p => p.trim());
+}
+
+/**
+ * An answered question, kept in the chat as one line, in reply text, under the part
+ * that asked it; the user's answer is their own message below. While it
+ * waits, the question is on the card at the composer (2026-10-07: hidden
+ * outright, a part that only asked read as Olmo saying nothing).
+ */
+export function AskedLine({ prompts }: { prompts: string[] }) {
+    if (prompts.length === 0) return null;
+    return (
+        <div className="flex flex-col gap-0.5 pl-4 text-[15px] leading-relaxed text-foreground [overflow-wrap:anywhere]" data-testid="asked-line">
+            {prompts.map((p, i) => <p key={i} className="whitespace-pre-wrap">{p}</p>)}
+        </div>
     );
 }
 
@@ -53,6 +102,11 @@ interface MessageItemProps {
     freshUrls: Record<string, string>;
     isFirstInSequence?: boolean;
     isNewExchange?: boolean;
+    /** The user's answer is the next message: answered cards show only their question. */
+    answerShownBelow?: boolean;
+    /** What the card rows right after this part asked, shown as this part's
+     *  line, above its feedback row (see MessageThread). */
+    askedBelow?: string[];
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
     onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean }, allAnswered?: boolean) => void;
@@ -85,6 +139,8 @@ export function MessageItem({
     freshUrls,
     isFirstInSequence,
     isNewExchange,
+    answerShownBelow,
+    askedBelow,
     onApprove,
     onDismiss,
     onClarificationAnswer,
@@ -113,18 +169,21 @@ export function MessageItem({
     // A file the trace above already shows (a show_files of a generated still
     // and its close-up, in that order) is not repeated as an attachment below
     // it, so the full still reads first and the close-up second.
-    const traceFileIds = new Set((message.completedTrace?.toolCalls ?? []).flatMap(tc => extractResultFiles(tc.toolName, tc.result)).map(f => f.fileId));
+    // A picture shown as a small tile under its step is still the part's
+    // output: it also gets its big card after the reply, like a finished
+    // piece of work handed over (2026-10-07). Only a file the trace shows as a
+    // card of its own is left out here.
+    const traceSteps = withMediaFiles(message.completedTrace?.steps, message.completedTrace?.toolCalls ?? []);
+    const traceFileIds = new Set(withoutStepOwned(message.completedTrace?.toolCalls ?? [], traceSteps).flatMap(tc => extractResultFiles(tc.toolName, tc.result)).map(f => f.fileId));
     const visibleAttachments = message.attachments?.filter(file => !file.fileId || (!hiddenCreativeAttachmentIds.has(file.fileId) && !traceFileIds.has(file.fileId)));
     // Working files (inputs to a later step this turn) fold behind one row, so
     // the finished result is what the reply shows (see workingFiles.ts).
     const resultAttachments = (visibleAttachments ?? []).filter(file => !file.working);
-    const workingAttachments = (visibleAttachments ?? []).filter(file => file.working);
     // Once the turn has a finished video, the pictures and clips shown along
     // the way fold too.
     const hasFinalVideo = resultAttachments.some(file => file.type.startsWith('video/'));
 
     const [userExpanded, setUserExpanded] = useState(false);
-    const [showWorking, setShowWorking] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [editContent, setEditContent] = useState('');
     const editTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -221,7 +280,11 @@ export function MessageItem({
     // fixed slots at the bottom — never both.
     // Pending requests render as a panel-wide takeover overlay (see
     // MessageThread) instead of inline, which is why they're skipped here.
-    const renderClarificationCard = (request: ClarificationRequest) => request.status === 'pending' ? null : (
+    // Answered, with the answer as the next message: only the question stays,
+    // as one line; the full card again read as asking twice (2026-10-07).
+    const renderClarificationCard = (request: ClarificationRequest) => request.status === 'pending' ? null : answerShownBelow && (request.status === 'answered' || request.status === 'skipped') ? (
+        <AskedLine prompts={request.questions.map(q => q.prompt).filter(p => p.trim())} />
+    ) : (
         <ClarificationCard
             request={request}
             onAnswer={(answer, allAnswered) => onClarificationAnswer?.(
@@ -297,7 +360,13 @@ export function MessageItem({
                 ) : isAssistant && !message.isStreaming && message.completedTrace && (
                     <TraceSummary
                         foldMedia={hasFinalVideo}
+                        made={{
+                            pictures: (message.attachments ?? []).filter(f => f.generation && f.type.startsWith('image/')).length,
+                            clips: (message.attachments ?? []).filter(f => f.generation && f.type.startsWith('video/')).length,
+                        }}
                         steps={message.completedTrace.steps}
+                        toolCallCount={message.completedTrace.toolCallCount}
+                        partFiles={(message.attachments ?? []).filter(f => f.generation && !f.working && /^(image|video)\//.test(f.type))}
                         elapsedSec={message.completedTrace.elapsedSec}
                         toolCalls={message.completedTrace.toolCalls ?? []}
                         reasoningText={message.completedTrace.reasoningText}
@@ -403,13 +472,6 @@ export function MessageItem({
                     </div>
                 )}
 
-                {isAssistant && !message.isStreaming && message.citations && message.citations.length > 0 && (
-                    <CitationStrip citations={message.citations} />
-                )}
-
-                {isAssistant && !message.isStreaming && isLastMessage && message.suggestedFollowUps && message.suggestedFollowUps.length > 0 && onFollowUpSelect && (
-                    <FollowUpChips suggestions={message.suggestedFollowUps} onSelect={onFollowUpSelect} />
-                )}
 
                 {message.skillsUsed && message.skillsUsed.length > 0 && (
                     <div className={cn(
@@ -436,27 +498,9 @@ export function MessageItem({
                     </div>
                 )}
 
-                {workingAttachments.length > 0 && (
-                    <div className="flex flex-col w-full mt-1" data-testid="working-files">
-                        <button
-                            type="button"
-                            onClick={() => setShowWorking(v => !v)}
-                            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 self-start"
-                        >
-                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className={cn("shrink-0 transition-transform", showWorking ? "rotate-90" : "")}>
-                                <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                            <span>{workingAttachments.length} working file{workingAttachments.length === 1 ? '' : 's'}</span>
-                        </button>
-                        {showWorking && (
-                            <div className="flex flex-wrap gap-1.5 mt-1">
-                                {workingAttachments.map((file, index) => (
-                                    <WorkingFileTile key={file.id ?? `work-${index}`} file={file} />
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
+                {/* Working files (inputs to a later step this turn) stay marked and
+                    saved on the message, but are not shown under the reply: the
+                    user sees the result here and the work inside "Worked for" (2026-10-07). */}
 
                 {false && message.approvalRequest && (
                     <ApprovalCard
@@ -476,6 +520,13 @@ export function MessageItem({
                 {!hasParts && (message.uploadRequests ?? []).map(request => (
                     <div key={request.id} className="w-full">{renderUploadCard(request)}</div>
                 ))}
+
+                {/* A decided cost card leaves its question in the chat, like any
+                    settled card (askedPrompts); the user's Approve / Cancel is
+                    the next message. */}
+                {message.generationConfirmRequest && message.generationConfirmRequest.status !== 'pending' && (
+                    <AskedLine prompts={[costPrompt(message.generationConfirmRequest.label)]} />
+                )}
 
                 {message.toolCalls && message.toolCalls.length > 0 && (
                     <div className="w-full mt-2">
@@ -505,22 +556,21 @@ export function MessageItem({
                     </div>
                 )}
 
+                {askedBelow && askedBelow.length > 0 && <AskedLine prompts={askedBelow} />}
+
                 {isAssistant && !message.isStreaming && hasDisplayedContent && (
-                    <MessageFeedback messageId={message.id} conversationId={message.conversationId} content={message.content} />
+                    <MessageFeedback
+                        messageId={message.id}
+                        conversationId={message.conversationId}
+                        content={message.content}
+                        citations={message.citations}
+                        alwaysVisible={isLastMessage}
+                        onRetry={isLastMessage && !isStreaming && onRegenerate ? () => onRegenerate(message) : undefined}
+                    />
                 )}
 
-                {isAssistant && hasDisplayedContent && isLastMessage && !message.isStreaming && !isStreaming && onRegenerate && (
-                    <div className="flex items-center gap-2 opacity-0 group-hover/msg:opacity-100 transition-opacity">
-                        <button
-                            type="button"
-                            onClick={() => onRegenerate(message)}
-                            className="flex items-center gap-1 text-[11px] text-muted-foreground/70 hover:text-foreground px-1 mt-1"
-                            title="Regenerate response"
-                        >
-                            <RotateCcw className="h-3 w-3" />
-                            <span>Regenerate</span>
-                        </button>
-                    </div>
+                {isAssistant && !message.isStreaming && isLastMessage && message.suggestedFollowUps && message.suggestedFollowUps.length > 0 && onFollowUpSelect && (
+                    <FollowUpChips suggestions={message.suggestedFollowUps} onSelect={onFollowUpSelect} />
                 )}
         </div>
     );
@@ -532,29 +582,5 @@ export function MessageItem({
 function ResultFileCard({ file, url, createdAt }: { file: MessageAttachment; url: string | null; createdAt: string }) {
     const loaded = useThumbnailUrl(file.fileId ?? '', !url && !!file.fileId);
     return <GeneratedAssetCard file={file} url={url ?? loaded ?? null} createdAt={createdAt} />;
-}
-
-// A folded working file is a small tile in the order it was made: the stills
-// and clips that led to the result, not a second gallery of full cards. Its
-// link loads only once the row is opened. Click opens it on the canvas.
-function WorkingFileTile({ file }: { file: MessageAttachment }) {
-    const url = useThumbnailUrl(file.fileId ?? '', !!file.fileId) ?? file.previewUrl ?? null;
-    const type = assetTypeForFile(file.type, file.name);
-    const Icon = TYPE_ICONS[type];
-    const open = () => {
-        if (!file.fileId) return;
-        const w = window as unknown as { __openCanvas?: () => void; __canvasUpdate?: (action: string, data: unknown) => void };
-        w.__openCanvas?.();
-        w.__canvasUpdate?.('asset_open', { asset: { id: file.fileId, type, filename: file.name, mimeType: file.type, thumbnailUrl: url, size: file.size, createdAt: new Date().toISOString(), sourceMessageId: '', fileId: file.fileId } });
-    };
-    return (
-        <button type="button" onClick={open} title={file.name} aria-label={file.name}
-            className={cn("relative h-20 w-[45px] shrink-0 rounded-md overflow-hidden ring-1 ring-border/60 hover:ring-foreground/40 transition-shadow", TYPE_STYLES[type].bg)}>
-            {url && type === 'image' ? <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" />
-                : url && type === 'video' ? <video src={url} preload="metadata" muted className="absolute inset-0 h-full w-full object-cover" />
-                : <Icon className={cn("absolute inset-0 m-auto h-4 w-4", TYPE_STYLES[type].icon)} />}
-            {type !== 'image' && <span className="absolute bottom-0.5 left-0.5 rounded bg-black/70 px-1 text-[8px] font-semibold text-white">{typeBadge(type, file.name)}</span>}
-        </button>
-    );
 }
 

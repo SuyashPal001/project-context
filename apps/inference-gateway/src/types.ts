@@ -53,6 +53,8 @@ export interface OpenAIRequest {
   tools?: OpenAITool[];
   tool_choice?: OpenAIToolChoice;
   thinkingBudget?: number; // Gemini-specific — mapped to generationConfig.thinkingConfig by VertexAdapter
+  /** Return the model's thought summaries without setting a budget (the model keeps its own default amount of thinking). */
+  includeThoughts?: boolean;
 }
 
 export interface OpenAIUsage {

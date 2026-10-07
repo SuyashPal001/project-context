@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { stepStart, stepEnd } from './stepEvents.js'
+import { stepStart, stepEnd, stepDetail } from './stepEvents.js'
 
 describe('step events', () => {
   it('turns known tools into steps and ignores the rest', () => {
@@ -21,5 +21,18 @@ describe('step events', () => {
     expect(stepEnd(stepStart('generate_videos', 'i')!, { failed: 2, succeeded: 0 }).state).toBe('failed')
     expect(stepEnd(stepStart('generate_image', 'j')!, { cancelled: true }).state).toBe('skipped')
     expect(stepEnd(stepStart('generate_image', 'k')!, { refused: true, insufficientCredits: true }).state).toBe('credits')
+  })
+})
+
+describe('stepDetail', () => {
+  it('names what the call makes: one title, or the first and how many more', () => {
+    expect(stepDetail({ title: 'Scene 1 — mirror' })).toBe('Scene 1 — mirror')
+    expect(stepDetail({ items: [{ title: 'Scene 2' }, { title: 'Scene 3' }] })).toBe('Scene 2 +1')
+    expect(stepDetail({ prompt: 'no title' })).toBeUndefined()
+    expect(stepDetail({ title: 'x'.repeat(60) })!.length).toBe(40)
+  })
+
+  it('rides on the step a call starts', () => {
+    expect(stepStart('generate_image', 'tc', { title: 'Scene 1' })?.detail).toBe('Scene 1')
   })
 })

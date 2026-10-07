@@ -5,8 +5,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AgentOrb } from "./AgentOrb";
 import { ToolCall, CompletedToolCall, LiveStep } from "./types";
-import { StepList } from "./StepList";
-import { AwaitingApprovalContext, ToolCallCard, groupImageToolCalls, withoutRepeatedTraceFiles } from "./ToolCallCard";
+import { StepList, withMediaFiles, withoutStepOwned } from "./StepList";
+import { Branch } from "./Branch";
+import { AwaitingApprovalContext, ToolCallCard, groupImageToolCalls, isMediaGenDelegateOrTool, isQuestionTool, withoutRepeatedTraceFiles } from "./ToolCallCard";
 import type { PersonaSummary } from "../personas/types";
 
 // Live extended-thinking trace, streamed via the 'reasoning' SSE event (see
@@ -55,11 +56,12 @@ export function ReasoningRow({ text, completed = false, elapsedSec, defaultOpen 
                     // Sized to the word, not flex-1: the shimmer band is as wide as the
                     // span, and across a full-width span it crossed the short word as one
                     // quick flash (a blink) instead of a sweep.
-                    <span className="shimmer-text text-sm min-w-0 truncate text-shimmer-accent-60">Thinking…</span>
+                    <span className="shimmer-text text-sm min-w-0 truncate text-shimmer-accent-60">Reasoning…</span>
                 )}
             </button>
             {expanded && (
-                <div className="mt-1 ml-[4px] border-l border-foreground/20 pl-3 text-sm text-muted-foreground min-w-0 [&>*]:mb-2 [&>*:last-child]:mb-0">
+                <Branch>
+                <div className="text-sm text-muted-foreground min-w-0 [&>*]:mb-2 [&>*:last-child]:mb-0">
                     <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{
@@ -72,6 +74,7 @@ export function ReasoningRow({ text, completed = false, elapsedSec, defaultOpen 
                         {text}
                     </ReactMarkdown>
                 </div>
+                </Branch>
             )}
         </div>
     );
@@ -138,11 +141,13 @@ function liveMediaKind(steps: LiveStep[]): 'image' | 'video' | 'audio' | undefin
 export function LiveTrace({
     isStreaming,
     activeToolCalls,
-    completedToolCalls,
+    completedToolCalls: allCompletedToolCalls,
     steps = [],
     reasoningText = '',
     freshUrls,
 }: LiveTraceProps) {
+    // A finished question is the part's line in the chat (askedPrompts), not a row here.
+    const completedToolCalls = allCompletedToolCalls.filter(tc => !isQuestionTool(tc.toolName));
     const [messageIndex, setMessageIndex] = useState(0);
     const [startedAt, setStartedAt] = useState<number | null>(null);
     // Ticks the live "Working for Ns" counter once a second. This is separate
@@ -270,10 +275,16 @@ export function LiveTrace({
                 </button>
                 {blockOpen && (
                 <div className="ml-[4px] border-l border-foreground/20 pl-3 min-w-0">
-                {/* While the run waits on the user nothing is thinking: the row settles. */}
-                <ReasoningRow text={reasoningText} completed={awaitingUser} defaultOpen={steps.length === 0} />
-                {steps.length > 0 && <StepList steps={steps} />}
-                {groupImageToolCalls(withoutRepeatedTraceFiles(completedToolCalls)).map((group, gi) => (
+                {/* The thinking is what fills the long waits, so it is on screen and
+                    open from the start, steps or not (2026-10-07). While the run
+                    waits on the user nothing is thinking: the row settles. */}
+                {reasoningText
+                    ? <ReasoningRow text={reasoningText} completed={awaitingUser} defaultOpen />
+                    : !awaitingUser && <div className="my-1 flex items-center gap-2"><Chevron open /><span className="shimmer-text text-sm text-shimmer-accent-60">Reasoning…</span></div>}
+                {steps.length > 0 && <StepList steps={withMediaFiles(steps, completedToolCalls)} />}
+                {/* Pictures and clips hang under their step (branch style); the
+                    Director's own row and the media rows that repeat them stay out. */}
+                {groupImageToolCalls(withoutStepOwned(withoutRepeatedTraceFiles(completedToolCalls), withMediaFiles(steps, completedToolCalls))).map((group, gi) => (
                     group.length > 1 ? (
                         <div key={gi} className="flex flex-col gap-2">
                             {group.map(tc => (
@@ -300,7 +311,10 @@ export function LiveTrace({
                         />
                     )
                 ))}
-                {groupImageToolCalls(loadingTools).map((group, gi) => (
+                {/* The Director's own row repeated the running step ("Pictures" and
+                    "Preparing your image…" side by side, 2026-10-07); with step rows
+                    on screen it is left out. */}
+                {groupImageToolCalls(steps.length > 0 ? loadingTools.filter(t => !isMediaGenDelegateOrTool(t.toolName)) : loadingTools).map((group, gi) => (
                     group.length > 1 ? (
                         <div key={gi} className="flex flex-col gap-2">
                             {group.map(tool => (

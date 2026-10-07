@@ -9,7 +9,8 @@ import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { useRouter, useParams } from "next/navigation";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { AwaitingApprovalContext, extractResultFiles } from "./ToolCallCard";
-import { MessageItem, messageHasDisplayedContent } from "./MessageItem";
+import { AskedLine, MessageItem, askedPrompts, isAnsweredQuestionRow, messageHasDisplayedContent } from "./MessageItem";
+import { filesMadeBefore, withoutCallsMadeEarlier, withoutFilesMadeEarlier, withoutStepFilesMadeEarlier } from "./partFiles";
 import { findPendingClarification, findPendingGenerationConfirm, findPendingUpload } from "./pendingRequests";
 import { ClarificationCard } from "./ClarificationCard";
 import { UploadRequestCard } from "./UploadRequestCard";
@@ -142,6 +143,27 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     // once the row exists, MessageItem renders the same content itself,
     // inside that row, so the two must never both render at once.
     const hasStreamingMessage = messages.some(m => m.isStreaming);
+    // A file shows only in the part that made it (see partFiles.ts).
+    const madeBefore = filesMadeBefore(messages);
+    const liveCompletedToolCalls = withoutCallsMadeEarlier(completedToolCalls ?? [], madeBefore.all);
+    const liveStepsShown = liveSteps && withoutStepFilesMadeEarlier(liveSteps, madeBefore.all);
+    const hiddenAnsweredRows = new Set(messages.flatMap((m, i) => {
+        if (!isAnsweredQuestionRow(m)) return [];
+        const next = messages.slice(i + 1).find(messageHasDisplayedContent);
+        return next?.role === 'user' ? [i] : [];
+    }));
+    // A settled card's row is saved after the part that stopped on it; its
+    // line is drawn inside that part, above the part's feedback row, so the
+    // thumbs never sit between a part and its question (2026-10-07).
+    const askedBelow = new Map<number, string[]>();
+    const askedOwned = new Set<number>();
+    for (const i of hiddenAnsweredRows) {
+        let j = i - 1;
+        while (j >= 0 && (hiddenAnsweredRows.has(j) || !messageHasDisplayedContent(messages[j]))) j--;
+        if (j < 0 || messages[j].role !== 'assistant') continue;
+        askedBelow.set(j, [...(askedBelow.get(j) ?? []), ...askedPrompts(messages[i])]);
+        askedOwned.add(i);
+    }
     // The bottom spacer (rendered below) needs full-pane room not just while
     // a reply is streaming, but also in the brief window right after you hit
     // send — the anchor-to-top-of-your-message effect in MessageThread fires
@@ -414,19 +436,30 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                 )}
 
                 {messages.map((message, i) => {
+                    // A question row whose answer is the next message shows
+                    // only its question, as one line under the part that asked;
+                    // the user's answer stands for the rest (2026-10-07: the
+                    // whole card again read as asking twice; nothing at all
+                    // read as Olmo saying nothing).
+                    if (hiddenAnsweredRows.has(i)) return askedOwned.has(i) ? null : <AskedLine key={message.id} prompts={askedPrompts(message)} />;
                     // Walk back past any empty placeholder messages (approval/
                     // clarification/generation-confirm) — MessageItem doesn't
                     // render them at all, so they must not occupy the
                     // "previous message" slot for sequencing either, or the
                     // real reply right after one loses its own avatar.
                     let prevIdx = i - 1;
-                    while (prevIdx >= 0 && !messageHasDisplayedContent(messages[prevIdx])) prevIdx--;
+                    while (prevIdx >= 0 && (!messageHasDisplayedContent(messages[prevIdx]) || hiddenAnsweredRows.has(prevIdx))) prevIdx--;
                     const prevRole = prevIdx >= 0 ? messages[prevIdx].role : null;
                     const isLastMessage = i === messages.length - 1;
+                    // The user's answer to this message's question is the next message.
+                    const next = messages.slice(i + 1).find(messageHasDisplayedContent);
+                    const answerShownBelow = message.role === 'assistant' && next?.role === 'user';
                     return (
                         <MessageItem
+                            answerShownBelow={answerShownBelow}
+                            askedBelow={askedBelow.get(i)}
                             key={message.id}
-                            message={message}
+                            message={withoutFilesMadeEarlier(message, madeBefore.before[i])}
                             isFirstInSequence={prevRole === null || prevRole !== message.role}
                             isNewExchange={prevRole !== null && prevRole !== message.role}
                             isLastMessage={isLastMessage}
@@ -444,8 +477,8 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                             planErrors={planErrors}
                             onCreateInSystem={handleCreateInSystem}
                             activeToolCalls={message.isStreaming ? activeToolCalls : undefined}
-                            completedToolCalls={message.isStreaming ? completedToolCalls : undefined}
-                            liveSteps={message.isStreaming ? liveSteps : undefined}
+                            completedToolCalls={message.isStreaming ? liveCompletedToolCalls : undefined}
+                            liveSteps={message.isStreaming ? liveStepsShown : undefined}
                             liveReasoningText={message.isStreaming ? reasoningText : undefined}
                             liveTraceAfterSeq={message.isStreaming ? (traceAfterSeq ?? undefined) : undefined}
                         />
@@ -456,15 +489,17 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     made so far) on screen; the plain waiting row is only for a
                     turn with nothing to show. It used to replace the trace, so
                     clips the agent asked about were hidden (2026-10-06). */}
-                {awaitingReply && !((activeToolCalls?.length || completedToolCalls?.length) && !hasStreamingMessage) ? (
-                    <WaitingForReplyIndicator avatarUrl={agentAvatarUrl} persona={agentPersona} isDefault={agentIsDefault} />
-                ) : (isStreaming || isRetrying) && !hasStreamingMessage ? (
+                {/* An open question or approval ends the part of the turn
+                    before it (see useChatStream onTurnPause): what was made sits
+                    in that settled message above the card, so nothing here may
+                    look like it is still working while the user decides. */}
+                {awaitingReply || pendingGenerationConfirm ? null : (isStreaming || isRetrying) && !hasStreamingMessage ? (
                     <ThinkingIndicator
                         isRetrying={isRetrying ?? false}
                         isStreaming={isStreaming ?? false}
                         activeToolCalls={activeToolCalls ?? []}
-                        completedToolCalls={completedToolCalls ?? []}
-                        steps={liveSteps}
+                        completedToolCalls={liveCompletedToolCalls}
+                        steps={liveStepsShown}
                         reasoningText={reasoningText ?? ''}
                         agentAvatarUrl={agentAvatarUrl}
                         agentPersona={agentPersona}
@@ -597,21 +632,3 @@ function ThinkingDots({ label = 'Thinking...', avatarUrl, persona, isDefault }: 
     );
 }
 
-// Static, un-animated counterpart to ThinkingIndicator/ThinkingDots — rendered instead of
-// either whenever the last message is blocking on a pending clarificationRequest. No timer,
-// no shimmer: the agent isn't doing anything, so nothing here should look like it's working.
-function WaitingForReplyIndicator({ avatarUrl, persona, isDefault }: { avatarUrl?: string | null; persona?: PersonaSummary | null; isDefault?: boolean }) {
-    return (
-        <div className="flex items-start gap-4 animate-in fade-in duration-300">
-            <AgentOrb size={32} state="idle" avatarUrl={avatarUrl} persona={persona} isDefault={isDefault} />
-            <div className="flex items-center gap-2 pt-1.5 text-muted-foreground">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="shrink-0">
-                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
-                    <path d="M9.5 9a2.5 2.5 0 0 1 4.83-.92c-.28.7-.77 1.1-1.33 1.5-.62.44-1 .8-1 1.67" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    <circle cx="12" cy="16.25" r="0.75" fill="currentColor" />
-                </svg>
-                <span className="text-sm font-mono">Waiting for your reply</span>
-            </div>
-        </div>
-    );
-}

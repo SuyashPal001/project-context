@@ -313,6 +313,9 @@ function buildGeminiRequest(openaiReq: OpenAIRequest): Record<string, unknown> {
     if (thinkingBudget > 0) {
       generationConfig.thinkingConfig = { thinkingBudget, includeThoughts: true }
     }
+  } else if (openaiReq.includeThoughts) {
+    // Summaries only; the amount of thinking stays the model's own default.
+    generationConfig.thinkingConfig = { includeThoughts: true }
   }
   const req: Record<string, unknown> = { contents }
   if (systemInstruction) req.systemInstruction = systemInstruction
