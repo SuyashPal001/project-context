@@ -21,4 +21,10 @@ describe('inputFileIdsOf', () => {
     expect(inputFileIdsOf('review_shots', { shots: [{ fileId: id }] }, new Set()).size).toBe(0)
     expect(inputFileIdsOf('generate_video', { startImageFileId: id }, new Set()).has(id)).toBe(true)
   })
+  it('a still a quality check looked at is not an input (Meera run: check_clip on the Scene 2 still)', () => {
+    const id = 'b2afa519-a2cc-4bad-ba7c-c5d6c08c7906'
+    const args = { clipFileId: id, productFileId: '0b161680-93be-4410-b287-e90e48ef8fde', referenceFileIds: ['11fff9df-63d4-4af1-bf90-25b6cb063899'], masterStillFileId: '9b3a7d1d-8143-4801-9049-e58c6f133bb4' }
+    expect(inputFileIdsOf('check-clip', args, new Set()).size).toBe(0)
+    expect(inputFileIdsOf('check_still', { fileId: id }, new Set()).size).toBe(0)
+  })
 })

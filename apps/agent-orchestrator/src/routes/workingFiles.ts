@@ -11,8 +11,10 @@ const FILE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 // Tools that only show a file to the user (a review question, show_files)
 // do not use it as an input: the Scene 1 still was folded away as a working
-// file because the review question was given its id (2026-10-07).
-const SHOWS_ONLY = /^(review_shots|show_files|ask_clarifying_questions)$/
+// file because the review question was given its id (2026-10-07). A quality
+// check only looks at a file too: check_clip on the Scene 2 and 3 stills
+// folded both away, so the part had no hand-over line and no card (2026-10-07).
+const SHOWS_ONLY = /^(review_shots|show_files|ask_clarifying_questions|check_clip|check_still)$/
 
 /** The file ids a tool call takes as inputs; none for a tool that only shows files. */
 export function inputFileIdsOf(toolName: string, args: unknown, into: Set<string>): Set<string> {
