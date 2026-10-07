@@ -192,6 +192,13 @@ export async function fetchBase64(fileId: string, idToken: string, signal: Abort
   return { data: Buffer.from(await res.arrayBuffer()).toString('base64'), mime: res.headers.get('content-type') ?? 'image/jpeg' }
 }
 
+// A clip made from a storyboard sheet sometimes opens on the sheet itself:
+// the Pip ad showed its pencil panels for the first 3 seconds, and the check
+// passed it (2026-10-07). Tried on that clip's own frames with the live model:
+// the board frames failed 3 of 3, frames from the same clip after the board
+// passed 3 of 3. An extra sentence: the shipped questions stay as they were.
+export const BOARD_LEAK_ASK = '(9) storyboard leak: any frame that shows a storyboard or comic page instead of one live shot — several panels or bordered boxes stacked in one frame, pencil-sketch or line-drawing art, handwritten notes, arrows or thought bubbles — is a glitch and a FAIL. '
+
 export function buildCheckQuestion(opts: { product: boolean; audio: boolean; noPerson: boolean; silent?: boolean; sound?: boolean }): string {
   const productAsk = opts.product ? 'Also check the product wherever it is visible in the clip frames: same shape, colour and brand name as Image P (product_same false if it is a different product, a different shape or colour, or the brand name is clearly misspelled, garbled or mirrored/written backwards; ignore small print, which video always blurs; true if it is not visible). ' : ''
   // The shipped sentence stays byte-identical for every existing caller
@@ -201,7 +208,7 @@ export function buildCheckQuestion(opts: { product: boolean; audio: boolean; noP
   const silentAsk = opts.audio && opts.silent ? 'If nobody speaks, leave heard empty; ignore music and sound effects. ' : ''
   const soundAsk = opts.sound ? "Also compare the clip's audio with Audio R, ignoring the words: same speaker's voice (same_voice), and same microphone and room — same echo and background sound (same_room)? A dry studio-sounding voice against a roomy one is a different room. " : ''
   const first = opts.noPerson ? '{"scene_same": true|false, ' : '{"clothing_same": true|false, "face_same": true|false, '
-  return (opts.noPerson ? NO_PERSON_QUESTION : STRICT_QUESTION) + ' ' + productAsk + audioAsk + silentAsk + soundAsk +
+  return (opts.noPerson ? NO_PERSON_QUESTION : STRICT_QUESTION) + ' ' + BOARD_LEAK_ASK + productAsk + audioAsk + silentAsk + soundAsk +
     'Reply with ONLY JSON: ' + first + (opts.product ? '"product_same": true|false, ' : '') + (opts.sound ? '"same_voice": true|false, "same_room": true|false, ' : '') +
     '"glitch": true|false, "confidence": 1-10, "differences": "<short list or none>", "heard": "<exact transcript or empty>"}'
 }
