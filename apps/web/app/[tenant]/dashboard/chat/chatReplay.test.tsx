@@ -8,7 +8,7 @@
 // run that broke left its rows behind. Each of those is a check here.
 
 import type { ReactNode } from 'react';
-import { act, cleanup, render, renderHook, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatStream } from './useChatStream';
@@ -128,7 +128,7 @@ describe('replay: Lakmē ad in Ask mode', () => {
         // While the review card is open (2026-10-07: the silent part was hidden
         // here, so the still being asked about was nowhere on screen).
         draw();
-        expect(screen.getAllByLabelText('Scene 1 still.png')).toHaveLength(1);
+        expect(screen.getAllByText(/Scene 1 still\.png/).length).toBeGreaterThanOrEqual(1);
         expect(screen.queryByText(/Preparing your image/)).toBeNull();
 
         act(() => { tick(); answerCard('cl-1'); ev().onTurnResume({ text: 'Looks good — continue' }); ev().onToolDone('rev-1', 'review_shots', {}); });
@@ -159,16 +159,20 @@ describe('replay: Lakmē ad in Ask mode', () => {
         expect(screen.getByText('Here is the plan: 3 scenes, 15s.')).toBeTruthy();
         expect(screen.queryByText('Generate image?')).toBeNull();
         expect(screen.queryByText('Does Scene 1 look right?')).toBeNull();
-        // The Director's part hands its work over: one line, the still as a
-        // small tile under the part, and the same still as the big output card.
+        // The Director's part hands its work over: one line and the still as the
+        // big output card. Folded, the part is just its "Worked for" line; the
+        // still's small tile shows under its step once the part is opened.
         expect(screen.getByText("Here's Scene 1 still.")).toBeTruthy();
-        expect(screen.getAllByLabelText('Scene 1 still.png')).toHaveLength(1);
         expect(screen.getAllByText(/Scene 1 still\.png/).length).toBeGreaterThanOrEqual(1);
+        expect(screen.queryByLabelText('Scene 1 still.png')).toBeNull();
         // Nothing from a part leaks into the next, and the dead run left nothing behind.
         expect(screen.queryByText(/Preparing your image/)).toBeNull();
         expect(screen.queryByText(/Checked the scenes with you/)).toBeNull();
         // The finished ad is the big card at the end.
         expect(screen.getAllByText(/Lakmē ad\.mp4/).length).toBeGreaterThan(0);
+        // Opened, the part shows its work: the still's tile under its step.
+        for (const header of screen.getAllByText(/^Worked for/)) fireEvent.click(header.closest('button')!);
+        expect(screen.getAllByLabelText('Scene 1 still.png')).toHaveLength(1);
     });
 
     it('a finished picture fills its step\'s tile even when the step never says done', () => {

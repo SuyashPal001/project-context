@@ -127,12 +127,14 @@ export function TraceSummary({ elapsedSec, toolCalls: allToolCalls, reasoningTex
             )}
             </Branch>
             )}
-            {/* Folded, the part still shows what it made: its pictures and clips
-                hang under the header; opened, each sits under its own step. */}
-            {collapsed && (steps && stepTileFiles(steps).length > 0 ? stepTileFiles(steps) : partFiles).length > 0 && (
+            {/* Folded, the part is just its "Worked for" line: what it made is
+                the big card after the reply, and the tiles show when opened
+                (2026-10-07). A reloaded part, with no step list, shows its
+                tiles when opened instead. */}
+            {!collapsed && !(steps && stepTileFiles(steps).length > 0) && partFiles.length > 0 && (
                 <Branch>
                     <div className="flex flex-wrap gap-1.5" data-testid="part-files">
-                        {(steps && stepTileFiles(steps).length > 0 ? stepTileFiles(steps) : partFiles).map(f => <FileTile key={f.fileId} file={f} />)}
+                        {partFiles.map(f => <FileTile key={f.fileId} file={f} />)}
                     </div>
                 </Branch>
             )}
