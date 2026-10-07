@@ -110,7 +110,7 @@ describe('OFFICIAL_SKILLS', () => {
     expect(director).toMatch(/does not make a performance claim acceptable/)
     // The shipped lines are still there, word for word (append only).
     expect(director).toMatch(/position bottom, size small/)
-    expect(card).toMatch(/16\. Disclaimers: when the ad makes a product claim/)
+    expect(card).toMatch(/17\. Disclaimers: when the ad makes a product claim/)
     expect(card).toMatch(/Disclaimer for '<the claim>': <text>/)
     expect(card).not.toMatch(/forVoiceoverBlock|overlay_text|plan_tvc/)
     // F3: finishOrder supersedes the finish lines above (overlay_text runs last).
