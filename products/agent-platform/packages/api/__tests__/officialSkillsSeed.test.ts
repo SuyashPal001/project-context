@@ -97,6 +97,22 @@ describe('OFFICIAL_SKILLS', () => {
     expect(card).toMatch(/default is no jingle/)
     // Task 2: the product photo can never be a frame pulled from the reference or any other file.
     expect(director).toMatch(/If the brief has no product photo, never take one from the reference video or any other file; return to Olmo so it asks the user to upload a product photo\./)
+    // Part 2.1: legal disclaimers (additive section).
+    expect(director).toMatch(/Legal disclaimers \(supersede the legal parts of the lines above\)/)
+    expect(director).toMatch(/forVoiceoverBlock = the number of the voiceover block that makes the claim/)
+    expect(director).toMatch(/Never write endSeconds/)
+    expect(director).toMatch(/brief\.brandName/)
+    expect(director).toMatch(/run the steps in the finish slice's finishOrder; composite_end_card always comes before overlay_text/)
+    expect(director).toMatch(/pass each of the finish slice's legal entries exactly as given \(text, startSeconds, endSeconds\) with size "legal"/)
+    expect(director).toMatch(/Never shorten or move a disclaimer to make it fit/)
+    expect(director).toMatch(/On LEGAL_TOO_LONG or LEGAL_HOLD_TOO_LONG, return the reason to Olmo/)
+    expect(director).toContain('END_CARD_OVER_DISCLAIMER')
+    expect(director).toMatch(/does not make a performance claim acceptable/)
+    // The shipped lines are still there, word for word (append only).
+    expect(director).toMatch(/position bottom, size small/)
+    expect(card).toMatch(/16\. Disclaimers: when the ad makes a product claim/)
+    expect(card).toMatch(/Disclaimer for '<the claim>': <text>/)
+    expect(card).not.toMatch(/forVoiceoverBlock|overlay_text|plan_tvc/)
   });
 
   it('each entry file exists and is non-empty', () => {
