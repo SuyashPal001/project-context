@@ -80,3 +80,4 @@ Legal disclaimers (supersede the legal parts of the lines above):
 - overlay_text: pass each of the finish slice's legal entries exactly as given (text, startSeconds, endSeconds) with size "legal" and position bottom; never change their times. Legal lines count first toward overlay_text's 12 overlays: drop per-shot texts, never a legal line.
 - overlay_text refused with LEGAL_TOO_LONG, or composite_end_card refused with END_CARD_OVER_DISCLAIMER: return the reason to Olmo; never make the disclaimer smaller.
 - "Creative visualisation" is added for a mechanism or superpower shot as industry practice; it does not make a performance claim acceptable, so a claim still needs its own disclaimer.
+- When the finish slice has finishOrder, follow it exactly; it supersedes the order of the finish lines above (overlay_text runs last, so text sits on top of the end card and nothing after it removes the disclaimer marker).

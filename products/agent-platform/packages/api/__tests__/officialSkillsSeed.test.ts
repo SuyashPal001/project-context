@@ -113,6 +113,10 @@ describe('OFFICIAL_SKILLS', () => {
     expect(card).toMatch(/16\. Disclaimers: when the ad makes a product claim/)
     expect(card).toMatch(/Disclaimer for '<the claim>': <text>/)
     expect(card).not.toMatch(/forVoiceoverBlock|overlay_text|plan_tvc/)
+    // F3: finishOrder supersedes the finish lines above (overlay_text runs last).
+    expect(director).toMatch(/When the finish slice has finishOrder, follow it exactly; it supersedes the order of the finish lines above/)
+    // F4: a 9:16 disclaimer must be kept short.
+    expect(card).toMatch(/For a 9:16 ad keep a disclaimer to about 45 characters \(two short lines\); a 16:9 ad fits about twice that\./)
   });
 
   it('each entry file exists and is non-empty', () => {

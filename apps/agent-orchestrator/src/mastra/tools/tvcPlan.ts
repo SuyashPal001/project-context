@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { LEGAL_MAX_LINES, countLegalWords, firstWords, legalHoldSeconds, legalLineCount, nominalFrame } from './legalText.js'
+import { LEGAL_MAX_LINES, countLegalWords, firstWords, legalHoldSeconds, legalLineCount, nominalFrame, tooWideWord } from './legalText.js'
 
 // The TVC ad's plan and its craft rules, checked in code so a long skill text
 // is not the only thing holding them (spec 2026-10-05-tvc-ad-design.md §4-5).
@@ -199,6 +199,11 @@ export function legalTimings(plan: TvcPlan, opts: { autoAddedIndex?: number } = 
   }, 0)
   if (plan.legal.length > MAX_OVERLAYS) errors.push(`LEGAL_TOO_MANY: there are ${plan.legal.length} legal lines; overlay_text takes at most ${MAX_OVERLAYS} overlays`)
   const timings = plan.legal.map((l, i): LegalTiming | null => {
+    const wide = tooWideWord(l.text, frame)
+    if (wide) {
+      errors.push(`LEGAL_TOO_LONG: the disclaimer "${firstWords(l.text)}" has a word too wide for one line ("${wide}"); shorten it or write the URL shorter`)
+      return null
+    }
     const lines = legalLineCount(l.text, frame)
     if (lines > LEGAL_MAX_LINES) {
       errors.push(`LEGAL_TOO_LONG: the disclaimer "${firstWords(l.text)}" needs ${lines} lines; ASCI allows 2. Shorten it`)
@@ -232,7 +237,7 @@ export function legalTimings(plan: TvcPlan, opts: { autoAddedIndex?: number } = 
     const end = r2(start + hold)
     if (end > length + EPS) {
       errors.push(i === opts.autoAddedIndex
-        ? `LEGAL_HOLD_TOO_LONG: "${l.text}" was added automatically for a mechanism or superpower shot and needs ${hold}s on screen, which does not fit; add it yourself as a legal line with wholeAd: true`
+        ? `LEGAL_HOLD_TOO_LONG: "${l.text}" was added automatically for a mechanism or superpower shot and needs ${hold}s on screen, which does not fit; the plan could not fit it — add wholeAd: true to the claim's disclaimer, or shorten the voiceover`
         : `LEGAL_HOLD_TOO_LONG: "${l.text}" needs ${hold}s on screen; start it earlier, shorten it, or keep it on for the whole ad`)
     }
     return { text: l.text, startSeconds: start, endSeconds: end, lines }
@@ -245,11 +250,19 @@ export function legalTimings(plan: TvcPlan, opts: { autoAddedIndex?: number } = 
       if (!(b.startSeconds < a.endSeconds - EPS && a.startSeconds < b.endSeconds - EPS)) continue
       const la = plan.legal[a.i], lb = plan.legal[b.i]
       if (la.linkedWith && la.linkedWith === lb.linkedWith) continue
+      // F5: two disclaimers each synced to their own voiceover block need a
+      // scheduling fix (move the later block), not a merge-or-overlap hint.
+      if (la.forVoiceoverBlock !== undefined && lb.forVoiceoverBlock !== undefined && la.forVoiceoverBlock !== lb.forVoiceoverBlock) {
+        errors.push(`LEGAL_OVERLAP: "${firstWords(a.text)}" and "${firstWords(b.text)}" would be on screen together; combine them into one disclaimer, or start voiceover block ${lb.forVoiceoverBlock} at or after ${a.endSeconds}s`)
+        continue
+      }
       let fix = '; start the second after the first ends'
       if (la.forVoiceoverBlock !== undefined && la.forVoiceoverBlock === lb.forVoiceoverBlock) {
         fix = `; both explain voiceover block ${la.forVoiceoverBlock}: combine them into one disclaimer (at most 2 lines) or move the second claim to its own voiceover block`
       } else if (a.i === opts.autoAddedIndex || b.i === opts.autoAddedIndex) {
-        fix = `; "${VISUALISATION}" is added for a mechanism or superpower shot: add "${VISUALISATION}" yourself as a legal line with a startSeconds that does not overlap`
+        // F6: Director cannot edit the auto-added line itself; the fix is on
+        // the claim it collided with, or the voiceover that moved into it.
+        fix = `; the plan could not fit "${VISUALISATION}" automatically: add wholeAd: true to the claim's disclaimer, or shorten the voiceover`
       }
       errors.push(`LEGAL_OVERLAP: only one disclaimer on screen at a time ("${firstWords(a.text)}" ${a.startSeconds}–${a.endSeconds}s and "${firstWords(b.text)}" from ${b.startSeconds}s)${fix}`)
     }
@@ -257,11 +270,13 @@ export function legalTimings(plan: TvcPlan, opts: { autoAddedIndex?: number } = 
   return { timings, errors }
 }
 
-/** E4: the end card is laid first and the text last, so a disclaimer is always the top layer. */
+/** E4: the end card is laid first and the text last — after every mix step,
+ *  not just voiceover — so a disclaimer is always the top layer and nothing
+ *  after overlay_text can remove its marker. */
 export function finishOrder(plan: TvcPlan): string[] {
   const order = ['composite_end_card', 'assemble_clips']
   if (plan.voiceover.length > 0 || plan.brief.jingle) order.push('mix_voiceover')
-  order.push('overlay_text', 'mix_music_bed')
+  order.push('mix_music_bed', 'overlay_text')
   return order
 }
 
@@ -438,14 +453,15 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
         const hold = legalHoldSeconds(VISUALISATION, 0, { lines, brandName: brief.brandName })
         const start = clamp(Math.min(starts[i], length - hold), 0, length)
         const end = start + hold
+        // F6: link to every claim the auto line collides with, not only the
+        // first — otherwise a second overlapping claim still gets refused.
         let linkedWith: string | undefined
         const existing = legalTimings(plan).timings
         for (let j = 0; j < existing.length; j++) {
           const t = existing[j]
           if (t && start < t.endSeconds - EPS && t.startSeconds < end - EPS) {
-            linkedWith = plan.legal[j].linkedWith ?? `auto-visualisation-${j}`
+            linkedWith = linkedWith ?? plan.legal[j].linkedWith ?? `auto-visualisation-${j}`
             plan.legal[j].linkedWith = linkedWith
-            break
           }
         }
         plan.legal.push({ text: VISUALISATION, startSeconds: start, ...(linkedWith ? { linkedWith } : {}) })

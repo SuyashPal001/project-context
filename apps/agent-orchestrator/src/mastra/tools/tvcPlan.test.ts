@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { countWords, legalHoldSeconds, recordOnPlan, shotStarts, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, jingleErrors, lastSpeechEnd, signoffTiming, legalTimings, finishOrder, type TvcPlan } from './tvcPlan.js'
 import { generateSecondsFor, minShotSeconds, HARD_ACTION_RE } from './tvcPlan.js'
 import { shotPromptFor, varietySentence, locationName, CAMERA_GRAMMAR } from './tvcPlan.js'
-import { nominalFrame, legalLineCount } from './legalText.js'
+import { nominalFrame, legalLineCount, firstWords } from './legalText.js'
 
 // A valid 15s ambassador spot: 7 shots summing to 15s, packshot last.
 function goodPlan(): TvcPlan {
@@ -210,6 +210,13 @@ describe('legal lines (L2, L3)', () => {
     const p = goodPlan(); p.legal = [{ text: LONG_9_16, startSeconds: 0 }]
     expect(validateTvcPlan(p).errors).toContain('LEGAL_TOO_LONG: the disclaimer "Based on an independent lab test…" needs 3 lines; ASCI allows 2. Shorten it')
   })
+  // F1: a URL too wide for one line is refused by name, not by a line count
+  // that the libass WrapStyle 0 render would not actually produce.
+  it('LEGAL_TOO_LONG names the over-wide word (F1)', () => {
+    const url = 'visitexamplebrandlongurl.co.in/terms'
+    const p = goodPlan(); p.legal = [{ text: `Visit ${url} for details.`, startSeconds: 0 }]
+    expect(validateTvcPlan(p).errors).toContain(`LEGAL_TOO_LONG: the disclaimer "Visit ${url} for details." has a word too wide for one line ("${url}"); shorten it or write the URL shorter`)
+  })
   it('LEGAL_CLAIM_MISSING for a block that does not exist (E7)', () => {
     const p = goodPlan(); p.legal = [{ text: SHORT, forVoiceoverBlock: 3 }]
     expect(validateTvcPlan(p).errors).toContain(`LEGAL_CLAIM_MISSING: legal line "${SHORT}" points at voiceover block 3, which doesn't exist`)
@@ -279,6 +286,23 @@ describe('legal lines (L2, L3)', () => {
     expect(auto.linkedWith).toBeDefined()
     expect(auto.linkedWith).toBe(claim.linkedWith)
   })
+  // F6: the auto-added line links to EVERY claim it collides with, not only
+  // the first found, so a second overlapping claim is not left refused.
+  it('an auto-added line that overlaps two separate claims links both, not just the first', () => {
+    const p = goodPlan()
+    p.brief.market = 'india'
+    p.shots[2].type = 'mechanism'
+    p.voiceover = [{ text: 'Clinically tested', startSeconds: 2 }, { text: 'Tested daily', startSeconds: 7 }]
+    p.legal = [{ text: SHORT, forVoiceoverBlock: 1 }, { text: 'T&C apply.', forVoiceoverBlock: 2 }]
+    const r = validateTvcPlan(p)
+    expect(r.errors).toEqual([])
+    const auto = r.plan.legal.find((l) => l.text === VISUALISATION)!
+    const claim1 = r.plan.legal.find((l) => l.text === SHORT)!
+    const claim2 = r.plan.legal.find((l) => l.text === 'T&C apply.')!
+    expect(auto.linkedWith).toBeDefined()
+    expect(claim1.linkedWith).toBe(auto.linkedWith)
+    expect(claim2.linkedWith).toBe(auto.linkedWith)
+  })
   it('a duplicate "Creative visualisation" line the Director wrote itself gets the generic overlap fix, not the auto-added hint', () => {
     const p = goodPlan()
     p.legal = [{ text: VISUALISATION, startSeconds: 2 }, { text: SHORT, startSeconds: 3 }]
@@ -286,6 +310,36 @@ describe('legal lines (L2, L3)', () => {
     expect(msg).toMatch(/^LEGAL_OVERLAP: only one disclaimer on screen at a time/)
     expect(msg).toMatch(/start the second after the first ends/)
     expect(msg).not.toMatch(/mechanism or superpower shot/)
+  })
+  // F5: two disclaimers each synced to their own (different) voiceover block
+  // get a scheduling fix naming the later block, not the generic merge hint.
+  it('two disclaimers on different voiceover blocks that overlap point at moving the later block (F5)', () => {
+    const p = goodPlan()
+    p.legal = [{ text: SHORT, forVoiceoverBlock: 1 }, { text: 'T&C apply.', forVoiceoverBlock: 2 }]
+    p.voiceover = [{ text: 'Clinically tested', startSeconds: 0 }, { text: 'Tested daily', startSeconds: 3 }]
+    const r = legalTimings(p)
+    const a = r.timings[0]!, b = r.timings[1]!
+    expect(r.errors).toContain(
+      `LEGAL_OVERLAP: "${firstWords(a.text)}" and "${firstWords(b.text)}" would be on screen together; combine them into one disclaimer, or start voiceover block 2 at or after ${a.endSeconds}s`,
+    )
+  })
+  // F6: the auto-added line's own messages no longer tell Director to add or
+  // move the line itself; they point at the claim's own disclaimer instead.
+  it('the auto-added line\'s HOLD_TOO_LONG offers wholeAd on the claim, not editing the auto line itself', () => {
+    const p = goodPlan(); p.legal = [{ text: HY, startSeconds: 9 }]
+    const errors = legalTimings(p, { autoAddedIndex: 0 }).errors
+    expect(errors).toContain(
+      `LEGAL_HOLD_TOO_LONG: "${HY}" was added automatically for a mechanism or superpower shot and needs 8s on screen, which does not fit; the plan could not fit it — add wholeAd: true to the claim's disclaimer, or shorten the voiceover`,
+    )
+    expect(errors.join(' ')).not.toMatch(/add it yourself/)
+  })
+  it('the auto-added line\'s OVERLAP fix offers wholeAd on the claim, not adding or moving the line itself', () => {
+    const p = goodPlan()
+    p.legal = [{ text: VISUALISATION, startSeconds: 2 }, { text: SHORT, startSeconds: 3 }]
+    const msg = legalTimings(p, { autoAddedIndex: 0 }).errors.join(' ')
+    expect(msg).toMatch(/^LEGAL_OVERLAP: only one disclaimer on screen at a time/)
+    expect(msg).toMatch(/the plan could not fit "Creative visualisation" automatically: add wholeAd: true to the claim's disclaimer, or shorten the voiceover/)
+    expect(msg).not.toMatch(/yourself/)
   })
   it('LEGAL_TOO_MANY when there are more legal lines than overlay_text can take', () => {
     const p = goodPlan()
@@ -308,12 +362,13 @@ describe('the finish slice and its order (L4, E4)', () => {
     const p = goodPlan(); p.legal = [{ text: HY, forVoiceoverBlock: 1 }]
     const slice = sliceTvcPlan(validateTvcPlan(p).plan, 'finish') as { legal: unknown; finishOrder: string[] }
     expect(slice.legal).toEqual([{ text: HY, startSeconds: 2, endSeconds: 10, style: 'legal' }])
-    expect(slice.finishOrder).toEqual(['composite_end_card', 'assemble_clips', 'mix_voiceover', 'overlay_text', 'mix_music_bed'])
+    expect(slice.finishOrder).toEqual(['composite_end_card', 'assemble_clips', 'mix_voiceover', 'mix_music_bed', 'overlay_text'])
     expect(slice.finishOrder.indexOf('composite_end_card')).toBeLessThan(slice.finishOrder.indexOf('overlay_text'))
+    expect(slice.finishOrder.indexOf('mix_music_bed')).toBeLessThan(slice.finishOrder.indexOf('overlay_text'))
   })
   it('skips mix_voiceover in the order when there is no voiceover and no jingle', () => {
     const p = goodPlan(); p.voiceover = []
-    expect(finishOrder(p)).toEqual(['composite_end_card', 'assemble_clips', 'overlay_text', 'mix_music_bed'])
+    expect(finishOrder(p)).toEqual(['composite_end_card', 'assemble_clips', 'mix_music_bed', 'overlay_text'])
   })
 })
 
