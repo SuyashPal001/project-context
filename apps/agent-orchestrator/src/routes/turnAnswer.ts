@@ -44,11 +44,16 @@ export function uploadAnswerText(answer: { files: unknown[]; freeText?: string; 
  * the boss — one line, then the one question (2026-10-07).
  */
 export function handoverLine(files: Array<{ name: string; type: string; working?: boolean }>): string {
-  const made = files.filter((f) => !f.working && /^(image|video)\//.test(f.type))
+  // Audio too: the first narration line is handed over to be heard (2026-10-07).
+  const made = files.filter((f) => !f.working && /^(image|video|audio)\//.test(f.type))
   if (made.length === 0) return ''
-  const names = made.map((f) => f.name.replace(/\.[a-z0-9]{2,4}$/i, '').trim())
+  const names = made.map((f) => {
+    const name = f.name.replace(/\.[a-z0-9]{2,4}$/i, '').trim()
+    return /^generated narration$/i.test(name) ? 'the narration' : name
+  })
   if (names.length === 1) return `Here's ${names[0]}.`
   if (names.length <= 3) return `Here are ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}.`
-  const clips = made.every((f) => f.type.startsWith('video/'))
-  return `Here are the ${made.length} ${clips ? 'clips' : 'pictures'}.`
+  const kindOf = (f: { type: string }) => f.type.split('/')[0]
+  const noun = made.every((f) => kindOf(f) === 'video') ? 'clips' : made.every((f) => kindOf(f) === 'image') ? 'pictures' : made.every((f) => kindOf(f) === 'audio') ? 'recordings' : 'files'
+  return `Here are the ${made.length} ${noun}.`
 }

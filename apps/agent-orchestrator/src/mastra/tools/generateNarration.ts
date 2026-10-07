@@ -1,4 +1,5 @@
 import { createTool } from '@mastra/core/tools'
+import { FIRST_VOICE_REFUSAL, firstVoiceUnreviewed, noteNarrationMade } from './reviewGate.js'
 import { z } from 'zod'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
 import { uploadGeneratedFile } from '../../persistence.js'
@@ -75,9 +76,10 @@ export const generateNarration = createTool({
   inputSchema,
   outputSchema,
   requireApproval: async (_input, ctx) =>
-    !videoBlockedThisTurn(ctx?.requestContext) && shouldRequireApproval({ resourceType: 'narration_generation', subject: narrationModel((_input as { voiceId?: string } | undefined)?.voiceId) }, ctx),
+    !videoBlockedThisTurn(ctx?.requestContext) && !firstVoiceUnreviewed(ctx?.requestContext) && shouldRequireApproval({ resourceType: 'narration_generation', subject: narrationModel((_input as { voiceId?: string } | undefined)?.voiceId) }, ctx),
   execute: async (inputData, execContext) => {
     if (videoBlockedThisTurn(execContext?.requestContext)) return SHOW_FIRST_FOLLOW_ON_REFUSAL
+    if (firstVoiceUnreviewed(execContext?.requestContext)) return FIRST_VOICE_REFUSAL
     const { script, voiceId, language, emotion, speed, direction, targetSeconds } = inputData as z.infer<typeof inputSchema>
     const SPEECH_MODEL = narrationModel(voiceId)
 
@@ -193,6 +195,7 @@ export const generateNarration = createTool({
       return { refused: true, refusalReason: 'STORAGE_FAILED', jobId }
     }
 
+    noteNarrationMade(execContext?.requestContext?.get('conversationId') as string | undefined)
     return {
       fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size,
       durationSeconds: genResult.durationSeconds,

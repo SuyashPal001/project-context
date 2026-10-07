@@ -33,6 +33,10 @@ describe('uploadAnswerText', () => {
 })
 
 describe('handoverLine', () => {
+  it('hands over the first narration line to be heard', () => {
+    expect(handoverLine([{ name: 'Generated Narration.wav', type: 'audio/wav' }])).toBe("Here's the narration.")
+    expect(handoverLine([{ name: 'Opening line.wav', type: 'audio/wav' }])).toBe("Here's Opening line.")
+  })
   it('hands over what the part made in one line', () => {
     expect(handoverLine([{ name: 'Scene 1 Still — Ishita.png', type: 'image/png' }])).toBe("Here's Scene 1 Still — Ishita.")
     expect(handoverLine([{ name: 'Scene 2.png', type: 'image/png' }, { name: 'Scene 3.png', type: 'image/png' }])).toBe('Here are Scene 2 and Scene 3.')

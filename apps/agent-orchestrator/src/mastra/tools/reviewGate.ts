@@ -9,10 +9,10 @@ import { REVIEWED_FLOW_MARKERS } from './oneVideoPerTurn.js'
 // prompt: 2026-10-06 a Lakmē ad made stills 2 and 3 straight after still 1, and
 // scene 3 came back with an extra arm that only a review could catch.
 
-export type ShotKind = 'still' | 'clip'
+export type ShotKind = 'still' | 'clip' | 'voice'
 
 const REVIEW_TTL_MS = 6 * 60 * 60 * 1000
-const reviewed = new Map<string, { still?: number; clip?: number }>()
+const reviewed = new Map<string, { still?: number; clip?: number; voice?: number }>()
 
 type ContextLike = { get?: (key: string) => unknown; set?: (key: string, value: unknown) => void } | Record<string, unknown> | undefined
 
@@ -67,6 +67,31 @@ export function firstShotUnreviewed(ctx: ContextLike, kind: ShotKind, count: num
   if (read(ctx, 'allowMode') === 'auto') return false
   if (read(ctx, AD_FLOW_KEY) !== true) return false
   return !shotReviewed(read(ctx, 'conversationId') as string | undefined, kind)
+}
+
+// Narration, like stills: the first line alone, heard by the user, then the
+// rest in one take. 2026-10-07 (Pip ad): three lines were made and mixed with
+// nobody hearing the voice, and they ran over each other.
+const narrationsMade = new Map<string, number>()
+
+export function noteNarrationMade(conversationId: string | undefined): void {
+  if (!conversationId) return
+  narrationsMade.set(conversationId, (narrationsMade.get(conversationId) ?? 0) + 1)
+  if (narrationsMade.size > 5000) narrationsMade.delete(narrationsMade.keys().next().value as string)
+}
+
+/** True when this narration must wait: an ad flow in Ask mode, a line already made, and the voice not heard yet. */
+export function firstVoiceUnreviewed(ctx: ContextLike): boolean {
+  if (read(ctx, 'allowMode') === 'auto') return false
+  if (read(ctx, AD_FLOW_KEY) !== true) return false
+  const conversationId = read(ctx, 'conversationId') as string | undefined
+  if (!conversationId || (narrationsMade.get(conversationId) ?? 0) === 0) return false
+  return !shotReviewed(conversationId, 'voice')
+}
+
+export const FIRST_VOICE_REFUSAL = {
+  refused: true as const,
+  refusalReason: 'FIRST_ONE_FIRST: the user has not heard the narration voice yet. Make nothing more now: stop and return the first line you made to Olmo, who plays it to the user with review_shots kind "voice". After they say continue, make the rest of the narration as ONE generate_narration call — every remaining line in one script, same voiceId and direction.',
 }
 
 export function firstShotRefusal(kind: ShotKind) {
