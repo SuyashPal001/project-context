@@ -13,8 +13,11 @@ import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
 import { chooseCardColumn, faceBoxes, sampleFrames } from './tvcChecks.js'
 import { finishedAdTitle } from './fileTitle.js'
+import { carriesLegalTextPath } from './legalText.js'
 
 const execFile = promisify(execFileCb)
+
+const END_CARD_OVER_DISCLAIMER = 'END_CARD_OVER_DISCLAIMER: this video already carries its disclaimer, and the end card would cover it. Lay the end card on the packshot clip first and run overlay_text last (the finish slice\'s finishOrder)'
 
 const COMPOSITE_SUBJECT = 'ffmpeg-composite-end-card'
 const FFMPEG_TIMEOUT_MS = 60_000
@@ -104,7 +107,7 @@ export const inputSchema = z.object({
 
 export const compositeEndCard = createTool({
   id: 'composite-end-card',
-  description: 'Overlays the real product photo onto the last beat\'s clip, dissolving in over its final second and a half — the end card is always composited from the real photo, never AI-rendered, to avoid wordmark/brand-name garbling. Animated ad: run BEFORE assemble_clips, on beat 4 only. UGC or talking-head ad: run on the finished (tightened) ad with holdSeconds 1.5, so the card follows the last words.',
+  description: 'Overlays the real product photo onto the last beat\'s clip, dissolving in over its final second and a half — the end card is always composited from the real photo, never AI-rendered, to avoid wordmark/brand-name garbling. Animated ad: run BEFORE assemble_clips, on beat 4 only. UGC or talking-head ad: run on the finished (tightened) ad with holdSeconds 1.5, so the card follows the last words. Never run it on a video that already carries a disclaimer from overlay_text (refused with END_CARD_OVER_DISCLAIMER); in the TVC finish the end card always comes first.',
   inputSchema,
   outputSchema,
   requireApproval: async (_input, ctx) =>
@@ -129,6 +132,12 @@ export const compositeEndCard = createTool({
         fetchPresignedUrl(videoFileId, idToken),
         fetchPresignedUrl(productPhotoFileId, idToken),
       ])
+
+      // E4: overlay_text marks the key of every video it burned a disclaimer
+      // into; an end card laid over it would hide the disclaimer. Refused
+      // before the charge, so this costs nothing.
+      if (carriesLegalTextPath(videoUrl)) return { refused: true, refusalReason: END_CARD_OVER_DISCLAIMER, jobId }
+
       ;[{ filePath: videoPath }, { filePath: photoPath }] = await Promise.all([
         downloadToSessionCache(scopeId, videoFileId, videoUrl, MAX_SOURCE_BYTES),
         downloadToSessionCache(scopeId, productPhotoFileId, photoUrl, MAX_SOURCE_BYTES),

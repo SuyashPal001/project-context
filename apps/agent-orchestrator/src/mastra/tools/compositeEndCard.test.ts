@@ -188,3 +188,32 @@ describe('compositeEndCard avoidFaces (O1)', () => {
     expect(chooseCardColumn).not.toHaveBeenCalled()
   })
 })
+
+describe('the end card never covers a disclaimer (E4)', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+  const run = async () => {
+    const { compositeEndCard } = await import('./compositeEndCard.js')
+    const rc = new RequestContext()
+    for (const [k, v] of Object.entries({ tenantId: 't1', agentId: 'a1', conversationId: 'c1', idToken: 'tok' })) rc.set(k, v)
+    return compositeEndCard.execute!({ videoFileId: 'v1', productPhotoFileId: 'p1', aspectRatio: '16:9' } as never, { requestContext: rc, agent: { toolCallId: 'call-1' } } as never)
+  }
+  it('refuses END_CARD_OVER_DISCLAIMER before any charge, download or ffmpeg', async () => {
+    isUnlimited.mockResolvedValue(false)
+    resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 1_000 } })
+    fetchPresignedUrl.mockImplementation(async (fileId: string) => (fileId === 'v1'
+      ? 'https://cdn.example/generated/c1/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa-legal-text-video-with-text-overlay.mp4?X-Amz-Signature=x'
+      : `https://cdn.example/${fileId}`))
+    const result = await run()
+    expect(result).toMatchObject({ refused: true, refusalReason: expect.stringMatching(/^END_CARD_OVER_DISCLAIMER: /) })
+    expect(spendCredits).not.toHaveBeenCalled()
+    expect(downloadToSessionCache).not.toHaveBeenCalled()
+    expect(execFile).not.toHaveBeenCalled()
+  })
+  it('does not refuse a packshot clip with no disclaimer', async () => {
+    isUnlimited.mockResolvedValue(true)
+    fetchPresignedUrl.mockImplementation(async (fileId: string) => `https://cdn.example/generated/c1/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa-${fileId}.mp4`)
+    downloadToSessionCache.mockRejectedValue(new Error('stop here'))
+    expect(await run()).toMatchObject({ refused: true, refusalReason: 'SOURCE_UNAVAILABLE' })
+    expect(downloadToSessionCache).toHaveBeenCalled()
+  })
+})
