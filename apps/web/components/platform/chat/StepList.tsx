@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { useTheme } from 'next-themes';
 import { ThinkingOrb } from 'thinking-orbs';
 import { PixelLoader } from './PixelLoader';
 import type { LiveStep } from './types';
@@ -84,11 +86,26 @@ const amberMark = (
     </svg>
 );
 
+// The orbs draw on a canvas, so they take a colour value, not a CSS class:
+// read our accent (--shimmer-accent: deep rose in light, pale rose in dark)
+// and read it again when the theme changes (2026-10-07: they were grey).
+function useAccentInk(): string | undefined {
+    const { resolvedTheme } = useTheme();
+    const [ink, setInk] = useState<string>();
+    useEffect(() => {
+        const value = getComputedStyle(document.documentElement).getPropertyValue('--shimmer-accent').trim();
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- reads a CSS value only available after paint
+        setInk(/^(#|rgb)/.test(value) ? value : undefined);
+    }, [resolvedTheme]);
+    return ink;
+}
+
 function RowIcon({ row, live }: { row: StepRow; live: boolean }) {
+    const ink = useAccentInk();
     // Picture edits ripple (the user liked it there, 2026-10-07); every other
     // step keeps its orb, so pictures morph circle → triangle → square.
     if (row.running && live && row.key === 'edits') return <PixelLoader kind="step" label={`${row.label} in progress`} />;
-    if (row.running && live) return <ThinkingOrb state={ORB_FOR_KIND[row.kind]} size={20} aria-label={`${row.label} in progress`} />;
+    if (row.running && live) return <ThinkingOrb state={ORB_FOR_KIND[row.kind]} size={20} color={ink} aria-label={`${row.label} in progress`} />;
     if (row.waiting) return (
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-muted-foreground" aria-label="waiting for your OK">
             <path d="M5 3.5v7M9 3.5v7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
