@@ -13,6 +13,7 @@ import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
 import { chooseTextPosition, faceBoxes, sampleFrames, type Box } from './tvcChecks.js'
 import { LEGAL_BOX_PADDING, LEGAL_FONT, LEGAL_MAX_LINES, LEGAL_TEXT_KEY_MARKER, escapeAssText, firstWords, legalAssFontSize, legalLineCount, tooWideWord, wrapLegal, type Frame } from './legalText.js'
+import { MOTIONS, PRICE_MIN_SECONDS, effectiveMotion, motionTags, priceDialogue, priceError, priceFontSizes, priceSchema, priceTooShortReason, type Motion, type Price } from './textMotion.js'
 
 export { escapeAssText }
 
@@ -38,6 +39,8 @@ export interface TextOverlay {
   endSeconds: number
   position: keyof typeof ALIGNMENTS
   size?: OverlaySize
+  motion?: Motion
+  price?: Price
 }
 
 export function formatAssTimestamp(seconds: number): string {
@@ -71,6 +74,15 @@ export function legalStyles(frame: Frame): string[] {
     `Style: ${pos}-legal,${LEGAL_FONT},${size},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,3,${LEGAL_BOX_PADDING},0,${ALIGNMENTS[pos]},60,60,${pos === 'center' ? 0 : 160},1`)
 }
 
+/** M2: the price super. Noto Sans (it has Devanagari digits, X6), bold, white
+ *  with the same outline and shadow as the other styles, sized from the real
+ *  frame's shorter side. Only added when a call has a price. */
+export function priceStyles(frame: Frame): string[] {
+  const { amount } = priceFontSizes(frame)
+  return (Object.keys(ALIGNMENTS) as (keyof typeof ALIGNMENTS)[]).map((pos) =>
+    `Style: ${pos}-price,${LEGAL_FONT},${amount},&H00FFFFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,4,1,${ALIGNMENTS[pos]},60,60,${pos === 'center' ? 0 : 160},1`)
+}
+
 /** E5: while a disclaimer is on screen it owns its band; other text in that
  *  band moves to the first band no disclaimer holds (center, then top). */
 export function resolveLegalBands(overlays: TextOverlay[]): TextOverlay[] {
@@ -95,18 +107,25 @@ export async function probeFrame(videoPath: string): Promise<Frame> {
   return { width: stream.width, height: stream.height }
 }
 
-const dialogueText = (o: TextOverlay, frame?: Frame): string =>
-  o.size === 'legal' && frame ? wrapLegal(escapeAssText(o.text), frame).join('\\N') : escapeAssText(o.text)
+const dialogueText = (o: TextOverlay, frame?: Frame): string => {
+  if (o.price && frame) return priceDialogue(o.price, frame).text
+  return o.size === 'legal' && frame ? wrapLegal(escapeAssText(o.text), frame).join('\\N') : escapeAssText(o.text)
+}
+const styleFor = (o: TextOverlay): string => (o.price ? `${o.position}-price` : `${o.position}-${o.size ?? 'medium'}`)
 
 export function buildAss(overlays: TextOverlay[], frame?: Frame): string {
   const hasLegal = overlays.some((o) => o.size === 'legal')
+  const hasPrice = overlays.some((o) => o.price)
   if (hasLegal && !frame) throw new Error('LEGAL_NEEDS_FRAME')
+  if (hasPrice && !frame) throw new Error('PRICE_NEEDS_FRAME')
   const styles = (Object.keys(ALIGNMENTS) as (keyof typeof ALIGNMENTS)[])
     .flatMap((pos) => (Object.keys(FONT_SIZES) as (keyof typeof FONT_SIZES)[]).map((size) =>
       `Style: ${pos}-${size},DejaVu Sans,${FONT_SIZES[size]},&H00FFFFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,4,1,${ALIGNMENTS[pos]},60,60,${pos === 'center' ? 0 : 160},1`))
   if (hasLegal) styles.push(...legalStyles(frame!))
+  if (hasPrice) styles.push(...priceStyles(frame!))
+  // M1: the motion tags (none = '') go first, then the escaped text.
   const events = overlays.map((o) =>
-    `Dialogue: 0,${formatAssTimestamp(o.startSeconds)},${formatAssTimestamp(o.endSeconds)},${o.position}-${o.size ?? 'medium'},,0,0,0,,${dialogueText(o, frame)}`)
+    `Dialogue: 0,${formatAssTimestamp(o.startSeconds)},${formatAssTimestamp(o.endSeconds)},${styleFor(o)},,0,0,0,,${motionTags(effectiveMotion(o), o.position)}${dialogueText(o, frame)}`)
   return [
     '[Script Info]',
     'ScriptType: v4.00+',
@@ -146,6 +165,8 @@ export const inputSchema = z.object({
     endSeconds: z.number().min(0),
     position: z.enum(['top', 'center', 'bottom']),
     size: z.enum(['small', 'medium', 'large', 'legal']).optional().describe('Defaults to medium. "legal" is only for a disclaimer: ASCI size from the real frame, an opaque box, at most 2 lines, always the bottom band'),
+    motion: z.enum(MOTIONS).optional().describe('How the text comes in: none (the default, static), pop, slide_up, fade, or stamp (for prices). A disclaimer never moves; under 0.6s on screen any move becomes fade'),
+    price: priceSchema.optional().describe('A price super: the amount large, an optional struck-through MRP and a short note under it; text is ignored, size is ignored, and it stamps in unless motion says otherwise. At least 1.2s on screen'),
   }).refine((o) => o.endSeconds > o.startSeconds, { message: 'endSeconds must be greater than startSeconds' }))
     .min(1).max(12),
   avoidFaces: z.boolean().optional().describe('Keep the text off faces: finds faces in each overlay\'s time window and moves it to a clear band (TVC tagline and end card)'),
@@ -153,7 +174,7 @@ export const inputSchema = z.object({
 
 export const overlayText = createTool({
   id: 'overlay-text',
-  description: 'Burns one or more timed text overlays (e.g. hook copy) onto an existing video at a chosen position and time window. Composited in post over a clean plate — on-screen text is never baked into generation, so a copy edit is a re-run of this tool, not a re-render. Heavy sans-serif, white fill, dark outline. Size "legal" is the disclaimer style (ASCI size worked out from the real frame, opaque box, at most 2 lines, bottom); a disclaimer that needs more than 2 lines is refused with LEGAL_TOO_LONG, uncharged.',
+  description: 'Burns one or more timed text overlays (e.g. hook copy) onto an existing video at a chosen position and time window. Composited in post over a clean plate — on-screen text is never baked into generation, so a copy edit is a re-run of this tool, not a re-render. Heavy sans-serif, white fill, dark outline. Size "legal" is the disclaimer style (ASCI size worked out from the real frame, opaque box, at most 2 lines, bottom); a disclaimer that needs more than 2 lines is refused with LEGAL_TOO_LONG, uncharged. Text can move: motion pop, slide_up, fade or stamp (default none, static); a disclaimer never moves. price shows a price super (the amount large, an optional struck-through MRP and a note) that stamps in; a bad price is refused with PRICE_INVALID, PRICE_MRP_NOT_HIGHER or PRICE_TOO_SHORT, uncharged.',
   inputSchema,
   outputSchema,
   requireApproval: async (_input, ctx) =>
@@ -176,6 +197,16 @@ export const overlayText = createTool({
       return { refused: true, refusalReason: 'INVALID_OVERLAY', jobId }
     }
 
+    // M2/X7: a price is checked before anything is downloaded or charged.
+    for (const o of overlays) {
+      if (!o.price) continue
+      const err = priceError(o.price)
+      if (err) return { refused: true, refusalReason: err, jobId }
+      const seconds = o.endSeconds - o.startSeconds
+      if (seconds < PRICE_MIN_SECONDS - 1e-9) return { refused: true, refusalReason: priceTooShortReason(seconds), jobId }
+    }
+    const hasPrice = overlays.some((o) => o.price)
+
     const hasLegal = overlays.some((o) => o.size === 'legal')
     // L1: a disclaimer always asks for the bottom band (avoidFaces may still move it).
     const requested: TextOverlay[] = hasLegal ? overlays.map((o) => (o.size === 'legal' ? { ...o, position: 'bottom' as const } : o)) : overlays
@@ -193,7 +224,7 @@ export const overlayText = createTool({
     // L1: the frame decides the legal size and the line count; both are
     // checked before the charge, so a refusal here costs nothing.
     let frame: Frame | undefined
-    if (hasLegal) {
+    if (hasLegal || hasPrice) {
       try {
         frame = await probeFrame(videoPath)
       } catch (err) {
@@ -210,6 +241,11 @@ export const overlayText = createTool({
         const lines = legalLineCount(text, frame)
         if (lines > LEGAL_MAX_LINES) {
           return { refused: true, refusalReason: `LEGAL_TOO_LONG: the disclaimer "${firstWords(o.text)}" needs ${lines} lines; ASCI allows 2. Shorten it`, jobId }
+        }
+      }
+      for (const o of requested) {
+        if (o.price && priceDialogue(o.price, frame).tooWide) {
+          return { refused: true, refusalReason: `PRICE_INVALID: "${o.price.amount}" is too wide to show on one line; write it shorter`, jobId }
         }
       }
     }

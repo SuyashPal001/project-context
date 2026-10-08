@@ -36,7 +36,7 @@ vi.mock('./tvcChecks.js', async (importOriginal) => {
 })
 import * as fs from 'node:fs'
 
-import { inputSchema, escapeAssText, formatAssTimestamp, buildAss, overlayText, applyFacePlacement, legalStyles, resolveLegalBands } from './overlayText.js'
+import { inputSchema, escapeAssText, formatAssTimestamp, buildAss, overlayText, applyFacePlacement, legalStyles, priceStyles, resolveLegalBands } from './overlayText.js'
 
 function ctx(values: Record<string, string>) {
   const requestContext = new RequestContext()
@@ -330,5 +330,100 @@ describe('other text leaves the disclaimer\'s band (E5, Review Focus 5)', () => 
   it('returns the very same array when there is no disclaimer', () => {
     const input = [okOverlay]
     expect(resolveLegalBands(input)).toBe(input)
+  })
+})
+
+const LEGAL_PIN = [
+  { text: 'Soft all day', startSeconds: 12, endSeconds: 15, position: 'center' as const, size: 'large' as const },
+  { text: 'Based on a lab test. Results may vary.', startSeconds: 3, endSeconds: 9, position: 'bottom' as const, size: 'legal' as const },
+]
+const LEGAL_PIN_SHA_16_9 = '501904cebc7a1779fdbf6c8cff242a7b33904b1fbe445b5cd3505c9f99f47f0b'
+const LEGAL_PIN_SHA_9_16 = '6af377cb85b2337257710005a1a2575472e5fc62ca2ff8e04a89a68eca717ada'
+
+describe('Part 2.2 leaves today\'s output alone (X10, X12, Review Focus 1)', () => {
+  it('legacy and legal ASS are byte-identical', () => {
+    expect(sha(buildAss(LEGACY))).toBe(LEGACY_SHA)
+    expect(sha(buildAss(LEGAL_PIN, { width: 1920, height: 1080 }))).toBe(LEGAL_PIN_SHA_16_9)
+    expect(sha(buildAss(LEGAL_PIN, { width: 1080, height: 1920 }))).toBe(LEGAL_PIN_SHA_9_16)
+  })
+})
+
+describe('motion and price never disturb old calls (Review Focus 1)', () => {
+  it('motion "none" is the same as no motion', () => {
+    expect(sha(buildAss(LEGACY.map((o) => ({ ...o, motion: 'none' as const }))))).toBe(LEGACY_SHA)
+  })
+  it('a disclaimer asked to move stays static (X8)', () => {
+    const moved = LEGAL_PIN.map((o) => (o.size === 'legal' ? { ...o, motion: 'pop' as const } : o))
+    expect(sha(buildAss(moved, { width: 1920, height: 1080 }))).toBe(LEGAL_PIN_SHA_16_9)
+  })
+})
+
+describe('motion (M1)', () => {
+  it('writes the preset tags before the escaped text (Review Focus 3)', () => {
+    const ass = buildAss([{ ...okOverlay, text: 'Stop {\\pos(0,0)}scrolling', motion: 'pop' }])
+    expect(ass).toContain('Dialogue: 0,0:00:00.00,0:00:02.00,top-medium,,0,0,0,,{\\fad(120,120)\\fscx80\\fscy80\\t(0,180,\\fscx100\\fscy100)}Stop pos(0,0)scrolling')
+    expect(ass).not.toContain('-price,')
+  })
+  it('a short window turns an asked move into fade', () => {
+    expect(buildAss([{ ...okOverlay, endSeconds: 0.5, motion: 'slide_up' }])).toContain(',,{\\fad(150,150)}Stop scrolling')
+  })
+  it('a motion-only call never probes the frame: one ffmpeg call, the plain upload', async () => {
+    execFile.mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (err: Error | null) => void) => cb(null))
+    vi.mocked(fs.readFileSync).mockReturnValueOnce(Buffer.from('mp4'))
+    uploadGeneratedFile.mockResolvedValueOnce({ fileId: 'out1', name: 'o.mp4', type: 'video/mp4', size: 3 })
+    const result = await overlayText.execute!({ videoFileId: 'v1', overlays: [{ ...okOverlay, motion: 'slide_up' }] } as never, baseCtx())
+    expect(result).toMatchObject({ fileId: 'out1' })
+    expect(execFile).toHaveBeenCalledTimes(1)
+    expect(execFile.mock.calls[0][0]).toBe('ffmpeg')
+    const assWrite = vi.mocked(fs.writeFileSync).mock.calls.find((c) => String(c[0]).endsWith('overlay.ass'))!
+    expect(String(assWrite[1])).toContain(',,{\\fad(120,120)\\move(540,237,540,160,0,220)}Stop scrolling')
+    expect(uploadFileWithKey).not.toHaveBeenCalled()
+  })
+  it('the schema takes the five presets as strings and refuses anything else', () => {
+    expect(inputSchema.safeParse({ videoFileId: 'v1', overlays: [{ ...okOverlay, motion: 'stamp' }] }).success).toBe(true)
+    expect(inputSchema.safeParse({ videoFileId: 'v1', overlays: [{ ...okOverlay, motion: 'spin' }] }).success).toBe(false)
+  })
+})
+
+describe('the price super (M2)', () => {
+  const price = { amount: '₹499', mrp: '₹699', note: 'Launch offer' }
+  it('adds the price styles only for a price, and lays it out from the real frame with a stamp', () => {
+    const ass = buildAss([{ ...okOverlay, position: 'center', text: 'ignored', price }], { width: 1080, height: 1920 })
+    expect(ass).toContain('Style: center-price,Noto Sans,144,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,4,1,5,60,60,0,1')
+    expect(ass).toContain(',center-price,,0,0,0,,{\\fad(0,120)\\fscx130\\fscy130\\t(0,100,\\fscx115\\fscy115)\\t(100,140,\\fscx100\\fscy100)\\3c&HFFFFFF&\\t(40,41,\\3c&H000000&)}{\\fs86\\s1}₹699{\\s0\\fs144}\\h₹499\\N{\\fs65}Launch offer')
+    expect(ass).not.toContain('ignored')
+    expect(priceStyles({ width: 1920, height: 1080 })[0]).toBe('Style: bottom-price,Noto Sans,256,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,4,1,2,60,60,160,1')
+    expect(buildAss([okOverlay])).not.toContain('-price,')
+    expect(() => buildAss([{ ...okOverlay, price }])).toThrow('PRICE_NEEDS_FRAME')
+  })
+  it.each([
+    [{ amount: 'cheap' }, 2, /^PRICE_INVALID: /],
+    [{ amount: '₹499', mrp: '₹399' }, 2, /^PRICE_MRP_NOT_HIGHER: /],
+    [{ amount: '₹499' }, 1, /^PRICE_TOO_SHORT: /],
+  ])('refuses %o before any download, probe or charge', async (p, end, reason) => {
+    const result = await overlayText.execute!({ videoFileId: 'v1', overlays: [{ ...okOverlay, endSeconds: end, price: p }] } as never, baseCtx())
+    expect(result).toMatchObject({ refused: true, refusalReason: expect.stringMatching(reason) })
+    expect(downloadToSessionCache).not.toHaveBeenCalled()
+    expect(execFile).not.toHaveBeenCalled()
+    expect(spendCredits).not.toHaveBeenCalled()
+  })
+  it('probes the frame for a price and refuses one too wide for it, uncharged', async () => {
+    probeAnd(1080, 1920)
+    const result = await overlayText.execute!({ videoFileId: 'v1', overlays: [{ ...okOverlay, price: { amount: `₹${'9'.repeat(14)}` } }] } as never, baseCtx())
+    expect(result).toMatchObject({ refused: true, refusalReason: expect.stringMatching(/^PRICE_INVALID: .*too wide/) })
+    expect(spendCredits).not.toHaveBeenCalled()
+    expect(execFile.mock.calls.map((c) => c[0])).toEqual(['ffprobe'])
+  })
+  it('burns a price: one probe, one ffmpeg call, one charge, the plain upload', async () => {
+    probeAnd(1920, 1080)
+    vi.mocked(fs.readFileSync).mockReturnValueOnce(Buffer.from('mp4'))
+    uploadGeneratedFile.mockResolvedValueOnce({ fileId: 'out1', name: 'o.mp4', type: 'video/mp4', size: 3 })
+    const result = await overlayText.execute!({ videoFileId: 'v1', overlays: [{ ...okOverlay, position: 'center', price }] } as never, baseCtx())
+    expect(result).toMatchObject({ fileId: 'out1' })
+    expect(execFile.mock.calls.map((c) => c[0])).toEqual(['ffprobe', 'ffmpeg'])
+    expect(spendCredits).toHaveBeenCalledTimes(1)
+    const assWrite = vi.mocked(fs.writeFileSync).mock.calls.find((c) => String(c[0]).endsWith('overlay.ass'))!
+    expect(String(assWrite[1])).toContain('{\\fs154\\s1}₹699{\\s0\\fs256}\\h₹499\\N{\\fs115}Launch offer')
+    expect(uploadGeneratedFile).toHaveBeenCalledWith('tok', expect.objectContaining({ title: 'Video with Text Overlay' }))
   })
 })
