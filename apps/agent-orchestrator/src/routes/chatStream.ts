@@ -31,6 +31,7 @@ import { inputFileIdsOf, madeNewFile, markWorkingFiles } from './workingFiles.js
 import { handoverLine } from './turnAnswer.js'
 import { stepStart, stepEnd, type StepEvent } from './stepEvents.js'
 import { buildCancelNotice, backgroundDeclineReason, trackBackgroundDecline, waitForBackgroundDecline } from './cancelNotice.js'
+import { findSuspendedApproval, declineStaleApprovals, type ResumeApproval } from './suspendedApprovals.js'
 
 async function generateFollowUps(userMessage: string, assistantReply: string): Promise<string[]> {
   const prompt = `Based on this conversation turn, generate exactly 3 short, natural follow-up questions the user might want to ask next.
@@ -89,7 +90,14 @@ export interface ChatStreamOpts {
   // conversation (its own local message list) — cheaper than a DB round
   // trip here to re-derive it.
   isFirstMessage?: boolean
+  /** Answer to an approval card whose page is gone: resume that run instead of sending `message` (suspendedApprovals.ts). */
+  resume?: ResumeApproval
 }
+
+// The run was answered, expired (watchdog, 24h) or was never kept.
+const APPROVAL_EXPIRED_TEXT = 'That request has expired, so nothing was made. Ask again and I will set it up.'
+// A card from an earlier visit, left unanswered when the user wrote something new.
+const STALE_APPROVAL_REASON = 'The user did not answer this and has since sent a new message. It was not run. Do not retry it unless the new message asks for it, and do not reply about it.'
 
 type ContentPart =
   | { type: 'text'; text: string }
@@ -253,7 +261,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     message, displayMessage, attachments, conversationId, tenantId,
     internalUserId, idToken, agentId, sessionId, startTime,
     workingMemoryPromise, sendEvent: sendToBrowser, sendHeartbeat, closeStream, isStreamClosed, onClientStop,
-    folderId, folderPrefix, allowMode, skillsUsed, isFirstMessage,
+    folderId, folderPrefix, allowMode, skillsUsed, isFirstMessage, resume,
   } = opts
   // The newest id token for this conversation — see freshIdToken.ts.
   const liveIdToken = (): string => latestIdToken(conversationId, idToken)
@@ -759,8 +767,58 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         },
       }
 
+      let currentStream: any
+      if (resume) {
+        // A card answered after its page went away: find its run again and
+        // continue it here, in this new turn (suspendedApprovals.ts).
+        const live = pendingToolApprovals.get(resume.toolCallId)
+        if (live && live.tenantId === tenantId) {
+          // Its page is still open somewhere: answer it there.
+          pendingToolApprovals.delete(resume.toolCallId)
+          live.resolve({ confirmed: resume.decision === 'approved', declineReason: resume.declineReason })
+          sendEvent('done', { text: '', conversationId, messageId: assistantMessageId })
+          closeStream()
+          return
+        }
+        const found = await findSuspendedApproval(activeAgent as never, conversationId, tenantId, resume.toolCallId)
+        if (resume.cardMessageId && idToken) {
+          updateGenerationConfirmRequest(liveIdToken(), conversationId, resume.cardMessageId, {
+            status: found && resume.decision === 'approved' ? 'approved' : 'declined',
+            decisionAt: new Date().toISOString(),
+            ...(resume.declineReason ? { declineReason: resume.declineReason } : {}),
+          })
+        }
+        if (!found) {
+          console.log(`[sse:${sessionId}] resume: no suspended run for toolCallId=${resume.toolCallId.slice(-10)}; telling the user it expired`)
+          sendEvent('approval_expired', { confirmationId: resume.toolCallId, conversationId })
+          const out = appendText('parent', APPROVAL_EXPIRED_TEXT)
+          if (out) sendEvent('delta', { text: out, conversationId })
+          sendEvent('done', { text: fullText, conversationId, messageId: assistantMessageId })
+          saveTurn()
+          stopHeartbeat()
+          closeStream()
+          return
+        }
+        console.log(`[sse:${sessionId}] resume: ${resume.decision} runId=${found.runId} toolCallId=${resume.toolCallId.slice(-10)} tool=${found.toolName ?? ''}`)
+        if (resume.decision === 'approved') {
+          generationActivity++
+          if (found.toolName) {
+            toolCallNames.set(resume.toolCallId, found.toolName)
+            holdStep(found.toolName, resume.toolCallId, found.args ?? {}, 'running')
+          }
+          currentStream = await (activeAgent as any).approveToolCall({ runId: found.runId, toolCallId: resume.toolCallId, requestContext, memory: titleMemory, ...olmoOptions })
+        } else {
+          currentStream = await (activeAgent as any).declineToolCall({ runId: found.runId, toolCallId: resume.toolCallId, reason: resume.declineReason ?? DECLINED_BY_USER_REASON, requestContext, memory: titleMemory, ...olmoOptions })
+        }
+      } else {
+      // A card from an earlier visit still waiting on this chat is declined
+      // first, so its run never resumes alongside this one.
+      if (conversationId) {
+        const stale = await declineStaleApprovals(activeAgent as never, conversationId, tenantId, (id) => pendingToolApprovals.has(id), STALE_APPROVAL_REASON)
+        if (stale) mark(`declined ${stale} stale approval(s)`)
+      }
       mark('calling agent.stream')
-      let currentStream: any = await (activeAgent as any).stream(mastraMessage, {
+      currentStream = await (activeAgent as any).stream(mastraMessage, {
         memory: {
           thread: conversationId || crypto.randomUUID(),
           resource: tenantId,
@@ -773,6 +831,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         ...(skillInvocationPrepareStep ? { prepareStep: skillInvocationPrepareStep } : {}),
       })
       mark('agent.stream returned')
+      }
 
     turnLoop: while (true) {
     for await (const part of currentStream.fullStream as AsyncIterable<any>) {
@@ -955,7 +1014,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // watchdog's 24h sweep declines the underlying Mastra run directly
           // — which this in-process await never sees resolve, matching the
           // spec's accepted trade-off for a connection abandoned that long.
-          const { confirmed, declineReason } = await new Promise<{ confirmed: boolean; declineReason?: string }>((resolve) => {
+          const { confirmed, declineReason, abandoned } = await new Promise<{ confirmed: boolean; declineReason?: string; abandoned?: boolean }>((resolve) => {
             pendingToolApprovals.set(toolCallId, {
               resolve, tenantId, runId, toolCallId,
               messageId: approvalMessageId, conversationId, idToken: liveIdToken(),
@@ -964,6 +1023,13 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
           sessionActiveToolApprovals.get(sessionId)?.delete(toolCallId)
           if (sessionActiveToolApprovals.get(sessionId)?.size === 0) sessionActiveToolApprovals.delete(sessionId)
+          // The page went away unanswered: leave the run suspended and the card
+          // pending, so the card still works after a reload (suspendedApprovals.ts).
+          // What this turn made so far was saved by the stop handler.
+          if (abandoned) {
+            console.log(`[sse:${sessionId}] approval left open on disconnect runId=${runId} toolCallId=${toolCallId.slice(-10)} tool=${toolName}`)
+            break turnLoop
+          }
           resumeTurn(confirmed ? 'Approve' : declineReason?.trim() || 'Cancel')
 
           // The user just answered the card, so the browser handed over a fresh

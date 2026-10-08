@@ -150,7 +150,9 @@ export const pendingToolApprovals = new Map<string, {
   // declineReason carries the user's free-text note when they decline
   // instead of approving — same channel ClarificationAnswer.freeText
   // already uses, forwarded to Mastra's declineToolCall({ reason }).
-  resolve: (result: { confirmed: boolean; declineReason?: string }) => void
+  // abandoned: the page went away unanswered. The run is left suspended in
+  // storage so a later click on the card can still resume it (suspendedApprovals.ts).
+  resolve: (result: { confirmed: boolean; declineReason?: string; abandoned?: boolean }) => void
   tenantId: string
   runId: string
   toolCallId: string

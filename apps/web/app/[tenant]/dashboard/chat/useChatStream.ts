@@ -2,7 +2,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useChat } from '@/hooks/useChat';
+import { useChat, type ResumeApproval } from '@/hooks/useChat';
 import { toast } from 'sonner';
 import type { CanvasAction, CanvasEventData, ArtifactType } from '@/components/platform/canvas/types';
 import type { ToolCall, CompletedToolCall, Message, MessagePart, MessagesResponse, ArtifactRef, MessageAttachment, LiveStep } from '@/components/platform/chat/types';
@@ -804,7 +804,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [conversationId]);
 
-    const sendMessage = async (content: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>) => {
+    const sendMessage = async (content: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>, resumeApproval?: ResumeApproval) => {
         if (!content.trim() && (!attachments || attachments.length === 0)) return;
         if (isStreaming || isPreparingMessageRef.current) return;
 
@@ -873,7 +873,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             // useChat marks the transport as streaming synchronously before its
             // first await, so control passes directly from preparation to the
             // existing streaming state without enabling the composer between.
-            const streamPromise = sendChatMessage(content, enriched, skillsUsed, isFirstMessage);
+            const streamPromise = sendChatMessage(content, enriched, skillsUsed, isFirstMessage, resumeApproval);
             isPreparingMessageRef.current = false;
             setIsPreparingMessage(false);
             await streamPromise;

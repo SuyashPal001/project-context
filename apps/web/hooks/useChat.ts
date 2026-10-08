@@ -50,10 +50,14 @@ export interface UseChatOptions {
     onTurnResume?: (payload: Record<string, unknown>) => void;
 }
 
+/** Answers an approval card whose page is gone: the orchestrator resumes that stored run. */
+export interface ResumeApproval { confirmationId: string; decision: 'approved' | 'declined'; reason?: string; cardMessageId?: string }
+
 export interface UseChatReturn {
-    sendMessage: (text: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>, isFirstMessage?: boolean) => Promise<void>;
+    sendMessage: (text: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>, isFirstMessage?: boolean, resumeApproval?: ResumeApproval) => Promise<void>;
     sendApproval: (approvalId: string, decision: 'approved' | 'dismissed') => Promise<boolean>;
-    sendGenerationConfirm: (confirmationId: string, decision: 'approved' | 'declined', reason?: string) => Promise<boolean>;
+    /** 'gone': no open page holds this card any more (reload, restart) — resume it through sendMessage. */
+    sendGenerationConfirm: (confirmationId: string, decision: 'approved' | 'declined', reason?: string) => Promise<boolean | 'gone'>;
     sendClarificationAnswer: (clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }) => Promise<boolean | 'expired'>;
     sendUploadAnswer: (uploadId: string, answer: { files: { fileId: string; name: string; type: string }[]; freeText?: string; skipped?: boolean }) => Promise<boolean>;
     cancel: () => void;
@@ -95,11 +99,11 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const parserRef = useRef(new SSEParser());
-    const sendMessageRef = useRef<((text: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>, isFirstMessage?: boolean) => Promise<void>) | null>(null);
+    const sendMessageRef = useRef<((text: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>, isFirstMessage?: boolean, resumeApproval?: ResumeApproval) => Promise<void>) | null>(null);
 
     const retryStartRef = useRef<number | null>(null);
     const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const pendingRetryPayloadRef = useRef<{ text: string; attachments?: Attachment[]; skillsUsed?: Array<{ id: string; name: string }>; isFirstMessage?: boolean } | null>(null);
+    const pendingRetryPayloadRef = useRef<{ text: string; attachments?: Attachment[]; skillsUsed?: Array<{ id: string; name: string }>; isFirstMessage?: boolean; resumeApproval?: ResumeApproval } | null>(null);
 
     // Keep latest option callbacks in refs so they never stale-close over props.
     const onDeltaRef = useRef(onDelta);
@@ -172,6 +176,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                         pendingRetryPayloadRef.current.attachments,
                         pendingRetryPayloadRef.current.skillsUsed,
                         pendingRetryPayloadRef.current.isFirstMessage,
+                        pendingRetryPayloadRef.current.resumeApproval,
                     );
                 }
             }, RETRY_INTERVAL_MS);
@@ -190,7 +195,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         setIsStreaming(false);
     }, [clearRetry]);
 
-    const sendMessage = useCallback(async (text: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>, isFirstMessage?: boolean) => {
+    const sendMessage = useCallback(async (text: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>, isFirstMessage?: boolean, resumeApproval?: ResumeApproval) => {
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
         }
@@ -198,7 +203,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
-        pendingRetryPayloadRef.current = { text, attachments, skillsUsed, isFirstMessage };
+        pendingRetryPayloadRef.current = { text, attachments, skillsUsed, isFirstMessage, resumeApproval };
 
         let { accessToken: token, idToken } = await getFreshAuthTokens();
 
@@ -233,6 +238,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                 ...(folderIdRef.current ? { folderId: folderIdRef.current } : {}),
                 ...(folderPrefixRef.current ? { folderPrefix: folderPrefixRef.current } : {}),
                 ...(allowModeRef.current ? { allowMode: allowModeRef.current } : {}),
+                ...(resumeApproval ? { resumeApproval } : {}),
             }),
             signal: controller.signal,
         });
@@ -594,7 +600,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         confirmationId: string,
         decision: 'approved' | 'declined',
         reason?: string,
-    ): Promise<boolean> => {
+    ): Promise<boolean | 'gone'> => {
         const { accessToken, idToken } = await getFreshAuthTokens();
         if (!accessToken) return false;
 
@@ -609,6 +615,9 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                 },
                 body: JSON.stringify({ confirmationId, decision, ...(reason ? { reason } : {}) }),
             });
+            // 404: no open page is waiting on this card (it was left on a reload,
+            // a closed tab or an orchestrator restart). Its run may still be kept.
+            if (res.status === 404) return 'gone';
             return res.ok;
         } catch {
             return false;

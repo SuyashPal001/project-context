@@ -16,16 +16,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // external deps) and '@mastra/core/request-context' (real RequestContext
 // class — safe to construct in-process, no I/O).
 
-const { approveToolCall, declineToolCall, streamMock, agents } = vi.hoisted(() => {
+const { approveToolCall, declineToolCall, streamMock, listSuspendedRuns, agents } = vi.hoisted(() => {
   const approveToolCall = vi.fn()
   const declineToolCall = vi.fn()
   const streamMock = vi.fn()
+  const listSuspendedRuns = vi.fn()
   // Two distinct fake agents sharing the same spies. chatStream.ts gates the
   // Olmo delegation options on `activeAgent === platformAgent`, so which one
   // resolveAgent returns decides whether those options are sent.
-  const olmo = { stream: streamMock, approveToolCall, declineToolCall }
-  const other = { stream: streamMock, approveToolCall, declineToolCall }
-  return { approveToolCall, declineToolCall, streamMock, agents: { olmo, other, current: 'other' as 'olmo' | 'other' } }
+  const olmo = { stream: streamMock, approveToolCall, declineToolCall, listSuspendedRuns }
+  const other = { stream: streamMock, approveToolCall, declineToolCall, listSuspendedRuns }
+  return { approveToolCall, declineToolCall, streamMock, listSuspendedRuns, agents: { olmo, other, current: 'other' as 'olmo' | 'other' } }
 })
 
 function fakeStream(chunks: any[], runId: string) {
@@ -179,6 +180,55 @@ describe('runChatStream — tool-call-approval round trip', () => {
     vi.clearAllMocks()
     pendingToolApprovals.clear()
     agents.current = 'other'
+    listSuspendedRuns.mockResolvedValue({ runs: [] })
+  })
+
+  it('a page that goes away unanswered leaves the run suspended and the card pending', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [{ type: 'tool-call-approval', payload: { toolName: 'generate-image', toolCallId: 'tc-ab', args: { prompt: 'a cat' } } }],
+      'run-ab',
+    ))
+    const runPromise = runChatStream(baseOpts({ sendEvent: vi.fn() }))
+    await vi.waitFor(() => expect(pendingToolApprovals.get('tc-ab')).toBeTruthy())
+    pendingToolApprovals.get('tc-ab')?.resolve({ confirmed: false, abandoned: true })
+    await runPromise
+    expect(declineToolCall).not.toHaveBeenCalled()
+    expect(approveToolCall).not.toHaveBeenCalled()
+    expect(persistence.updateGenerationConfirmRequest).not.toHaveBeenCalled()
+  })
+
+  it('a card clicked after its page went away resumes the stored run', async () => {
+    listSuspendedRuns.mockResolvedValueOnce({ runs: [{ runId: 'run-s', toolCalls: [{ toolCallId: 'tc-s', toolName: 'generate-image', args: { prompt: 'a cat' }, requiresApproval: true }] }] })
+    approveToolCall.mockResolvedValueOnce(fakeStream([{ type: 'finish', payload: { output: { usage: {} } } }], 'run-s'))
+    const sendEvent = vi.fn()
+    await runChatStream(baseOpts({ sendEvent, message: 'Approve', displayMessage: 'Approve', resume: { toolCallId: 'tc-s', decision: 'approved', cardMessageId: 'card-1' } }))
+    expect(listSuspendedRuns).toHaveBeenCalledWith({ threadId: 'conv-1', resourceId: 'tenant-1' })
+    expect(streamMock).not.toHaveBeenCalled()
+    expect(approveToolCall).toHaveBeenCalledWith(expect.objectContaining({ runId: 'run-s', toolCallId: 'tc-s', requestContext: expect.anything() }))
+    expect(persistence.updateGenerationConfirmRequest).toHaveBeenCalledWith(expect.anything(), 'conv-1', 'card-1', expect.objectContaining({ status: 'approved' }))
+  })
+
+  it('a card whose run is gone says it expired and makes nothing', async () => {
+    const sendEvent = vi.fn()
+    const closeStream = vi.fn()
+    await runChatStream(baseOpts({ sendEvent, closeStream, message: 'Approve', displayMessage: 'Approve', resume: { toolCallId: 'tc-gone', decision: 'approved', cardMessageId: 'card-2' } }))
+    expect(approveToolCall).not.toHaveBeenCalled()
+    expect(streamMock).not.toHaveBeenCalled()
+    expect(sendEvent).toHaveBeenCalledWith('approval_expired', expect.objectContaining({ confirmationId: 'tc-gone' }))
+    expect(sendEvent).toHaveBeenCalledWith('done', expect.objectContaining({ text: expect.stringContaining('expired') }))
+    expect(persistence.updateGenerationConfirmRequest).toHaveBeenCalledWith(expect.anything(), 'conv-1', 'card-2', expect.objectContaining({ status: 'declined' }))
+    expect(closeStream).toHaveBeenCalled()
+  })
+
+  it('a new message first declines a card left waiting from an earlier visit', async () => {
+    const consumeStream = vi.fn().mockResolvedValue(undefined)
+    listSuspendedRuns.mockResolvedValueOnce({ runs: [{ runId: 'run-old', toolCalls: [{ toolCallId: 'tc-old', requiresApproval: true }] }] })
+    declineToolCall.mockResolvedValueOnce({ consumeStream })
+    streamMock.mockResolvedValueOnce(fakeStream([{ type: 'finish', payload: { output: { usage: {} } } }], 'run-new'))
+    await runChatStream(baseOpts({ sendEvent: vi.fn() }))
+    expect(declineToolCall).toHaveBeenCalledWith(expect.objectContaining({ runId: 'run-old', toolCallId: 'tc-old' }))
+    expect(consumeStream).toHaveBeenCalled()
+    expect(declineToolCall.mock.invocationCallOrder[0]).toBeLessThan(streamMock.mock.invocationCallOrder[0])
   })
 
   it('approves: sends generation_confirm_request, then resumes via approveToolCall', async () => {

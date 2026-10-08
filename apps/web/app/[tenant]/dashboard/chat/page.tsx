@@ -519,8 +519,23 @@ function ChatPage() {
         );
     }, [conversationId, queryClient, sendApproval]);
 
+    // Marks the card answered in the local list, so its overlay closes at once.
+    const markGenerationConfirm = useCallback((messageId: string, status: 'approved' | 'declined', reason?: string) => {
+        queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
+            old ? { data: old.data.map(m => m.id === messageId ? { ...m, generationConfirmRequest: m.generationConfirmRequest ? { ...m.generationConfirmRequest, status, decisionAt: new Date().toISOString(), ...(reason ? { declineReason: reason } : {}) } : undefined } : m) } : old
+        );
+    }, [conversationId, queryClient]);
+
     const handleGenerationConfirm = useCallback(async (messageId: string, confirmationId: string) => {
         const ok = await sendGenerationConfirm(confirmationId, 'approved');
+        if (ok === 'gone') {
+            // The page that showed this card is gone (reload, closed tab,
+            // restart), but its run may still be kept: answer it as a new turn.
+            // The orchestrator says so in the reply when it has expired.
+            markGenerationConfirm(messageId, 'approved');
+            sendMessage('Approve', undefined, undefined, { confirmationId, decision: 'approved', cardMessageId: messageId });
+            return;
+        }
         if (!ok) {
             console.error(`generation-confirm POST failed for confirmationId=${confirmationId}`);
             toast.error('Could not confirm generation. Please try again.');
@@ -534,10 +549,15 @@ function ChatPage() {
         queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
             old ? { data: old.data.map(m => m.id === messageId ? { ...m, generationConfirmRequest: m.generationConfirmRequest ? { ...m.generationConfirmRequest, status: resolvedStatus, decisionAt: new Date().toISOString() } : undefined } : m) } : old
         );
-    }, [conversationId, queryClient, sendGenerationConfirm]);
+    }, [conversationId, queryClient, sendGenerationConfirm, sendMessage, markGenerationConfirm]);
 
     const handleGenerationDecline = useCallback(async (messageId: string, confirmationId: string, reason?: string) => {
         const ok = await sendGenerationConfirm(confirmationId, 'declined', reason);
+        if (ok === 'gone') {
+            markGenerationConfirm(messageId, 'declined', reason);
+            sendMessage(reason?.trim() || 'Cancel', undefined, undefined, { confirmationId, decision: 'declined', ...(reason ? { reason } : {}), cardMessageId: messageId });
+            return;
+        }
         if (!ok) {
             console.error(`generation-confirm POST failed for confirmationId=${confirmationId}`);
             toast.error('Could not record your response. Please try again.');
@@ -547,7 +567,7 @@ function ChatPage() {
         queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
             old ? { data: old.data.map(m => m.id === messageId ? { ...m, generationConfirmRequest: m.generationConfirmRequest ? { ...m.generationConfirmRequest, status: 'declined' as const, decisionAt: new Date().toISOString(), ...(reason ? { declineReason: reason } : {}) } : undefined } : m) } : old
         );
-    }, [conversationId, queryClient, sendGenerationConfirm]);
+    }, [conversationId, queryClient, sendGenerationConfirm, sendMessage, markGenerationConfirm]);
 
     // Tracks, per clarificationId, whether every answer submitted so far was a
     // skip — used to label the completed card "Skipped" only when the WHOLE

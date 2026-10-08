@@ -6,6 +6,7 @@ import { agentBelongsToTenant, fetchAgentMemory } from '../usage.js'
 import { checkCreditBalance } from '../credits.js'
 import { filterTypedPII } from '../pii-filter.js'
 import { runChatStream } from './chatStream.js'
+import { parseResumeApproval } from './suspendedApprovals.js'
 import { isInternalServiceKey } from '../service-key.js'
 import { releaseMCPClientForSession } from '../mastra/tools.js'
 import {
@@ -98,8 +99,15 @@ chatRouter.post('/api/chat', async (c) => {
         !!s && typeof s === 'object' && typeof (s as any).id === 'string' && typeof (s as any).name === 'string')
     : []
   const isFirstMessage = (body as Record<string, unknown>).isFirstMessage === true
+  // A click on an approval card whose page is gone: the turn resumes that run
+  // instead of starting from a new message (suspendedApprovals.ts).
+  const rawResume = (body as Record<string, unknown>).resumeApproval
+  const resumeApproval = rawResume === undefined ? null : parseResumeApproval(rawResume)
+  if (rawResume !== undefined && !resumeApproval) {
+    return c.json({ error: 'invalid resumeApproval' }, 400)
+  }
 
-  if (!conversationId || (!rawMessage && attachments.length === 0)) {
+  if (!conversationId || (!rawMessage && attachments.length === 0 && !resumeApproval)) {
     return c.json({ error: 'conversationId and message or attachments are required' }, 400)
   }
 
@@ -265,26 +273,22 @@ chatRouter.post('/api/chat', async (c) => {
         }
       }
 
-      // Resolve every pending tool-call approval for this session
-      // immediately on disconnect — same reasoning as the clarification
-      // block above, don't leave the agent's Mastra run suspended
-      // indefinitely waiting on an in-process await nobody can answer
-      // anymore. The underlying Mastra run stays suspended in storage;
-      // only this local await is resolved (as a decline) so the request
-      // handler can finish. The watchdog's 24h sweep is what eventually
-      // declines the Mastra-side run itself if it's never revisited.
+      // Release every pending tool-call approval for this session on
+      // disconnect, so the request handler can finish instead of awaiting an
+      // answer nobody can give on this connection. The Mastra run itself
+      // stays suspended in storage.
       const approvalIds = sessionActiveToolApprovals.get(sessionId)
       if (approvalIds) {
         for (const toolCallId of Array.from(approvalIds)) {
           const pending = pendingToolApprovals.get(toolCallId)
           if (pending) {
             pendingToolApprovals.delete(toolCallId)
-            // Resolve only — no 'declined' PATCH here. chatStream.ts's
-            // turnLoop writes that PATCH unconditionally as soon as this
-            // promise resolves, from any resolver (the frontend decision
-            // route or this disconnect handler), so writing it here too
-            // would double every disconnect write.
-            pending.resolve({ confirmed: false })
+            // Abandoned, not declined: the card stays pending and its run stays
+            // suspended in storage, so a click after a reload resumes it
+            // (suspendedApprovals.ts). The watchdog's 24h sweep declines it if
+            // nobody ever does. Before 2026-10-09 this declined the run, and a
+            // dropped connection cancelled a video the user had not answered.
+            pending.resolve({ confirmed: false, abandoned: true })
           }
         }
         sessionActiveToolApprovals.delete(sessionId)
@@ -320,6 +324,7 @@ chatRouter.post('/api/chat', async (c) => {
     isStreamClosed: () => streamClosed,
     onClientStop: (handler) => { clientStopHandler = handler },
     folderId, folderPrefix, allowMode, skillsUsed, isFirstMessage,
+    ...(resumeApproval ? { resume: resumeApproval } : {}),
   })
 
   const origin = getAllowedOrigin(c.req.header('Origin'))
