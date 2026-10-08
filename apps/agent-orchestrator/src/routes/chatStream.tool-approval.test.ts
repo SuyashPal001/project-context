@@ -1087,6 +1087,73 @@ describe('runChatStream — a question ends the part of the turn before it', () 
   })
 })
 
+describe('runChatStream — a question answered after its page went away', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    pendingToolApprovals.clear()
+    agents.current = 'other'
+    listSuspendedRuns.mockResolvedValue({ runs: [] })
+  })
+
+  function detachedRun(then: Array<Record<string, unknown>>) {
+    streamMock.mockResolvedValueOnce(fakeStream([
+      { type: 'text-delta', payload: { text: 'Here is the plan.' } },
+      { type: 'tool-call-approval', payload: { toolName: 'generate-image', toolCallId: 'tc-dt', args: { prompt: 'a cat' } } },
+    ], 'run-dt'))
+    approveToolCall.mockResolvedValueOnce(fakeStream(then, 'run-dt'))
+    let closed = false
+    let stop!: () => void
+    const runPromise = runChatStream(baseOpts({
+      sendEvent: vi.fn(), isStreamClosed: () => closed,
+      onClientStop: (handler) => { stop = handler },
+    }))
+    const leave = () => { closed = true; stop() }
+    return { runPromise, leave }
+  }
+
+  it('carries on with nobody watching and saves the reply and the answer', async () => {
+    const { runPromise, leave } = detachedRun([
+      { type: 'text-delta', payload: { text: 'Here is the storyboard.' } },
+      { type: 'finish', payload: { output: { usage: {} } } },
+    ])
+    await vi.waitFor(() => expect(pendingToolApprovals.get('tc-dt')).toBeTruthy())
+    leave()
+    // The reloaded page answers the card that is still open.
+    pendingToolApprovals.get('tc-dt')?.resolve({ confirmed: true })
+    await runPromise
+    expect(vi.mocked(persistence.saveUserMessage).mock.calls.map((c) => c[2])).toEqual(['draw a cat', 'Approve'])
+    expect(vi.mocked(persistence.saveAssistantMessage).mock.calls.map((c) => c[2])).toEqual(['Here is the plan.', 'Here is the storyboard.'])
+  })
+
+  it('ends quietly when its question times out unanswered', async () => {
+    const { runPromise, leave } = detachedRun([
+      { type: 'text-delta', payload: { text: 'You did not answer.' } },
+      { type: 'finish', payload: { output: { usage: {} } } },
+    ])
+    await vi.waitFor(() => expect(pendingToolApprovals.get('tc-dt')).toBeTruthy())
+    leave()
+    const ctx = streamMock.mock.calls[0][1].requestContext
+    ctx.get('endIfDetached')()
+    pendingToolApprovals.get('tc-dt')?.resolve({ confirmed: true })
+    await runPromise
+    expect(vi.mocked(persistence.saveAssistantMessage).mock.calls.map((c) => c[2])).toEqual(['Here is the plan.'])
+  })
+
+  it('a Stop with no question open still ends the turn without saving a late reply', async () => {
+    let closed = false
+    let stop!: () => void
+    streamMock.mockResolvedValueOnce({ runId: 'run-x', fullStream: (async function* () {
+      yield { type: 'text-delta', payload: { text: 'Partial' } }
+      closed = true; stop()
+      yield { type: 'text-delta', payload: { text: ' and more' } }
+      yield { type: 'finish', payload: { output: { usage: {} } } }
+    })() })
+    await runChatStream(baseOpts({ sendEvent: vi.fn(), isStreamClosed: () => closed, onClientStop: (h) => { stop = h } }))
+    const saved = vi.mocked(persistence.saveAssistantMessage).mock.calls.map((c) => c[2])
+    expect(saved).toEqual(['Partial'])
+  })
+})
+
 describe('runChatStream — a part with no words hands its work over', () => {
   beforeEach(() => {
     vi.clearAllMocks()

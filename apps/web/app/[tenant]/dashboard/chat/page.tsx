@@ -24,6 +24,7 @@ import { ChatListToggle } from "./ChatListToggle";
 import { usePersonaAnimationState } from "@/components/platform/personas/usePersonaAnimationState";
 import { useChatPage } from "./useChatPage";
 import { useChatStream } from "./useChatStream";
+import { useDetachedReplyWatch } from "./useDetachedReplyWatch";
 import { shouldShowConversationWelcome } from "./conversationWelcomeState";
 import { useCanvas } from "@/hooks/useCanvas";
 import { useVoice } from "@/hooks/useVoice";
@@ -213,6 +214,10 @@ function ChatPage() {
         openCanvas,
     });
     const { sendMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, sendUploadAnswer, cancel, isStreaming, isPreparingMessage, isRetrying, activeToolCalls, completedToolCalls, liveSteps, reasoningText, traceAfterSeq, eventError, warmupMessage, agentTimedOut, hasSentFirstMessage, lastStreamEvent, regenerate, editAndResubmit } = stream;
+    // A card answered after a reload: its reply arrives without a stream (useDetachedReplyWatch).
+    const detachedReply = useDetachedReplyWatch(conversationId, messages, queryClient);
+    // The answer went to a turn this page has no stream for.
+    const noLiveStream = !isStreaming && !isPreparingMessage;
 
     const { state: animationState, onStreamEvent } = usePersonaAnimationState();
     const [decayedState, setDecayedState] = useState<typeof animationState>('idle');
@@ -541,7 +546,7 @@ function ChatPage() {
         if (!ok) {
             console.error(`generation-confirm POST failed for confirmationId=${confirmationId}`);
             toast.error('Could not confirm generation. Please try again.');
-        }
+        } else if (noLiveStream) detachedReply.watch();
         // Mark the local card resolved even on failure — otherwise the overlay
         // stays up and the composer stays hidden (awaitingGenerationConfirmReply
         // reads this same status) with no way for the user to recover. A failed
@@ -551,7 +556,7 @@ function ChatPage() {
         queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
             old ? { data: old.data.map(m => m.id === messageId ? { ...m, generationConfirmRequest: m.generationConfirmRequest ? { ...m.generationConfirmRequest, status: resolvedStatus, decisionAt: new Date().toISOString() } : undefined } : m) } : old
         );
-    }, [conversationId, queryClient, sendGenerationConfirm, sendMessage, markGenerationConfirm, isStreaming, isPreparingMessage]);
+    }, [conversationId, queryClient, sendGenerationConfirm, sendMessage, markGenerationConfirm, isStreaming, isPreparingMessage, noLiveStream, detachedReply]);
 
     const handleGenerationDecline = useCallback(async (messageId: string, confirmationId: string, reason?: string) => {
         const ok = await sendGenerationConfirm(confirmationId, 'declined', reason);
@@ -564,13 +569,13 @@ function ChatPage() {
         if (!ok) {
             console.error(`generation-confirm POST failed for confirmationId=${confirmationId}`);
             toast.error('Could not record your response. Please try again.');
-        }
+        } else if (noLiveStream) detachedReply.watch();
         // Same recovery as handleGenerationConfirm above: resolve the local card
         // regardless of POST success so the composer becomes usable again.
         queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
             old ? { data: old.data.map(m => m.id === messageId ? { ...m, generationConfirmRequest: m.generationConfirmRequest ? { ...m.generationConfirmRequest, status: 'declined' as const, decisionAt: new Date().toISOString(), ...(reason ? { declineReason: reason } : {}) } : undefined } : m) } : old
         );
-    }, [conversationId, queryClient, sendGenerationConfirm, sendMessage, markGenerationConfirm, isStreaming, isPreparingMessage]);
+    }, [conversationId, queryClient, sendGenerationConfirm, sendMessage, markGenerationConfirm, isStreaming, isPreparingMessage, noLiveStream, detachedReply]);
 
     // Tracks, per clarificationId, whether every answer submitted so far was a
     // skip — used to label the completed card "Skipped" only when the WHOLE
@@ -626,6 +631,7 @@ function ChatPage() {
         // reflects the full answered-index set, not just "this was the last
         // page", since chevron nav lets the user submit out of order.
         if (allAnswered) {
+            if (noLiveStream) detachedReply.watch();
             const finalStatus = (tracker.get(clarificationId) ?? false) ? 'skipped' as const : 'answered' as const;
             const answers = clarificationAnswersRef.current.get(clarificationId);
             tracker.delete(clarificationId);
@@ -654,7 +660,7 @@ function ChatPage() {
             );
         }
         return true;
-    }, [conversationId, queryClient, sendClarificationAnswer, sendMessage, isStreaming, isPreparingMessage]);
+    }, [conversationId, queryClient, sendClarificationAnswer, sendMessage, isStreaming, isPreparingMessage, noLiveStream, detachedReply]);
 
     const handleUploadAnswer = useCallback(async (messageId: string, uploadId: string, answer: { files: { fileId: string; name: string; type: string }[]; freeText?: string; skipped?: boolean }): Promise<boolean> => {
         const ok = await sendUploadAnswer(uploadId, answer);
@@ -662,6 +668,7 @@ function ChatPage() {
             toast.error('Could not submit your upload. Please try again.');
             return false;
         }
+        if (noLiveStream) detachedReply.watch();
         queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
             old ? {
                 data: old.data.map(m => m.id === messageId ? {
@@ -678,7 +685,7 @@ function ChatPage() {
             } : old
         );
         return true;
-    }, [conversationId, queryClient, sendUploadAnswer]);
+    }, [conversationId, queryClient, sendUploadAnswer, noLiveStream, detachedReply]);
 
     const sidebarToggleButton = (
         <ChatListToggle
@@ -814,7 +821,7 @@ function ChatPage() {
                                     )
                                 ) : (
                                     <>
-                                        <MessageThread messages={displayedMessages} isLoading={isLoadingMessages} isTyping={isStreaming || isPreparingMessage || isRetrying || stagedFirstMessage !== null} isStreaming={isStreaming || isPreparingMessage} isRetrying={isRetrying} activeToolCalls={Array.from(activeToolCalls.values())} completedToolCalls={completedToolCalls} liveSteps={liveSteps} reasoningText={reasoningText} traceAfterSeq={traceAfterSeq} error={eventError} warmupMessage={warmupMessage} onApprove={handleApprove} onDismiss={handleDismiss} onGenerationConfirm={handleGenerationConfirm} onGenerationDecline={handleGenerationDecline} onClarificationAnswer={handleClarificationAnswer} onUploadAnswer={handleUploadAnswer} onFollowUpSelect={(text) => { if (!isStreaming && !isPreparingMessage) sendMessage(text); }} onRegenerate={regenerate} onEditAndResubmit={editAndResubmit} agentAvatarUrl={selectedConversation.agent?.avatarUrl} agentPersona={selectedConversation.agent?.persona} agentIsDefault={selectedConversation.agent?.origin === "built_in"} agentName={selectedConversation.agent?.name} avatarLiveState={displayState} />
+                                        <MessageThread messages={displayedMessages} isLoading={isLoadingMessages} isTyping={isStreaming || isPreparingMessage || isRetrying || stagedFirstMessage !== null || detachedReply.watching} isStreaming={isStreaming || isPreparingMessage} isRetrying={isRetrying} activeToolCalls={Array.from(activeToolCalls.values())} completedToolCalls={completedToolCalls} liveSteps={liveSteps} reasoningText={reasoningText} traceAfterSeq={traceAfterSeq} error={eventError} warmupMessage={warmupMessage} onApprove={handleApprove} onDismiss={handleDismiss} onGenerationConfirm={handleGenerationConfirm} onGenerationDecline={handleGenerationDecline} onClarificationAnswer={handleClarificationAnswer} onUploadAnswer={handleUploadAnswer} onFollowUpSelect={(text) => { if (!isStreaming && !isPreparingMessage) sendMessage(text); }} onRegenerate={regenerate} onEditAndResubmit={editAndResubmit} agentAvatarUrl={selectedConversation.agent?.avatarUrl} agentPersona={selectedConversation.agent?.persona} agentIsDefault={selectedConversation.agent?.origin === "built_in"} agentName={selectedConversation.agent?.name} avatarLiveState={displayState} />
                                         <ChatTimelineNavigator messages={displayedMessages} />
                                         {!awaitingClarificationReply && !awaitingGenerationConfirmReply && !awaitingUploadReply && (
                                             <div className="shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">

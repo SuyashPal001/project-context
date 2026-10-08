@@ -13,12 +13,10 @@ import {
   Attachment,
   getAllowedOrigin, INTERNAL_SERVICE_KEY, API_BASE_URL,
   sseApprovalChannels,
-  sessionActiveClarification, pendingClarifications,
   sessionActiveToolApprovals, pendingToolApprovals,
-  sessionActiveUpload, pendingUploads,
   checkRateLimit,
 } from '../types.js'
-import { updateClarificationRequest, updateUploadRequest, fetchConversationAccess } from '../persistence.js'
+import { fetchConversationAccess } from '../persistence.js'
 
 // ─── SSE chat endpoint ────────────────────────────────────────────────────────
 
@@ -264,31 +262,12 @@ chatRouter.post('/api/chat', async (c) => {
       try { clientStopHandler?.() } catch (err) { console.error(`[sse:${sessionId}] stop save failed:`, (err as Error).message) }
       sseApprovalChannels.delete(sessionId)
       releaseMCPClientForSession(sessionId)
-      // Resolve any pending clarification immediately so the server-side agent
-      // doesn't stay blocked for up to 120s after the client has gone away.
-      const clarId = sessionActiveClarification.get(sessionId)
-      if (clarId) {
-        const pending = pendingClarifications.get(clarId)
-        if (pending) {
-          clearTimeout(pending.timer)
-          pendingClarifications.delete(clarId)
-          sessionActiveClarification.delete(sessionId)
-          const collected = pending.collected
-          pending.resolve(collected)
-          if (pending.messageId && pending.conversationId && pending.idToken) {
-            const allSkipped = collected.length === 0 || collected.every((a) => a.skipped === true)
-            const answersMap: Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean }> = {}
-            for (const a of collected) {
-              answersMap[a.questionIndex] = { selectedIndex: a.selectedIndex, freeText: a.freeText, skipped: a.skipped }
-            }
-            updateClarificationRequest(pending.idToken, pending.conversationId, pending.messageId, {
-              status: allSkipped ? 'skipped' : 'answered',
-              answers: Object.keys(answersMap).length > 0 ? answersMap : undefined,
-              answeredAt: new Date().toISOString(),
-            })
-          }
-        }
-      }
+      // An open question or upload request is left open: the page may come
+      // back (a reload) and answer it, and the turn then carries on detached
+      // and saves its reply (chatStream.ts onClientStop). Its own timeout ends
+      // it if nobody does. Before 2026-10-09 this resolved it as skipped, and
+      // when the server noticed late, an answer after a reload ran a turn
+      // whose reply was never saved.
 
       // Release every pending tool-call approval for this session on
       // disconnect, so the request handler can finish instead of awaiting an
@@ -311,25 +290,6 @@ chatRouter.post('/api/chat', async (c) => {
         sessionActiveToolApprovals.delete(sessionId)
       }
 
-      // Resolve any pending upload request immediately, same reasoning as the
-      // clarification block above — don't leave the agent blocked for up to
-      // UPLOAD_TIMEOUT_MS after the client is gone.
-      const uploadId = sessionActiveUpload.get(sessionId)
-      if (uploadId) {
-        const pending = pendingUploads.get(uploadId)
-        if (pending) {
-          clearTimeout(pending.timer)
-          pendingUploads.delete(uploadId)
-          sessionActiveUpload.delete(sessionId)
-          pending.resolve({ files: [], skipped: true })
-          if (pending.messageId && pending.conversationId && pending.idToken) {
-            updateUploadRequest(pending.idToken, pending.conversationId, pending.messageId, {
-              status: 'skipped',
-              answeredAt: new Date().toISOString(),
-            })
-          }
-        }
-      }
     },
   })
 

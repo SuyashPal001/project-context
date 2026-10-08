@@ -687,8 +687,15 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // the same one throughout — only how the turn is saved and shown changes
     // (2026-10-07: one ever-growing block hid every answer and picture inside it).
     let paused = false
+    // The page went away while a question was open (onClientStop below): the
+    // turn waits on, and if the question is answered (after a reload) it
+    // carries on with nobody watching and saves its reply, which the reloaded
+    // page picks up. Without this the reply went to the closed connection and
+    // was never saved (2026-10-09, the Pebbi earbuds plan).
+    let detached = false
+    const live = (): boolean => !isStreamClosed() || detached
     const pauseTurn = (): void => {
-      if (paused || backgroundDecline || isStreamClosed()) return
+      if (paused || backgroundDecline || !live()) return
       paused = true
       // A part that made pictures or clips but has no words hands them over
       // in one line before the question (handoverLine, turnAnswer.ts).
@@ -717,8 +724,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const resumeTurn = (answer: string, files?: Array<{ fileId: string; name: string; type: string }>): void => {
       if (!paused) return
       paused = false
-      // The page closed while the question was open: nothing was answered.
-      if (isStreamClosed()) return
+      // The page closed and the question timed out: nothing was answered.
+      if (!live()) return
       const at = Date.now()
       const text = answer.trim() || 'OK'
       sendEvent('turn_resume', { conversationId, text, ...(files?.length ? { attachments: files } : {}) })
@@ -727,6 +734,14 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     }
     requestContext.set('pauseTurn' as never, pauseTurn as never)
     requestContext.set('resumeTurn' as never, resumeTurn as never)
+    // A detached question that times out ends the turn quietly: no reply
+    // about an answer nobody gave (askClarifyingQuestions.ts, requestUpload.ts).
+    const endIfDetached = (): void => {
+      if (!detached) return
+      console.log(`[sse:${sessionId}] detached turn ended: its question was never answered`)
+      detached = false
+    }
+    requestContext.set('endIfDetached' as never, endIfDetached as never)
 
     // Stop mid-turn: keep what was already made. The stills and clips shown so
     // far are paid for and sit in Drive; without this save the whole turn,
@@ -734,6 +749,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // "if i stop all these cards will be lost"). Saved at the moment of Stop,
     // so it never lands after a message the user sends next.
     onClientStop?.(() => {
+      if (paused && !backgroundDecline) {
+        detached = true
+        console.log(`[sse:${sessionId}] page went away during a question; the turn waits for its answer detached`)
+      }
       if (backgroundDecline || (pendingAttachments.length === 0 && !fullText.trim())) {
         // Stopped while a question was open: the parts before it are saved; the user's own message may not be yet.
         if (!backgroundDecline) saveUserOnce(displayMessage)
@@ -854,7 +873,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
     turnLoop: while (true) {
     for await (const part of currentStream.fullStream as AsyncIterable<any>) {
-      if (isStreamClosed() && !backgroundDecline) break turnLoop
+      if (!live() && !backgroundDecline) break turnLoop
 
       // TEMP INSTRUMENTATION — task 8 delegate approval test
       console.log(`[task8:${sessionId}] +${Date.now() - startTime}ms chunk type=${part.type}${part.payload?.toolName ? ` toolName=${part.payload.toolName}` : ''}${part.payload?.toolCallId ? ` toolCallId=${part.payload.toolCallId}` : ''}${part.payload?.agentId ? ` agentId=${part.payload.agentId}` : ''}`)
@@ -1264,7 +1283,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // or navigation) before the agent finished, isStreamClosed() is already
           // true here. Skip persistence so a cancelled turn can't write an
           // out-of-order message into the conversation after the user has moved on.
-          if (isStreamClosed()) break
+          // A detached turn is the exception: the user answered its question.
+          if (!live()) break
 
           saveTurn()
           if (pendingArtifactRef) fireArtifactNotification(tenantId, internalUserId, pendingArtifactRef)
