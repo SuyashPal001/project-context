@@ -11,9 +11,10 @@ import { fetchPresignedUrl, downloadToSessionCache } from './mediaCache.js'
 import { refundCompositeEndCardCharge } from './compositeEndCardCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
-import { chooseCardColumn, faceBoxes, sampleFrames } from './tvcChecks.js'
+import { chooseCardColumn, faceBoxes, sampleFrames, type Box } from './tvcChecks.js'
 import { finishedAdTitle } from './fileTitle.js'
 import { carriesLegalTextPath } from './legalText.js'
+import { LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_IMAGE, LOGO_NOT_RASTER, anyTransparent, chooseLogoSpot, containSize, logoLayout, logoRect, marksGraph, sniffImage, vegCorner, vegRect, type LogoSpot, type Marks } from './packshotMarks.js'
 
 const execFile = promisify(execFileCb)
 
@@ -37,13 +38,28 @@ export function cardOverlayX(column: 'center' | 'left' | 'right'): string {
   return column === 'left' ? 'W*0.04' : column === 'right' ? 'W-w-W*0.04' : '(W-w)/2'
 }
 
+/** M3/X2/X4: the logo's size, and whether any pixel is see-through. The
+ *  pixels are decoded at most 256 px wide (area scaling keeps partial alpha),
+ *  so a huge logo costs nothing extra. Throws if ffmpeg can't read it. */
+export async function inspectLogo(path: string): Promise<{ width: number; height: number; transparent: boolean }> {
+  const { stdout } = await execFile('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'json', path], { timeout: FFMPEG_TIMEOUT_MS })
+  const stream = (JSON.parse(stdout) as { streams?: Array<{ width?: number; height?: number }> }).streams?.[0]
+  if (!stream?.width || !stream?.height) throw new Error(`logo has no size: ${stdout}`)
+  const { stdout: rgba } = await execFile('ffmpeg', [
+    '-v', 'error', '-i', path, '-frames:v', '1',
+    '-vf', "scale=w='min(256,iw)':h=-1:flags=area,format=rgba",
+    '-f', 'rawvideo', '-pix_fmt', 'rgba', '-',
+  ], { timeout: FFMPEG_TIMEOUT_MS, encoding: 'buffer', maxBuffer: 1 << 24 })
+  return { width: stream.width, height: stream.height, transparent: anyTransparent(rgba) }
+}
+
 /** A full-frame card: the photo blurred and dimmed to fill the frame behind
  * the photo itself, fitted to 86% of the width. Scaling the photo alone left
  * a white-backed product shot pasted as a box over the scene (2026-10-05).
  * `card`, when given (O1, avoidFaces with a face detected), overrides the
  * fitted box's size and horizontal position so it sits in a side third away
  * from the face instead of the default centered 86%-width box. */
-export function endCardGraph(width: number, height: number, dissolveStart: number, holdSeconds = 0, card?: { scale: string; x: string }): string {
+function cardGraph(width: number, height: number, dissolveStart: number, holdSeconds = 0, card?: { scale: string; x: string }): string {
   const fit = Math.round(width * 0.86 / 2) * 2
   // holdSeconds > 0: the clip's last frame holds that long and the card comes
   // in over the hold, so it never covers a presenter's last words.
@@ -65,6 +81,14 @@ export function endCardGraph(width: number, height: number, dissolveStart: numbe
     `[fgsrc]scale=${fit}:${height}:force_original_aspect_ratio=decrease[fg];` +
     `[bg][fg]overlay=(W-w)/2:(H-h)/2,format=rgba,fade=t=in:st=${dissolveStart}:d=${DISSOLVE_DURATION_SECONDS}:alpha=1[card];` +
     `${baseLabel}[card]overlay=0:0:enable='gte(t,${dissolveStart})'[outv]`
+}
+
+/** The end card, plus (M3, M4) the logo and the veg mark in the same graph.
+ *  With no marks this is exactly today's graph (X10). */
+export function endCardGraph(width: number, height: number, dissolveStart: number, holdSeconds = 0, card?: { scale: string; x: string }, marks?: Marks): string {
+  const graph = cardGraph(width, height, dissolveStart, holdSeconds, card)
+  if (!marks || (!marks.logo && !marks.veg)) return graph
+  return `${graph.slice(0, -'[outv]'.length)}[carded];${marksGraph(marks)}`
 }
 
 // Deviation from the spec, stated explicitly per the writing-plans
@@ -103,17 +127,21 @@ export const inputSchema = z.object({
   aspectRatio: z.enum(['16:9', '9:16']),
   holdSeconds: z.number().min(0).max(3).optional().describe('For an ad that ends on speech (UGC, talking-head): seconds added after the video ends, its last frame held, with the card dissolving in as the video ends, so the card never covers the last words. Omit for the animated ad\'s beat 4.'),
   avoidFaces: z.boolean().optional().describe('When a person is on the last frame, shrink the card to a third and put it beside them, never over a face'),
+  logoFileId: z.string().optional().describe('TVC packshot: the brand logo the user uploaded (PNG or JPG). Laid top centre at 9% of the frame\'s shorter side, never over a face; a logo with no transparency sits on a rounded white plate. Never the product photo'),
+  vegMark: z.enum(['veg', 'non_veg']).optional().describe('Food and drink packshot only: the FSSAI veg (green dot) or non-veg (brown triangle) mark, in the bottom corner opposite the logo'),
+  disclaimerLines: z.number().int().min(1).max(2).optional().describe('From the TVC finish slice\'s endCard only: how many disclaimer lines will sit over the packshot, so the veg mark stays above them. Never guess it'),
 })
 
 export const compositeEndCard = createTool({
   id: 'composite-end-card',
-  description: 'Overlays the real product photo onto the last beat\'s clip, dissolving in over its final second and a half — the end card is always composited from the real photo, never AI-rendered, to avoid wordmark/brand-name garbling. Animated ad: run BEFORE assemble_clips, on beat 4 only. UGC or talking-head ad: run on the finished (tightened) ad with holdSeconds 1.5, so the card follows the last words. Never run it on a video that already carries a disclaimer from overlay_text (refused with END_CARD_OVER_DISCLAIMER); in the TVC finish the end card always comes first.',
+  description: 'Overlays the real product photo onto the last beat\'s clip, dissolving in over its final second and a half — the end card is always composited from the real photo, never AI-rendered, to avoid wordmark/brand-name garbling. Animated ad: run BEFORE assemble_clips, on beat 4 only. UGC or talking-head ad: run on the finished (tightened) ad with holdSeconds 1.5, so the card follows the last words. Never run it on a video that already carries a disclaimer from overlay_text (refused with END_CARD_OVER_DISCLAIMER); in the TVC finish the end card always comes first.' +
+    ' TVC packshot: logoFileId lays the brand logo top centre (9% of the shorter side; a logo with no transparency on a rounded white plate; never over a face) and vegMark the FSSAI veg or non-veg mark in the opposite bottom corner, above the disclaimer when disclaimerLines is given, all in the same pass. An SVG logo is refused with LOGO_NOT_RASTER, the product photo as the logo with LOGO_IS_PRODUCT_PHOTO, an unreadable one with LOGO_NOT_IMAGE, all uncharged.',
   inputSchema,
   outputSchema,
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'clip_assembly', subject: COMPOSITE_SUBJECT }, ctx),
   execute: async (inputData, execContext) => {
-    const { videoFileId, productPhotoFileId, aspectRatio, holdSeconds = 0, avoidFaces } = inputData as z.infer<typeof inputSchema>
+    const { videoFileId, productPhotoFileId, aspectRatio, holdSeconds = 0, avoidFaces, logoFileId, vegMark, disclaimerLines } = inputData as z.infer<typeof inputSchema>
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined
@@ -125,12 +153,17 @@ export const compositeEndCard = createTool({
 
     if (!idToken) return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE', jobId }
 
+    // M3: the logo is never the product photo. Refused before anything is fetched or charged.
+    if (logoFileId && logoFileId === productPhotoFileId) return { refused: true, refusalReason: LOGO_IS_PRODUCT_PHOTO, jobId }
+
     const scopeId = tenantId || sessionId
     let videoPath: string, photoPath: string
+    let logoPath: string | undefined
     try {
-      const [videoUrl, photoUrl] = await Promise.all([
+      const [videoUrl, photoUrl, logoUrl] = await Promise.all([
         fetchPresignedUrl(videoFileId, idToken),
         fetchPresignedUrl(productPhotoFileId, idToken),
+        logoFileId ? fetchPresignedUrl(logoFileId, idToken) : Promise.resolve(undefined),
       ])
 
       // E4: overlay_text marks the key of every video it burned a disclaimer
@@ -138,13 +171,33 @@ export const compositeEndCard = createTool({
       // before the charge, so this costs nothing.
       if (carriesLegalTextPath(videoUrl)) return { refused: true, refusalReason: END_CARD_OVER_DISCLAIMER, jobId }
 
-      ;[{ filePath: videoPath }, { filePath: photoPath }] = await Promise.all([
+      const [video, photo, logoFile] = await Promise.all([
         downloadToSessionCache(scopeId, videoFileId, videoUrl, MAX_SOURCE_BYTES),
         downloadToSessionCache(scopeId, productPhotoFileId, photoUrl, MAX_SOURCE_BYTES),
+        logoFileId && logoUrl ? downloadToSessionCache(scopeId, logoFileId, logoUrl, MAX_SOURCE_BYTES) : Promise.resolve(undefined),
       ])
+      videoPath = video.filePath
+      photoPath = photo.filePath
+      // X3: what the file really is, from its bytes, before any charge.
+      if (logoFile) {
+        const kind = sniffImage(logoFile.buf)
+        if (kind === 'svg') return { refused: true, refusalReason: LOGO_NOT_RASTER, jobId }
+        if (kind === 'other') return { refused: true, refusalReason: LOGO_NOT_IMAGE, jobId }
+        logoPath = logoFile.filePath
+      }
     } catch (err) {
       console.error(`[session:${sessionId}] compositeEndCard: failed to download sources:`, (err as Error).message)
       return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE', jobId }
+    }
+
+    let logo: { width: number; height: number; transparent: boolean } | undefined
+    if (logoPath) {
+      try {
+        logo = await inspectLogo(logoPath)
+      } catch (err) {
+        console.error(`[session:${sessionId}] compositeEndCard: logo unreadable:`, (err as Error).message)
+        return { refused: true, refusalReason: LOGO_NOT_IMAGE, jobId }
+      }
     }
 
     const attempt = 0
@@ -230,10 +283,11 @@ export const compositeEndCard = createTool({
       // failure here (gateway, sampling, parse) keeps the default centered
       // 86%-width card; it must never fail the composite.
       let cardOverride: { scale: string; x: string } | undefined
+      let faces: Box[] = []
       if (avoidFaces) {
         try {
           const [frame] = await sampleFrames(videoPath, [Math.min(clipDurationSeconds - 0.05, dissolveStart + 0.2)], workDir)
-          const faces = await faceBoxes(tenantId, frame)
+          faces = await faceBoxes(tenantId, frame)
           if (faces.length) {
             const column = chooseCardColumn(faces)
             const cardScale = `${Math.round(videoWidth / 3)}:${Math.round(videoHeight * 0.8)}`
@@ -244,7 +298,22 @@ export const compositeEndCard = createTool({
         }
       }
 
-      const filterComplex = endCardGraph(videoWidth, videoHeight, dissolveStart, holdSeconds, cardOverride)
+      // M3/M4: the logo and the veg mark join the same pass, sized from the real frame.
+      const real = { width: videoWidth, height: videoHeight }
+      let marks: Marks | undefined
+      if (logo || vegMark) {
+        marks = { dissolveStart, totalSeconds, logoInput: '[2:v]' }
+        let spot: LogoSpot | undefined
+        if (logo) {
+          const layout = logoLayout(real, !logo.transparent)
+          const size = containSize(logo.width, logo.height, layout.boxW - 2 * layout.pad, layout.boxH - 2 * layout.pad)
+          const outer = { w: size.w + 2 * layout.pad, h: size.h + 2 * layout.pad }
+          spot = chooseLogoSpot(faces, real, outer, layout.margin)
+          marks.logo = { size, rect: logoRect(spot, real, outer, layout.margin), plated: !logo.transparent, layout }
+        }
+        if (vegMark) marks.veg = { kind: vegMark, rect: vegRect(vegCorner(spot, faces, real, disclaimerLines), real, disclaimerLines) }
+      }
+      const filterComplex = endCardGraph(videoWidth, videoHeight, dissolveStart, holdSeconds, cardOverride, marks)
 
       // A plain image input (-i photoPath with no -loop) is a single frame
       // at PTS 0 with no real duration — fade's st=/d= timestamps and
@@ -257,6 +326,7 @@ export const compositeEndCard = createTool({
       await execFile('ffmpeg', [
         '-y', '-i', videoPath,
         '-loop', '1', '-framerate', '30', '-t', String(totalSeconds), '-i', photoPath,
+        ...(logoPath ? ['-loop', '1', '-framerate', '30', '-t', String(totalSeconds), '-i', logoPath] : []),
         '-filter_complex', filterComplex,
         '-map', '[outv]', '-map', '0:a?',
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
