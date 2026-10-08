@@ -283,7 +283,7 @@ describe('logo and veg mark on the packshot (M3, M4)', () => {
   const PNG_HEAD = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13])
   const OPAQUE_RGBA = Buffer.alloc(16, 255)
   const CLEAR_RGBA = Buffer.from([255, 0, 0, 255, 0, 0, 0, 0])
-  function setup(opts: { logoBuf?: Buffer; logoUnreadable?: boolean; rgba?: Buffer; faces?: Array<{ x0: number; y0: number; x1: number; y1: number }> } = {}) {
+  function setup(opts: { logoBuf?: Buffer; logoUnreadable?: boolean; rgba?: Buffer; rgbaError?: boolean; faces?: Array<{ x0: number; y0: number; x1: number; y1: number }> } = {}) {
     isUnlimited.mockResolvedValue(false)
     resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 1_000 } })
     shouldRequireApproval.mockResolvedValue(false)
@@ -296,7 +296,10 @@ describe('logo and veg mark on the packshot (M3, M4)', () => {
         return opts.logoUnreadable ? cb(new Error('Invalid data found when processing input')) : cb(null, { stdout: JSON.stringify({ streams: [{ width: 800, height: 200 }] }), stderr: '' })
       }
       if (cmd === 'ffprobe') return cb(null, { stdout: JSON.stringify({ streams: [{ width: 1920, height: 1080 }], format: { duration: '10.0' } }), stderr: '' })
-      if (args.includes('rawvideo')) return cb(null, { stdout: opts.rgba ?? OPAQUE_RGBA, stderr: '' })
+      if (args.includes('rawvideo')) {
+        if (opts.rgbaError) return cb(new Error('ffmpeg: rawvideo decode failed'))
+        return cb(null, { stdout: opts.rgba ?? OPAQUE_RGBA, stderr: '' })
+      }
       cb(null, { stdout: '', stderr: '' })
     })
     if (opts.faces) {
@@ -328,7 +331,7 @@ describe('logo and veg mark on the packshot (M3, M4)', () => {
     expect(spendCredits).not.toHaveBeenCalled()
   })
   it.each([
-    ['an SVG', Buffer.from('<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>'), 'LOGO_NOT_RASTER: upload the logo as PNG or JPG'],
+    ['an SVG', Buffer.from('<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>'), 'LOGO_NOT_RASTER: upload the logo as PNG, JPG or WebP'],
     ['a GIF', Buffer.from('GIF89a......'), expect.stringMatching(/^LOGO_NOT_IMAGE: /)],
   ])('refuses %s logo before the charge or any ffmpeg (X3)', async (_n, logoBuf, reason) => {
     setup({ logoBuf })
@@ -354,6 +357,13 @@ describe('logo and veg mark on the packshot (M3, M4)', () => {
     expect(graph).toContain("[carded][logo]overlay=790:54:enable='gte(t,8.5)'[withlogo]")
     expect(graph).toContain("[withlogo][veg]overlay=1812:749:enable='gte(t,8.5)'[outv]")
   })
+  it('ffprobe OK but the rawvideo decode fails: falls back to plated, uncharged-safe (one charge, not a refusal)', async () => {
+    setup({ rgbaError: true })
+    expect(await run({ logoFileId: 'logo1' })).toMatchObject({ fileId: 'carded1' })
+    expect(spendCredits).toHaveBeenCalledTimes(1)
+    const { graph } = composite()
+    expect(graph).toContain('color=white')
+  })
   it('a transparent logo is laid as it is, with a shadow (X2)', async () => {
     setup({ rgba: CLEAR_RGBA })
     await run({ logoFileId: 'logo1' })
@@ -368,6 +378,12 @@ describe('logo and veg mark on the packshot (M3, M4)', () => {
     const { graph } = composite()
     expect(graph).toContain("[carded][logo]overlay=1526:54:enable='gte(t,8.5)'[withlogo]")
     expect(graph).toContain("[withlogo][veg]overlay=54:972:enable='gte(t,8.5)'[outv]")
+  })
+  it('a logo always checks for a face, even with avoidFaces unset: the logo moves to a corner (Review Focus 4)', async () => {
+    setup({ faces: [{ x0: 0.4, y0: 0.02, x1: 0.6, y1: 0.3 }] })
+    await run({ logoFileId: 'logo1' })
+    const { graph } = composite()
+    expect(graph).toContain("[carded][logo]overlay=1526:54:enable='gte(t,8.5)'[outv]")
   })
   it('the veg mark alone adds no input and no logo', async () => {
     setup()

@@ -6,9 +6,9 @@
 import { LEGAL_BOX_PADDING, LEGAL_PLAY_RES_Y, legalAssFontSize, type Frame } from './legalText.js'
 import type { Box } from './tvcChecks.js'
 
-export const LOGO_IS_PRODUCT_PHOTO = 'LOGO_IS_PRODUCT_PHOTO: the logo is the product photo; ask the user for the brand\'s logo file (PNG or JPG)'
-export const LOGO_NOT_RASTER = 'LOGO_NOT_RASTER: upload the logo as PNG or JPG'
-export const LOGO_NOT_IMAGE = 'LOGO_NOT_IMAGE: the logo must be an image file (PNG or JPG); ask the user to upload one'
+export const LOGO_IS_PRODUCT_PHOTO = 'LOGO_IS_PRODUCT_PHOTO: the logo is the product photo; ask the user for the brand\'s logo file (PNG, JPG or WebP)'
+export const LOGO_NOT_RASTER = 'LOGO_NOT_RASTER: upload the logo as PNG, JPG or WebP'
+export const LOGO_NOT_IMAGE = 'LOGO_NOT_IMAGE: the logo must be an image file (PNG, JPG or WebP); ask the user to upload one'
 export const LOGO_UNCHECKED = 'LOGO_UNCHECKED: could not read the logo; try again'
 
 export const LOGO_HEIGHT_SHARE = 0.09

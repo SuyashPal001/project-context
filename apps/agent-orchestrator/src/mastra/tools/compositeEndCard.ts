@@ -39,18 +39,35 @@ export function cardOverlayX(column: 'center' | 'left' | 'right'): string {
 }
 
 /** M3/X2/X4: the logo's size, and whether any pixel is see-through. The
- *  pixels are decoded at most 256 px wide (area scaling keeps partial alpha),
- *  so a huge logo costs nothing extra. Throws if ffmpeg can't read it. */
+ *  pixels are decoded at most 256x256 (area scaling keeps partial alpha,
+ *  and clamping both dimensions bounds the decode buffer regardless of the
+ *  logo's real aspect ratio — a very wide or very tall file never risks a
+ *  zero-height scale or a maxBuffer overflow). Only an ffprobe failure means
+ *  the file is genuinely unreadable and throws (the caller refuses
+ *  LOGO_NOT_IMAGE on that). A failure decoding the rgba frame — error,
+ *  timeout, maxBuffer overflow, or an empty/truncated buffer — is
+ *  inconclusive, not "unreadable": it falls back to the plated (safe) look
+ *  with a console.warn, so the tool never fails on it. */
 export async function inspectLogo(path: string): Promise<{ width: number; height: number; transparent: boolean }> {
   const { stdout } = await execFile('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'json', path], { timeout: FFMPEG_TIMEOUT_MS })
   const stream = (JSON.parse(stdout) as { streams?: Array<{ width?: number; height?: number }> }).streams?.[0]
   if (!stream?.width || !stream?.height) throw new Error(`logo has no size: ${stdout}`)
-  const { stdout: rgba } = await execFile('ffmpeg', [
-    '-v', 'error', '-i', path, '-frames:v', '1',
-    '-vf', "scale=w='min(256,iw)':h=-1:flags=area,format=rgba",
-    '-f', 'rawvideo', '-pix_fmt', 'rgba', '-',
-  ], { timeout: FFMPEG_TIMEOUT_MS, encoding: 'buffer', maxBuffer: 1 << 24 })
-  return { width: stream.width, height: stream.height, transparent: anyTransparent(rgba) }
+  let transparent = false
+  try {
+    const { stdout: rgba } = await execFile('ffmpeg', [
+      '-v', 'error', '-i', path, '-frames:v', '1',
+      '-vf', "scale=w='min(256,iw)':h='max(1,min(256,ih))':flags=area,format=rgba",
+      '-f', 'rawvideo', '-pix_fmt', 'rgba', '-',
+    ], { timeout: FFMPEG_TIMEOUT_MS, encoding: 'buffer', maxBuffer: 1 << 24 })
+    if (rgba.length > 0 && rgba.length % 4 === 0) {
+      transparent = anyTransparent(rgba)
+    } else {
+      console.warn(`[compositeEndCard] inspectLogo: rawvideo decode returned an unusable buffer (${rgba.length} bytes) for ${path}, falling back to plated`)
+    }
+  } catch (err) {
+    console.warn(`[compositeEndCard] inspectLogo: rawvideo decode failed for ${path}, falling back to plated:`, (err as Error).message)
+  }
+  return { width: stream.width, height: stream.height, transparent }
 }
 
 /** A full-frame card: the photo blurred and dimmed to fill the frame behind
@@ -127,7 +144,7 @@ export const inputSchema = z.object({
   aspectRatio: z.enum(['16:9', '9:16']),
   holdSeconds: z.number().min(0).max(3).optional().describe('For an ad that ends on speech (UGC, talking-head): seconds added after the video ends, its last frame held, with the card dissolving in as the video ends, so the card never covers the last words. Omit for the animated ad\'s beat 4.'),
   avoidFaces: z.boolean().optional().describe('When a person is on the last frame, shrink the card to a third and put it beside them, never over a face'),
-  logoFileId: z.string().optional().describe('TVC packshot: the brand logo the user uploaded (PNG or JPG). Laid top centre at 9% of the frame\'s shorter side, never over a face; a logo with no transparency sits on a rounded white plate. Never the product photo'),
+  logoFileId: z.string().optional().describe('TVC packshot: the brand logo the user uploaded (PNG, JPG or WebP). Laid top centre at 9% of the frame\'s shorter side, never over a face; a logo with no transparency sits on a rounded white plate. Never the product photo'),
   vegMark: z.enum(['veg', 'non_veg']).optional().describe('Food and drink packshot only: the FSSAI veg (green dot) or non-veg (brown triangle) mark, in the bottom corner opposite the logo'),
   disclaimerLines: z.number().int().min(1).max(2).optional().describe('From the TVC finish slice\'s endCard only: how many disclaimer lines will sit over the packshot, so the veg mark stays above them. Never guess it'),
 })
@@ -282,19 +299,23 @@ export const compositeEndCard = createTool({
       // to a third and move it into whichever side third is clear. Any
       // failure here (gateway, sampling, parse) keeps the default centered
       // 86%-width card; it must never fail the composite.
+      // M3: the logo promises "never over a face" regardless of avoidFaces —
+      // so the same frame/face check runs whenever a logo is present, even
+      // if avoidFaces was never passed. avoidFaces keeps controlling only
+      // the pre-existing card-override behaviour below.
       let cardOverride: { scale: string; x: string } | undefined
       let faces: Box[] = []
-      if (avoidFaces) {
+      if (avoidFaces || logo) {
         try {
           const [frame] = await sampleFrames(videoPath, [Math.min(clipDurationSeconds - 0.05, dissolveStart + 0.2)], workDir)
           faces = await faceBoxes(tenantId, frame)
-          if (faces.length) {
+          if (avoidFaces && faces.length) {
             const column = chooseCardColumn(faces)
             const cardScale = `${Math.round(videoWidth / 3)}:${Math.round(videoHeight * 0.8)}`
             cardOverride = { scale: cardScale, x: cardOverlayX(column) }
           }
         } catch (err) {
-          console.warn(`[session:${sessionId}] compositeEndCard: face check failed, keeping the centred card:`, (err as Error).message)
+          console.warn(`[session:${sessionId}] compositeEndCard: face check failed, keeping the centred card and default logo spot:`, (err as Error).message)
         }
       }
 
