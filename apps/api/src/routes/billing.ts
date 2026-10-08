@@ -8,7 +8,7 @@ import { features, planEntitlements } from '@serverless-saas/database/schema/ent
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import { getCacheClient, entitlementSetKey } from '@serverless-saas/cache';
-import { grantSubscriptionCycleCredits } from '@serverless-saas/credits';
+import { grantSubscriptionCycleCredits, listActivePacks, grantCredits, MICRO_PER_CREDIT } from '@serverless-saas/credits';
 import type { AppEnv } from '../types';
 
 
@@ -207,6 +207,61 @@ billingRoutes.post('/cancel', async (c) => {
     }
 
     return c.json({ data: cancelled });
+});
+
+// POST /billing/credits/topup — buy a credit pack. The pack is looked up by
+// key server-side (never a client-supplied amount), same billing:update gate
+// as /billing/upgrade, and no real charge happens yet.
+// TODO: wire payment provider (Stripe/Paddle) before going live
+billingRoutes.post('/credits/topup', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!hasPermission(permissions, 'billing', 'update')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const schema = z.object({ packKey: z.string().min(1) });
+    const body = await c.req.json().catch(() => ({}));
+    const result = schema.safeParse(body);
+    if (!result.success) {
+        return c.json({ error: result.error.errors[0].message }, 400);
+    }
+
+    const packs = await listActivePacks();
+    const pack = packs.find((p) => p.key === result.data.packKey);
+    if (!pack) {
+        return c.json({ error: 'Credit pack not found', code: 'PACK_NOT_FOUND' }, 404);
+    }
+
+    const balanceMicro = await grantCredits({
+        tenantId,
+        amountMicro: BigInt(pack.credits) * MICRO_PER_CREDIT,
+        key: `purchase:${tenantId}:${pack.id}:${crypto.randomUUID()}`,
+        grantType: 'purchase',
+        actorId: c.get('userId') ?? null,
+        actorType: 'human',
+        reason: `credit pack purchase: ${pack.key}`,
+    });
+
+    try {
+        await db.insert(auditLog).values({
+            tenantId,
+            actorId: c.get('userId') ?? 'system',
+            actorType: 'human',
+            action: 'credits_purchased',
+            resource: 'credit_pack',
+            resourceId: pack.id,
+            metadata: { packKey: pack.key, credits: pack.credits },
+            traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
+        });
+    } catch (auditErr) {
+        console.error('Audit log write failed:', auditErr);
+    }
+
+    return c.json({ balanceMicro: String(balanceMicro) });
 });
 
 // GET /billing/invoices — list invoices for tenant

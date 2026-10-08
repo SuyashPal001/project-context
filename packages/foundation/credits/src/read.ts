@@ -1,5 +1,5 @@
-import { and, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
-import { db, creditAccounts, creditGrants, creditLedger, creditRates } from '@serverless-saas/database';
+import { and, asc, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
+import { db, creditAccounts, creditGrants, creditLedger, creditPacks, creditRates } from '@serverless-saas/database';
 import type { PricingSchema } from './rate';
 
 export interface GrantSummary {
@@ -126,6 +126,16 @@ export async function getUsageByType(tenantId: string): Promise<UsageByType> {
     else usage.text += spent;
   }
   return usage;
+}
+
+export type CreditPack = typeof creditPacks.$inferSelect;
+
+/** Purchasable packs for the tenant-facing top-up flow, active only, cheapest
+ * first — the order the credit-pack picker renders them in. */
+export async function listActivePacks(): Promise<CreditPack[]> {
+  return db.select().from(creditPacks)
+    .where(eq(creditPacks.isActive, true))
+    .orderBy(asc(creditPacks.sortOrder));
 }
 
 export interface LastGrantSummary {

@@ -8,6 +8,7 @@ import {
     resolveRate,
     costMicro,
     grantCredits,
+    listActivePacks,
     InsufficientCreditsError,
 } from '@serverless-saas/credits';
 import { hasPermission } from '@serverless-saas/permissions';
@@ -56,6 +57,27 @@ creditsRoutes.get('/balance', async (c) => {
             amountMicro: String(g.amountMicro),
             spentMicro: String(g.spentMicro),
             expiresAt: g.expiresAt ? g.expiresAt.toISOString() : null,
+        })),
+    });
+});
+
+// GET /credits/packs — purchasable credit packs for the top-up picker.
+// Priced in whole credits/cents, not micro - these are display/catalog rows,
+// never a spend_credits() input.
+creditsRoutes.get('/packs', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const permissions = requestContext?.permissions ?? [];
+    if (!hasPermission(permissions, 'credits', 'read')) return forbidden(c);
+
+    const packs = await listActivePacks();
+
+    return c.json({
+        data: packs.map((p) => ({
+            key: p.key,
+            name: p.name,
+            credits: p.credits,
+            priceCents: p.priceCents,
+            currency: p.currency,
         })),
     });
 });

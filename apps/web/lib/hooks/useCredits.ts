@@ -48,7 +48,23 @@ export function useCreditUsageByType() {
     });
 }
 
-export type CreditResourceType = 'llm_tokens' | 'message' | 'tool_call' | 'skill_run' | 'image_generation' | 'music_generation' | 'video_generation' | 'narration_generation' | 'lipsync_generation' | 'clip_assembly' | 'audio_transcription';
+export interface CreditPack {
+    key: string;
+    name: string;
+    credits: number;
+    priceCents: number;
+    currency: string;
+}
+
+export function useCreditPacks() {
+    return useQuery<{ data: CreditPack[] }>({
+        queryKey: ['credits', 'packs'],
+        queryFn: () => api.get<{ data: CreditPack[] }>('/api/v1/credits/packs'),
+        staleTime: 5 * 60_000,
+    });
+}
+
+export type CreditResourceType ='llm_tokens' | 'message' | 'tool_call' | 'skill_run' | 'image_generation' | 'music_generation' | 'video_generation' | 'narration_generation' | 'lipsync_generation' | 'clip_assembly' | 'audio_transcription';
 
 export interface CreditEstimateParams {
     resourceType: CreditResourceType;

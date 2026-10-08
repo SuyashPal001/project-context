@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
-import { spendCredits, grantCredits, getBalance, getLedger, InsufficientCreditsError, getUsageByType, getLastGrant } from '../index';
+import { db, creditPacks } from '@serverless-saas/database';
+import { spendCredits, grantCredits, getBalance, getLedger, InsufficientCreditsError, getUsageByType, getLastGrant, listActivePacks } from '../index';
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const TENANT = '00000000-0000-0000-0000-0000000000a2';
@@ -117,5 +117,26 @@ describe.skipIf(!TEST_DB)('credits wrappers', () => {
 
     const usage = await getUsageByType(TENANT);
     expect(usage.text).toBe(0n);
+  });
+});
+
+describe.skipIf(!TEST_DB)('listActivePacks', () => {
+  const PACK_KEY = 'credits-wrapper-test-pack';
+
+  beforeEach(async () => {
+    await db.execute(sql`delete from credit_packs where key = ${PACK_KEY} or key = ${PACK_KEY + '-inactive'}`);
+  });
+
+  it('returns only active packs, ordered by sortOrder', async () => {
+    await db.insert(creditPacks).values([
+      { key: PACK_KEY + '-inactive', name: 'Retired', credits: 999, priceCents: 999, isActive: false, sortOrder: 0 },
+      { key: PACK_KEY, name: 'Test Pack', credits: 500, priceCents: 1000, isActive: true, sortOrder: 99 },
+    ]);
+
+    const packs = await listActivePacks();
+
+    expect(packs.find(p => p.key === PACK_KEY + '-inactive')).toBeUndefined();
+    const testPack = packs.find(p => p.key === PACK_KEY);
+    expect(testPack).toMatchObject({ key: PACK_KEY, name: 'Test Pack', credits: 500, priceCents: 1000 });
   });
 });

@@ -17,6 +17,7 @@ vi.mock('@serverless-saas/credits', () => {
         resolveRate: vi.fn(),
         costMicro: vi.fn(),
         grantCredits: vi.fn(),
+        listActivePacks: vi.fn(),
         InsufficientCreditsError,
     };
 });
@@ -30,6 +31,7 @@ import {
     resolveRate,
     costMicro,
     grantCredits,
+    listActivePacks,
     InsufficientCreditsError,
 } from '@serverless-saas/credits';
 
@@ -60,6 +62,31 @@ beforeEach(() => {
     vi.mocked(resolveRate).mockReset();
     vi.mocked(costMicro).mockReset();
     vi.mocked(grantCredits).mockReset();
+    vi.mocked(listActivePacks).mockReset();
+});
+
+describe('GET /credits/packs', () => {
+    it('lists active packs with micro amounts omitted - packs are priced in whole credits/cents', async () => {
+        vi.mocked(listActivePacks).mockResolvedValue([
+            { id: 'pack-1', key: 'starter', name: 'Starter pack', credits: 500, priceCents: 1000, currency: 'usd', isActive: true, sortOrder: 1, createdAt: new Date('2026-01-01') },
+        ] as never);
+
+        const app = appWith(readCtx);
+        const res = await app.request('/credits/packs');
+        const body = await res.json() as any;
+
+        expect(res.status).toBe(200);
+        expect(body.data).toEqual([
+            { key: 'starter', name: 'Starter pack', credits: 500, priceCents: 1000, currency: 'usd' },
+        ]);
+    });
+
+    it('returns 403 without credits:read', async () => {
+        const app = appWith(noPermsCtx);
+        const res = await app.request('/credits/packs');
+        expect(res.status).toBe(403);
+        expect(listActivePacks).not.toHaveBeenCalled();
+    });
 });
 
 describe('GET /credits/balance', () => {
