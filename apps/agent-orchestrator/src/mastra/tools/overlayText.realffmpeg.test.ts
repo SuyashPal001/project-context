@@ -159,7 +159,118 @@ describe.skipIf(!process.env.RUN_REAL_FFMPEG || !!why)('overlay_text motion agai
     console.log('[overlayText.realffmpeg] motion changed px', { head, price })
     expect(head).toBeGreaterThan(500)                       // the headline is mid-pop at 60 ms
     expect(price).toBeGreaterThan(500)                      // the price is mid-stamp at 60 ms
+    // F3: a lower bar than the settled count (1000), but still real glyph pixels at
+    // 60 ms — pop is still at partial alpha (\fad(120,...) means ~50% in at 60ms), so a
+    // blank early frame (0 bright pixels) would fail this, not just "changed".
+    expect(bright(band(early, 0, 480))).toBeGreaterThan(50)
     expect(bright(band(late, 0, 480))).toBeGreaterThan(1000)     // and both are drawn once settled
     expect(bright(band(late, 700, 1220))).toBeGreaterThan(1000)
+  }, 120_000)
+
+  // F3: stamp has no fade-in (\fad(0,...)), so it is visible from frame one at full
+  // opacity but scaled up (130% -> 115% -> 100% over 140 ms). The bounding box's
+  // height is the direct, visual proof of that scale — and a blank early frame
+  // (height 0, e.g. a fade-in regression) fails outright rather than passing by
+  // virtue of "it changed".
+  it('F3: a stamped price starts larger and settles to full size, proving the scale', () => {
+    const W = 1080, H = 1920
+    const src = grayClip('stamp-scale', W, H)
+    const ass = join(dir, 'stamp-scale.ass')
+    writeFileSync(ass, buildAss([
+      { text: '₹499', startSeconds: 0.5, endSeconds: 2.8, position: 'center', price: { amount: '₹499' } },
+    ], { width: W, height: H }))
+    const at = (t: number): Buffer => {
+      const r = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', src, '-ss', String(t), '-vf', `subtitles=${ass}`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { maxBuffer: 1 << 24 })
+      expect(r.status).toBe(0)
+      return r.stdout
+    }
+    const bboxHeight = (buf: Buffer): number => {
+      let top = -1, bottom = -1
+      for (let y = 0; y < H; y++) {
+        let bright = 0
+        for (let x = 0; x < W; x++) if (buf[y * W + x] > 200) bright++
+        if (bright > 3) { if (top === -1) top = y; bottom = y }
+      }
+      return top === -1 ? 0 : bottom - top + 1
+    }
+    const earlyHeight = bboxHeight(at(0.56)), lateHeight = bboxHeight(at(1.5))
+    console.log('[overlayText.realffmpeg] stamp bbox height', { earlyHeight, lateHeight })
+    expect(earlyHeight).toBeGreaterThan(0)          // a blank early frame must fail here, not pass
+    expect(earlyHeight).toBeGreaterThan(lateHeight)  // still scaled up (~121% at 60 ms) vs. settled 100%
+  }, 120_000)
+
+  // F2: a 16:9 case, with slide_up (the other two motions already covered above
+  // only at 9:16). slide_up moves the text up into place, so at 60 ms it sits
+  // below (a larger y, visually lower on screen) where it settles.
+  it('F2: a slide_up headline is lower at 60 ms than once it has settled, at 16:9', () => {
+    const W = 1920, H = 1080
+    const src = grayClip('slide-16-9', W, H)
+    const ass = join(dir, 'slide-16-9.ass')
+    writeFileSync(ass, buildAss([
+      { text: 'Soft all day', startSeconds: 0.5, endSeconds: 3.3, position: 'top', size: 'large', motion: 'slide_up' },
+    ], { width: W, height: H }))
+    const at = (t: number): Buffer => {
+      const r = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', src, '-ss', String(t), '-vf', `subtitles=${ass}`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { maxBuffer: 1 << 24 })
+      expect(r.status).toBe(0)
+      return r.stdout
+    }
+    const topRow = (buf: Buffer): number | undefined => {
+      for (let y = 0; y < H; y++) {
+        let bright = 0
+        for (let x = 0; x < W; x++) if (buf[y * W + x] > 200) bright++
+        if (bright > 3) return y
+      }
+      return undefined
+    }
+    const earlyTop = topRow(at(0.56)), lateTop = topRow(at(1.5))
+    console.log('[overlayText.realffmpeg] slide_up top row 16:9', { earlyTop, lateTop })
+    expect(earlyTop).toBeGreaterThan(0)
+    expect(lateTop).toBeGreaterThan(0)
+    expect(earlyTop!).toBeGreaterThan(lateTop!)      // still below its settled place at 60 ms
+  }, 120_000)
+
+  // F2: the MRP's \s1 strike-through, proven by a continuous bright row through
+  // the vertical middle of its own bounding box — something plain glyph strokes
+  // (which have gaps between digits) do not produce on their own.
+  it('F2: the MRP\'s strike line runs across most of its width', () => {
+    const W = 1080, H = 1920
+    const src = grayClip('mrp-strike', W, H)
+    const ass = join(dir, 'mrp-strike.ass')
+    // A much longer MRP than the amount forces the two onto separate lines
+    // (mrp above, amount below), so the MRP's own bounding box is isolated
+    // by y-range alone, with no need to also slice by x.
+    writeFileSync(ass, buildAss([
+      { text: '₹499', startSeconds: 0.5, endSeconds: 3, position: 'center', price: { amount: '₹499', mrp: '₹9,99,99,999' } },
+    ], { width: W, height: H }))
+    const run = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', src, '-ss', '1.5', '-vf', `subtitles=${ass}`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { maxBuffer: 1 << 24 })
+    expect(run.status).toBe(0)
+    const gray = run.stdout
+    const bands: Array<{ top: number; bottom: number }> = []
+    for (let y = 0; y < H; y++) {
+      let bright = 0
+      for (let x = 0; x < W; x++) if (gray[y * W + x] > 200) bright++
+      if (bright > 3) {
+        const last = bands[bands.length - 1]
+        if (last && y <= last.bottom + 3) last.bottom = y
+        else bands.push({ top: y, bottom: y })
+      }
+    }
+    console.log('[overlayText.realffmpeg] mrp-strike bands', JSON.stringify(bands))
+    expect(bands.length).toBeGreaterThanOrEqual(2)     // the MRP line above, the amount line below
+    const mrp = bands[0]
+    const midY = Math.round((mrp.top + mrp.bottom) / 2)
+    let left = -1, right = -1
+    for (let y = mrp.top; y <= mrp.bottom; y++) {
+      for (let x = 0; x < W; x++) {
+        if (gray[y * W + x] <= 200) continue
+        if (left === -1 || x < left) left = x
+        if (right === -1 || x > right) right = x
+      }
+    }
+    let litCols = 0
+    for (let x = left; x <= right; x++) if (gray[midY * W + x] > 200) litCols++
+    const width = right - left + 1
+    console.log('[overlayText.realffmpeg] mrp strike coverage', { width, litCols })
+    expect(litCols / width).toBeGreaterThan(0.8)       // a continuous strike line, not just glyph strokes
   }, 120_000)
 })
