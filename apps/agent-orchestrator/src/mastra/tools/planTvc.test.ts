@@ -597,4 +597,30 @@ describe('runPlanTvc check: the logo (M3, X3, X5)', () => {
     expect(finish.shots[0].motion).toBe('pop')
     expect(finish.endCard).toEqual({ logoFileId: 'logo-1' })
   })
+  // Review fix: the logo is checked like the product photo for this too —
+  // never a frame extract_frame pulled from a video.
+  it('refuses LOGO_FROM_REFERENCE when the logo is a frame pulled from a video', async () => {
+    const pathname = `/${extractFrameKey('conv1', 'Bubbli Last Frame')}`
+    const { deps, store } = fakeDeps({ productPhotoInfo: async (id) => (id === 'logo-1' ? { mimeType: 'image/jpeg', pathname } : photo) })
+    const out = await runPlanTvc({ action: 'check', plan: withLogo('logo-1') }, deps)
+    expect(out.refusalReason).toMatch(/^LOGO_FROM_REFERENCE: that image was taken from the reference ad, not the brand's logo/)
+    expect(store.size).toBe(0)
+  })
+  // Review fix: the logo check is narrower than the product photo's — only
+  // PNG, JPEG and WebP are ever laid onto the packshot, so a HEIC or GIF
+  // logo is refused at plan check, not only later at the paid end-card step.
+  it.each([
+    [{ mimeType: 'image/heic', pathname: '/x/logo.heic' }],
+    [{ mimeType: 'image/gif', pathname: '/x/logo.gif' }],
+  ])('refuses a logo that is %o, even though it would pass the product-photo check', async (logoInfo) => {
+    const { deps, store } = fakeDeps({ productPhotoInfo: async (id) => (id === 'logo-1' ? logoInfo : photo) })
+    const out = await runPlanTvc({ action: 'check', plan: withLogo('logo-1') }, deps)
+    expect(out.refusalReason).toMatch(/^LOGO_NOT_IMAGE: /)
+    expect(store.size).toBe(0)
+  })
+  it('accepts a WebP logo (the third allowed raster type)', async () => {
+    const { deps } = fakeDeps({ productPhotoInfo: async (id) => (id === 'logo-1' ? { mimeType: 'image/webp', pathname: '/x/logo.webp' } : photo) })
+    const out = await runPlanTvc({ action: 'check', plan: withLogo('logo-1') }, deps)
+    expect(out.errors).toEqual([])
+  })
 })

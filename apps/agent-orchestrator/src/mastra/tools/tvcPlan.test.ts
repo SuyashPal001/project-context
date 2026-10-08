@@ -793,4 +793,39 @@ describe('Part 2.2: motion, prices, logo and veg mark in the plan (M2, M4, M5)',
     expect(tvcPlanSchema.safeParse(p).success).toBe(true)
     expect(tvcPlanSchema.safeParse({ ...p, brief: { ...p.brief, vegMark: 'vegan' } }).success).toBe(false)
   })
+  // Review fix: overlay_text (paid) refused 1.17s with its own tighter
+  // epsilon while this check (looser EPS) let it through — priceTooShort is
+  // now the one shared predicate, so both agree at check time, before money
+  // moves.
+  it('refuses a price at 1.17s, the same floor overlay_text uses at render', () => {
+    const p = goodPlan()
+    p.shots[3] = { ...p.shots[3], durationSeconds: 1.17, flashCut: true, price: { amount: '₹499' } }
+    p.shots[6].durationSeconds = 3.33
+    expect(validateTvcPlan(p).errors).toContain('PRICE_TOO_SHORT: the price in shot 4 is on screen for 1.17s; a price needs at least 1.2s. Put it on a shot of 1.2s or longer')
+  })
+  // Review fix: a shot can show text or a price, never both in the same frame.
+  it('refuses a shot with both text and a price (PRICE_AND_TEXT)', () => {
+    const p = goodPlan(); p.shots[2].price = { amount: '₹499' } // shot 3 already has text "SPF 30"
+    expect(validateTvcPlan(p).errors).toContain('PRICE_AND_TEXT: shot 3 has both text and a price; put the price in price only')
+  })
+  // Review fix: a price super is on-screen text too — ASCI's disclaimer hold
+  // must count its amount, MRP and note, the same way it counts a shot's text
+  // or the tagline, so a note next to a disclaimer lengthens the hold.
+  it("a price's note on screen during a disclaimer lengthens its hold", () => {
+    const base = () => tvcPlanSchema.parse({
+      brief: { message: 'Cold in one sip', category: 'beverage', tier: 'mass', objective: 'brand', market: 'generic', lengthSeconds: 6, aspectRatio: '16:9', productPhotoFileId: 'prod' },
+      look: 'bright', locations: ['beach'],
+      shots: [
+        { n: 1, type: 'hook', size: 'wide', action: 'a moment', durationSeconds: 2, brandVisible: true, productVisible: true, audio: 'silent' as const, price: { amount: '₹499' } },
+        { n: 2, type: 'lifestyle', size: 'close_up', action: 'a moment', durationSeconds: 2, brandVisible: false, productVisible: false, audio: 'silent' as const },
+        { n: 3, type: 'packshot', size: 'medium', action: 'the can', durationSeconds: 2, brandVisible: true, productVisible: true, audio: 'silent' as const },
+      ],
+      voiceover: [], packshot: { kind: 'product' },
+      legal: [{ text: 'See pack for price terms and offer may end soon', startSeconds: 0 }],
+    })
+    const without = validateTvcPlan(base()).plan.legal[0].endSeconds
+    const withNote = base(); withNote.shots[0].price = { amount: '₹499', note: 'Launch offer' }
+    const after = validateTvcPlan(withNote).plan.legal[0].endSeconds
+    expect(after).toBeGreaterThan(without!)
+  })
 })

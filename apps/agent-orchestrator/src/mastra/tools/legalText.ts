@@ -113,8 +113,12 @@ export function legalLineCount(text: string, frame: Frame): number {
 }
 
 const CURRENCY_RE = /^(₹|rs\.?)$/i
-const MONEY_OR_PERCENT_RE = /^((₹|rs\.?)[\d,.]+(\/-)?|[\d,.]+(₹|%)|%)$/i
-const NUMBER_RE = /^[\d,.]+(\/-)?$/
+// X6: Devanagari digits (U+0966–U+096F) are digits too, for ASCI's word
+// count the same way they are for textMotion.ts's moneyValue — "₹४९९" must
+// not count as a word any more than "₹499" does.
+const DIGIT_CLASS = '\\d,.०-९'
+const MONEY_OR_PERCENT_RE = new RegExp(`^((₹|rs\\.?)[${DIGIT_CLASS}]+(/-)?|[${DIGIT_CLASS}]+(₹|%)|%)$`, 'i')
+const NUMBER_RE = new RegExp(`^[${DIGIT_CLASS}]+(/-)?$`)
 const HAS_WORD_RE = /[\p{L}\p{N}]/u
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 

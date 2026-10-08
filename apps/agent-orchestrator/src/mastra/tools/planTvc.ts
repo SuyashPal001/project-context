@@ -76,6 +76,18 @@ function looksLikeProductPhoto(mimeType: string, pathname: string): boolean {
   return OCTET_STREAM_MIMES.has(mimeType.toLowerCase()) && IMAGE_EXTENSION_RE.test(pathname)
 }
 
+// Review fix: the logo is a narrower raster set than the product photo
+// (composite_end_card only ever lays PNG, JPEG or WebP onto the packshot) —
+// a HEIC or GIF logo passed looksLikeProductPhoto's wider check and only
+// failed later, at the paid end-card step. SVG is its own LOGO_NOT_RASTER
+// refusal via isSvgFile, checked before this.
+const LOGO_IMAGE_MIME_RE = /^image\/(png|jpeg|webp)$/i
+const LOGO_IMAGE_EXTENSION_RE = /\.(jpe?g|png|webp)$/i
+function looksLikeLogoImage(mimeType: string, pathname: string): boolean {
+  if (LOGO_IMAGE_MIME_RE.test(mimeType)) return true
+  return OCTET_STREAM_MIMES.has(mimeType.toLowerCase()) && LOGO_IMAGE_EXTENSION_RE.test(pathname)
+}
+
 // plan_tvc never takes a threshold from Director — only the detect_cuts tool
 // does (see detectCuts.ts's cache-poisoning note). Always the fixed default
 // that matched the 2026-10-05 reference ad, so a plan's check is always
@@ -256,7 +268,12 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
         return { refused: true, refusalReason: LOGO_UNCHECKED }
       }
       if (isSvgFile(logoInfo.mimeType, logoInfo.pathname)) return { refused: true, refusalReason: LOGO_NOT_RASTER }
-      if (!looksLikeProductPhoto(logoInfo.mimeType, logoInfo.pathname)) return { refused: true, refusalReason: LOGO_NOT_IMAGE }
+      if (!looksLikeLogoImage(logoInfo.mimeType, logoInfo.pathname)) return { refused: true, refusalReason: LOGO_NOT_IMAGE }
+      // Review fix: mirrors PRODUCT_PHOTO_FROM_REFERENCE — the logo can never
+      // be a frame extract_frame pulled from a video either.
+      if (isExtractedFramePath(logoInfo.pathname)) {
+        return { refused: true, refusalReason: 'LOGO_FROM_REFERENCE: that image was taken from the reference ad, not the brand\'s logo; ask the user to upload the logo' }
+      }
     }
     // A re-check loads the previously saved plan up front (not only later,
     // for storageKey/carryOver) so the reference-video identity check below

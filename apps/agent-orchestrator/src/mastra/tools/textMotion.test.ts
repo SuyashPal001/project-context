@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   FADE_OUT_MS, MOTIONS, SLIDE_UP_OFFSET, effectiveMotion, moneyValue, motionTags, priceDialogue, priceError,
-  priceFontSizes, priceSchema, priceTooShortReason,
+  priceFontSizes, priceSchema, priceTooShort, priceTooShortReason,
 } from './textMotion.js'
 
 const LAND = { width: 1920, height: 1080 }
@@ -67,6 +67,14 @@ describe('price validation (M2, X6)', () => {
   it('PRICE_TOO_SHORT names the time and the 1.2 s floor', () => {
     expect(priceTooShortReason(0.6, 'the price in shot 3')).toBe('PRICE_TOO_SHORT: the price in shot 3 is on screen for 0.6s; a price needs at least 1.2s. Put it on a shot of 1.2s or longer')
     expect(priceTooShortReason(1)).toMatch(/^PRICE_TOO_SHORT: the price is on screen for 1s/)
+  })
+  // Review fix: one predicate, shared by plan_tvc (free) and overlay_text
+  // (paid), so neither can disagree on the 1.2 s floor by its own epsilon.
+  it('priceTooShort is the one floor both the plan and the render use', () => {
+    expect(priceTooShort(1.17)).toBe(true)
+    expect(priceTooShort(1.2)).toBe(false)
+    expect(priceTooShort(1.19999999999)).toBe(false)
+    expect(priceTooShort(2)).toBe(false)
   })
   it('caps the lengths in the schema', () => {
     expect(priceSchema.safeParse({ amount: '₹499', note: 'Launch offer' }).success).toBe(true)

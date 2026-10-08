@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { LEGAL_MAX_LINES, countLegalWords, escapeAssText, firstWords, legalHoldSeconds, legalLineCount, nominalFrame, tooWideWord } from './legalText.js'
-import { MOTIONS, PRICE_MIN_SECONDS, priceError, priceSchema, priceTooShortReason } from './textMotion.js'
+import { MOTIONS, priceError, priceSchema, priceTooShort, priceTooShortReason } from './textMotion.js'
 
 // The TVC ad's plan and its craft rules, checked in code so a long skill text
 // is not the only thing holding them (spec 2026-10-05-tvc-ad-design.md §4-5).
@@ -197,12 +197,15 @@ export function legalTimings(plan: TvcPlan, opts: { autoAddedIndex?: number } = 
   const frame = nominalFrame(plan.brief.aspectRatio)
   const brandName = plan.brief.brandName
   const starts = shotStarts(plan)
-  // Other words on screen while [a, b) is showing: shot texts and the packshot tagline.
+  // Other words on screen while [a, b) is showing: shot texts, a shot's price
+  // (amount, MRP and note), and the packshot tagline.
+  const priceWords = (p?: { amount: string; mrp?: string; note?: string }): number =>
+    p ? countLegalWords(p.amount, brandName) + (p.mrp ? countLegalWords(p.mrp, brandName) : 0) + (p.note ? countLegalWords(p.note, brandName) : 0) : 0
   const otherWords = (a: number, b: number): number => plan.shots.reduce((n, s, i) => {
     if (!(starts[i] < b - EPS && starts[i] + s.durationSeconds > a + EPS)) return n
     const shotText = s.text ? countLegalWords(s.text, brandName) : 0
     const tagline = s.type === 'packshot' && plan.packshot.tagline ? countLegalWords(plan.packshot.tagline, brandName) : 0
-    return n + shotText + tagline
+    return n + shotText + tagline + priceWords(s.price)
   }, 0)
   if (plan.legal.length > MAX_OVERLAYS) errors.push(`LEGAL_TOO_MANY: there are ${plan.legal.length} legal lines; overlay_text takes at most ${MAX_OVERLAYS} overlays`)
   const timings = plan.legal.map((l, i): LegalTiming | null => {
@@ -444,11 +447,15 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
   //     motion is written into the plan here, at check, so a plan saved
   //     before this change (never re-checked) stays static (X12).
   shots.forEach((s) => {
+    if (s.text && s.price) errors.push(`PRICE_AND_TEXT: shot ${s.n} has both text and a price; put the price in price only`)
     if (s.text && !s.motion) s.motion = 'pop'
     if (!s.price) return
     const err = priceError(s.price)
     if (err) errors.push(`${err} (shot ${s.n})`)
-    else if (s.durationSeconds < PRICE_MIN_SECONDS - EPS) errors.push(priceTooShortReason(s.durationSeconds, `the price in shot ${s.n}`))
+    // priceTooShort is shared with overlay_text's paid-time check (same
+    // epsilon), so a price that passes here never gets refused only after
+    // the charge.
+    else if (priceTooShort(s.durationSeconds)) errors.push(priceTooShortReason(s.durationSeconds, `the price in shot ${s.n}`))
   })
   if (plan.packshot.tagline && !plan.packshot.motion) plan.packshot.motion = 'fade'
 

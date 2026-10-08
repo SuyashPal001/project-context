@@ -101,6 +101,10 @@ describe('word counting (E8)', () => {
     ['Bubblicious taste', 'Bubbli', 2],
     ['शर्तें लागू', undefined, 2],
     ['- | *', undefined, 0],
+    // Review fix: Devanagari digits count as digits here too, same as
+    // textMotion.ts's moneyValue — "₹४९९" is not a word, exactly like "₹499".
+    ['₹४९९ only', undefined, 1],
+    ['Rs. ४९९', undefined, 0],
   ])('%s (brand %s) = %i words', (text, brand, n) => {
     expect(countLegalWords(text, brand)).toBe(n)
   })

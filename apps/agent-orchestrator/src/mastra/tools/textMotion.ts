@@ -88,6 +88,14 @@ export function priceTooShortReason(seconds: number, where = 'the price'): strin
   return `PRICE_TOO_SHORT: ${where} is on screen for ${Math.round(seconds * 100) / 100}s; a price needs at least ${PRICE_MIN_SECONDS}s. Put it on a shot of ${PRICE_MIN_SECONDS}s or longer`
 }
 
+/** The one source of truth for "is this price on screen long enough" — used
+ *  by both plan_tvc (free, at check) and overlay_text (paid, at render) so a
+ *  price that passes the plan's check is never refused only at the paid step
+ *  on a slightly looser/tighter epsilon. */
+export function priceTooShort(seconds: number): boolean {
+  return seconds < PRICE_MIN_SECONDS - 1e-9
+}
+
 /** X9: font heights as a share of the shorter side. The amount is the 9:16
  *  canvas's large (120) × 1.2 = 144 px at S 1080, in both orientations. */
 export const PRICE_AMOUNT_SHARE = 0.1333

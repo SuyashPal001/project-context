@@ -13,7 +13,7 @@ import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
 import { chooseTextPosition, faceBoxes, sampleFrames, type Box } from './tvcChecks.js'
 import { LEGAL_BOX_PADDING, LEGAL_FONT, LEGAL_MAX_LINES, LEGAL_TEXT_KEY_MARKER, escapeAssText, firstWords, legalAssFontSize, legalLineCount, tooWideWord, wrapLegal, type Frame } from './legalText.js'
-import { MOTIONS, PRICE_MIN_SECONDS, effectiveMotion, motionTags, priceDialogue, priceError, priceFontSizes, priceSchema, priceTooShortReason, type Motion, type Price } from './textMotion.js'
+import { MOTIONS, effectiveMotion, motionTags, priceDialogue, priceError, priceFontSizes, priceSchema, priceTooShort, priceTooShortReason, type Motion, type Price } from './textMotion.js'
 
 export { escapeAssText }
 
@@ -203,7 +203,7 @@ export const overlayText = createTool({
       const err = priceError(o.price)
       if (err) return { refused: true, refusalReason: err, jobId }
       const seconds = o.endSeconds - o.startSeconds
-      if (seconds < PRICE_MIN_SECONDS - 1e-9) return { refused: true, refusalReason: priceTooShortReason(seconds), jobId }
+      if (priceTooShort(seconds)) return { refused: true, refusalReason: priceTooShortReason(seconds), jobId }
     }
     const hasPrice = overlays.some((o) => o.price)
 
