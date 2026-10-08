@@ -137,6 +137,16 @@ describe.skipIf(!process.env.RUN_REAL_FFMPEG || !!why)('overlay_text legal style
 })
 
 describe.skipIf(!process.env.RUN_REAL_FFMPEG || !!why)('overlay_text motion against real ffmpeg + libass (M1, M2)', () => {
+  // Fix note (re-review): pop and slide_up both fade in over \fad(120,FADE_OUT_MS)
+  // (motionTags in textMotion.ts) — a 120 ms linear alpha ramp. At t+60 ms that's
+  // ~50% alpha: a white fill (255) blended 50% over this clip's 0x808080 (128)
+  // background lands at 128 + 0.5*(255-128) = 191.5 — well short of the >200 bar
+  // used below for a fully SETTLED frame, but 63 away from the 128 background,
+  // comfortably past a 30-point margin. `differs` is for early (still fading)
+  // frames; `bright` (>200) stays for settled frames and for stamp, which has
+  // \fad(0,...) — zero fade-in, so it is at full opacity from frame one.
+  const differs = (v: number) => Math.abs(v - 128) > 30
+
   it('a pop headline and a stamp price are still moving early and settled later', () => {
     const W = 1080, H = 1920
     const src = grayClip('motion', W, H)
@@ -154,16 +164,19 @@ describe.skipIf(!process.env.RUN_REAL_FFMPEG || !!why)('overlay_text motion agai
     const band = (buf: Buffer, y0: number, y1: number) => buf.subarray(y0 * W, y1 * W)
     const changed = (a: Buffer, b: Buffer) => { let k = 0; for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > 40) k++; return k }
     const bright = (b: Buffer) => { let k = 0; for (const v of b) if (v > 200) k++; return k }
+    const present = (b: Buffer) => { let k = 0; for (const v of b) if (differs(v)) k++; return k }
     const head = changed(band(early, 0, 480), band(late, 0, 480))
     const price = changed(band(early, 700, 1220), band(late, 700, 1220))
     console.log('[overlayText.realffmpeg] motion changed px', { head, price })
     expect(head).toBeGreaterThan(500)                       // the headline is mid-pop at 60 ms
     expect(price).toBeGreaterThan(500)                      // the price is mid-stamp at 60 ms
-    // F3: a lower bar than the settled count (1000), but still real glyph pixels at
-    // 60 ms — pop is still at partial alpha (\fad(120,...) means ~50% in at 60ms), so a
-    // blank early frame (0 bright pixels) would fail this, not just "changed".
-    expect(bright(band(early, 0, 480))).toBeGreaterThan(50)
-    expect(bright(band(late, 0, 480))).toBeGreaterThan(1000)     // and both are drawn once settled
+    // F3: a lower bar than the settled count (1000, well below the ~half-width
+    // band of apex pixels a large headline draws), but still real glyph pixels at
+    // 60 ms, measured by "differs from the 0x808080 background" (see `differs`
+    // above) since pop is only ~50% opaque then — a blank early frame (0 pixels
+    // differing from background) still fails this, not just "changed".
+    expect(present(band(early, 0, 480))).toBeGreaterThan(50)
+    expect(bright(band(late, 0, 480))).toBeGreaterThan(1000)     // settled: fully opaque, so >200 (not just >158) applies
     expect(bright(band(late, 700, 1220))).toBeGreaterThan(1000)
   }, 120_000)
 
@@ -214,63 +227,94 @@ describe.skipIf(!process.env.RUN_REAL_FFMPEG || !!why)('overlay_text motion agai
       expect(r.status).toBe(0)
       return r.stdout
     }
-    const topRow = (buf: Buffer): number | undefined => {
+    const topRowBy = (buf: Buffer, hit: (v: number) => boolean): number | undefined => {
       for (let y = 0; y < H; y++) {
-        let bright = 0
-        for (let x = 0; x < W; x++) if (buf[y * W + x] > 200) bright++
-        if (bright > 3) return y
+        let count = 0
+        for (let x = 0; x < W; x++) if (hit(buf[y * W + x])) count++
+        if (count > 3) return y
       }
       return undefined
     }
-    const earlyTop = topRow(at(0.56)), lateTop = topRow(at(1.5))
+    // F3: slide_up fades in the same way pop does (\fad(120,FADE_OUT_MS) in
+    // motionTags) — ~50% alpha at t+60ms (see `differs`'s derivation above), so
+    // the early frame is read with `differs`, not `bright` (>200), which stays
+    // for the settled frame below.
+    const earlyTop = topRowBy(at(0.56), differs), lateTop = topRowBy(at(1.5), (v) => v > 200)
     console.log('[overlayText.realffmpeg] slide_up top row 16:9', { earlyTop, lateTop })
-    expect(earlyTop).toBeGreaterThan(0)
+    expect(earlyTop).toBeGreaterThan(0)               // a blank early frame (no row found) fails this
     expect(lateTop).toBeGreaterThan(0)
-    expect(earlyTop!).toBeGreaterThan(lateTop!)      // still below its settled place at 60 ms
+    expect(earlyTop!).toBeGreaterThan(lateTop!)        // still below its settled place at 60 ms
   }, 120_000)
 
-  // F2: the MRP's \s1 strike-through, proven by a continuous bright row through
-  // the vertical middle of its own bounding box — something plain glyph strokes
-  // (which have gaps between digits) do not produce on their own.
+  // F2: the MRP's \s1 strike-through. Fix note (re-review): with a far-longer
+  // MRP than amount, priceDialogue (textMotion.ts) does NOT wrap to two lines
+  // here — `oneLine` only turns false when mrp + a space + amount, at their own
+  // sizes, would not fit the frame's safe width; the actual rendered text is one
+  // line: "{\fs86\s1}₹9,99,99,999{\s0\fs144}\h₹499" (fs.mrp=86, fs.amount=144,
+  // from PRICE_AMOUNT_SHARE=0.1333 and PRICE_MRP_RATIO=0.6 against this 9:16
+  // frame's 1080 shorter side: 0.1333*1080≈144, *0.6≈86 — see priceFontSizes).
+  // mrp sits to the LEFT of the much bigger amount on that one line, so we
+  // isolate it by x, not by a second band.
   it('F2: the MRP\'s strike line runs across most of its width', () => {
     const W = 1080, H = 1920
     const src = grayClip('mrp-strike', W, H)
     const ass = join(dir, 'mrp-strike.ass')
-    // A much longer MRP than the amount forces the two onto separate lines
-    // (mrp above, amount below), so the MRP's own bounding box is isolated
-    // by y-range alone, with no need to also slice by x.
     writeFileSync(ass, buildAss([
       { text: '₹499', startSeconds: 0.5, endSeconds: 3, position: 'center', price: { amount: '₹499', mrp: '₹9,99,99,999' } },
     ], { width: W, height: H }))
     const run = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', src, '-ss', '1.5', '-vf', `subtitles=${ass}`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { maxBuffer: 1 << 24 })
     expect(run.status).toBe(0)
     const gray = run.stdout
-    const bands: Array<{ top: number; bottom: number }> = []
+    const differsMid = (v: number) => Math.abs(v - 128) > 30 // same background/margin as the pop/slide_up checks above; this price has no motion fade (defaults to stamp, opaque throughout), so >200 would also do, but "differs" is the more general presence test.
+    // The dialogue's whole bbox: the topmost/bottommost rows with any ink at all.
+    const rowsWithText: number[] = []
     for (let y = 0; y < H; y++) {
-      let bright = 0
-      for (let x = 0; x < W; x++) if (gray[y * W + x] > 200) bright++
-      if (bright > 3) {
-        const last = bands[bands.length - 1]
-        if (last && y <= last.bottom + 3) last.bottom = y
-        else bands.push({ top: y, bottom: y })
-      }
+      let hit = 0
+      for (let x = 0; x < W; x++) if (differsMid(gray[y * W + x])) hit++
+      if (hit > 3) rowsWithText.push(y)
     }
-    console.log('[overlayText.realffmpeg] mrp-strike bands', JSON.stringify(bands))
-    expect(bands.length).toBeGreaterThanOrEqual(2)     // the MRP line above, the amount line below
-    const mrp = bands[0]
-    const midY = Math.round((mrp.top + mrp.bottom) / 2)
-    let left = -1, right = -1
-    for (let y = mrp.top; y <= mrp.bottom; y++) {
-      for (let x = 0; x < W; x++) {
-        if (gray[y * W + x] <= 200) continue
-        if (left === -1 || x < left) left = x
-        if (right === -1 || x > right) right = x
+    expect(rowsWithText.length).toBeGreaterThan(0) // a blank frame must fail here, before anything else is computed
+    const bboxTop = rowsWithText[0]
+    // fs.amount (144) > fs.mrp (86): the amount is the taller of the two, so its
+    // top row sits above the mrp's. The TOPMOST row of the whole dialogue can
+    // therefore only have ink from the amount — its leftmost column there is
+    // the amount's left edge, i.e. where the mrp (and its strike) ends.
+    let amountLeft = -1
+    for (let x = 0; x < W; x++) { if (differsMid(gray[bboxTop * W + x])) { amountLeft = x; break } }
+    expect(amountLeft).toBeGreaterThanOrEqual(0)
+    // The mrp's own rows and columns: anything with ink strictly left of the amount.
+    let mrpTop = -1, mrpBottom = -1, mrpLeft = -1, mrpRight = -1
+    for (const y of rowsWithText) {
+      let rowHasMrp = false
+      for (let x = 0; x < amountLeft; x++) {
+        if (!differsMid(gray[y * W + x])) continue
+        rowHasMrp = true
+        if (mrpLeft === -1 || x < mrpLeft) mrpLeft = x
+        if (mrpRight === -1 || x > mrpRight) mrpRight = x
       }
+      if (rowHasMrp) { if (mrpTop === -1) mrpTop = y; mrpBottom = y }
     }
-    let litCols = 0
-    for (let x = left; x <= right; x++) if (gray[midY * W + x] > 200) litCols++
-    const width = right - left + 1
-    console.log('[overlayText.realffmpeg] mrp strike coverage', { width, litCols })
-    expect(litCols / width).toBeGreaterThan(0.8)       // a continuous strike line, not just glyph strokes
+    console.log('[overlayText.realffmpeg] mrp bbox', { mrpTop, mrpBottom, mrpLeft, mrpRight, amountLeft })
+    expect(mrpTop).toBeGreaterThanOrEqual(0) // a blank or missing mrp must fail here too
+    expect(mrpRight).toBeGreaterThan(mrpLeft)
+    // The strike (ASS StrikeOut) is drawn roughly through the middle of the
+    // glyph band, ~Outline (4px, from priceStyles) thick; sampling only the
+    // middle third of the mrp's own height (rather than one exact row) absorbs
+    // any off-by-a-row imprecision in locating that middle.
+    const mrpHeight = mrpBottom - mrpTop + 1
+    const third = Math.max(1, Math.round(mrpHeight / 3))
+    const midStart = mrpTop + third, midEnd = mrpBottom - third
+    const mrpWidth = mrpRight - mrpLeft + 1
+    let bestCoverage = 0
+    for (let y = midStart; y <= midEnd; y++) {
+      let lit = 0
+      for (let x = mrpLeft; x <= mrpRight; x++) if (differsMid(gray[y * W + x])) lit++
+      bestCoverage = Math.max(bestCoverage, lit / mrpWidth)
+    }
+    console.log('[overlayText.realffmpeg] mrp strike coverage', { mrpWidth, bestCoverage })
+    // 0.6: plain digit strokes have gaps between characters (e.g. between "9"
+    // and ","), so no single row of digits alone covers most of the width: a
+    // continuous strike line is what pushes one row's coverage this high.
+    expect(bestCoverage).toBeGreaterThan(0.6)
   }, 120_000)
 })
