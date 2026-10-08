@@ -135,3 +135,31 @@ describe.skipIf(!process.env.RUN_REAL_FFMPEG || !!why)('overlay_text legal style
     expect(bright).toBeGreaterThan(2000)                     // real glyphs were drawn
   }, 120_000)
 })
+
+describe.skipIf(!process.env.RUN_REAL_FFMPEG || !!why)('overlay_text motion against real ffmpeg + libass (M1, M2)', () => {
+  it('a pop headline and a stamp price are still moving early and settled later', () => {
+    const W = 1080, H = 1920
+    const src = grayClip('motion', W, H)
+    const ass = join(dir, 'motion.ass')
+    writeFileSync(ass, buildAss([
+      { text: 'Soft all day', startSeconds: 0.5, endSeconds: 2.8, position: 'top', size: 'large', motion: 'pop' },
+      { text: '₹499', startSeconds: 0.5, endSeconds: 2.8, position: 'center', price: { amount: '₹499', mrp: '₹699', note: 'Launch offer' } },
+    ], { width: W, height: H }))
+    const at = (t: number): Buffer => {
+      const r = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', src, '-ss', String(t), '-vf', `subtitles=${ass}`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { maxBuffer: 1 << 24 })
+      expect(r.status).toBe(0)
+      return r.stdout
+    }
+    const early = at(0.56), late = at(1.5)
+    const band = (buf: Buffer, y0: number, y1: number) => buf.subarray(y0 * W, y1 * W)
+    const changed = (a: Buffer, b: Buffer) => { let k = 0; for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > 40) k++; return k }
+    const bright = (b: Buffer) => { let k = 0; for (const v of b) if (v > 200) k++; return k }
+    const head = changed(band(early, 0, 480), band(late, 0, 480))
+    const price = changed(band(early, 700, 1220), band(late, 700, 1220))
+    console.log('[overlayText.realffmpeg] motion changed px', { head, price })
+    expect(head).toBeGreaterThan(500)                       // the headline is mid-pop at 60 ms
+    expect(price).toBeGreaterThan(500)                      // the price is mid-stamp at 60 ms
+    expect(bright(band(late, 0, 480))).toBeGreaterThan(1000)     // and both are drawn once settled
+    expect(bright(band(late, 700, 1220))).toBeGreaterThan(1000)
+  }, 120_000)
+})
