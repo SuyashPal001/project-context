@@ -366,7 +366,7 @@ export function MessageItem({
                         }}
                         steps={message.completedTrace.steps}
                         toolCallCount={message.completedTrace.toolCallCount}
-                        partFiles={(message.attachments ?? []).filter(f => f.generation && !f.working && /^(image|video)\//.test(f.type))}
+                        partFiles={(message.attachments ?? []).filter(f => f.generation && !f.working && /^(image|video|audio)\//.test(f.type))}
                         elapsedSec={message.completedTrace.elapsedSec}
                         toolCalls={message.completedTrace.toolCalls ?? []}
                         reasoningText={message.completedTrace.reasoningText}

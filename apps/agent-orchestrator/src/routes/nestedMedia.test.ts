@@ -10,6 +10,11 @@ describe('relayedDelegateMedia', () => {
     expect(a!.toolCallId.length).toBeLessThan(40)
     expect(relayedDelegateMedia(nested)?.toolCallId).toBe(a?.toolCallId)
   })
+  it('relays a finished narration, so the Voice step gets its file', () => {
+    const a = relayedDelegateMedia({ type: 'tool-result', payload: { toolName: 'generate_narration', toolCallId: 'n', result: { fileId: 'n1', name: 'Generated Narration.wav', fileType: 'audio/wav' } } })
+    expect(a?.toolName).toBe('generate_narration')
+    expect(a?.result.fileId).toBe('n1')
+  })
   it('skips non-media tools, failures and other chunks', () => {
     expect(relayedDelegateMedia({ type: 'tool-result', payload: { toolName: 'check_clip', toolCallId: 'c', result: { passed: true } } })).toBeNull()
     expect(relayedDelegateMedia({ type: 'tool-result', payload: { toolName: 'generate_image', toolCallId: 'c', result: { cancelled: true } } })).toBeNull()

@@ -14,6 +14,9 @@ const RELAYED = new Set([
   'edit_image', 'edit-image',
   'generate_video', 'generate-video', 'generate_videos', 'generate-videos',
   'generate_song', 'generate-song',
+  // The Director narrates too; without this the Voice step's tile went away
+  // when the take finished and the file showed only below the reply (2026-10-09).
+  'generate_narration', 'generate-narration',
   'show_files',
 ])
 
