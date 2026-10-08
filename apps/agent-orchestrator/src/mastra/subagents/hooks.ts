@@ -5,6 +5,7 @@ import { getSpecByAgentId } from './sources.js'
 import { checkDelegationBudget } from './budget.js'
 import { recordDelegation } from './link.js'
 import { AD_FLOW_KEY, briefIsReviewedAdFlow } from '../tools/reviewGate.js'
+import { missingReferenceReason } from './referenceCheck.js'
 
 export interface HookDeps {
   budget?: typeof checkDelegationBudget
@@ -15,6 +16,8 @@ export interface HookDeps {
    * spec shape the registry does not contain (one with a `fallback`).
    */
   lookup?: typeof getSpecByAgentId
+  /** Injectable so a test needs no database (referenceCheck.ts). */
+  references?: typeof missingReferenceReason
 }
 
 /**
@@ -60,6 +63,7 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
   const budget = deps.budget ?? checkDelegationBudget
   const record = deps.record ?? recordDelegation
   const lookup = deps.lookup ?? getSpecByAgentId
+  const references = deps.references ?? missingReferenceReason
 
   return {
     // Without this, Mastra's default toModelOutput maps a delegate's result
@@ -118,6 +122,24 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
           rejectionReason,
         })
         return { proceed: false, rejectionReason }
+      }
+
+      // 0. A "<what> reference: <id>" that is not a real file: the delegate
+      // would build on nothing (referenceCheck.ts).
+      const missing = await references(tenantId, context.prompt)
+      if (missing) {
+        await record({
+          tenantId,
+          agentId,
+          conversationId,
+          primitiveId: spec.id,
+          runId: context.runId,
+          toolCallId: context.toolCallId,
+          success: false,
+          durationMs: 0,
+          rejectionReason: missing,
+        })
+        return { proceed: false, rejectionReason: missing }
       }
 
       // 1. Money first: refuse before anything is spent.

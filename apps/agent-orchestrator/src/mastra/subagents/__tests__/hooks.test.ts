@@ -46,6 +46,18 @@ function startContext(overrides: Record<string, unknown> = {}) {
 const allow = async () => ({ allowed: true })
 
 describe('onDelegationStart', () => {
+  it('refuses a delegation whose prompt names a file that was never made', async () => {
+    const record = vi.fn().mockResolvedValue(undefined)
+    const budget = vi.fn().mockResolvedValue({ allowed: true })
+    const references = vi.fn().mockResolvedValue('Not delegated: "joined video reference" (6fb4f21d-72fb-4c6e-a342-9908de7517c2) is not a file in this workspace')
+    const ctx = startContext({ prompt: 'joined video reference: 6fb4f21d-72fb-4c6e-a342-9908de7517c2' })
+    const result = await buildDelegationConfig(host, { budget, record, references }).onDelegationStart!(ctx as never)
+    expect(references).toHaveBeenCalledWith('t1', ctx.prompt)
+    expect(result).toMatchObject({ proceed: false, rejectionReason: expect.stringContaining('joined video reference') })
+    expect(budget).not.toHaveBeenCalled()
+    expect(record).toHaveBeenCalledWith(expect.objectContaining({ success: false, rejectionReason: expect.stringContaining('Not delegated') }))
+  })
+
   it('applies the spec maxSteps instead of Mastra default of 5', async () => {
     const config = buildDelegationConfig(host, { budget: allow, record: noopRecord })
     const result = await config.onDelegationStart!(startContext() as never)
