@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { db, creditPacks } from '@serverless-saas/database';
 import { spendCredits, grantCredits, getBalance, getLedger, InsufficientCreditsError, getUsageByType, getLastGrant, listActivePacks } from '../index';
@@ -123,9 +123,14 @@ describe.skipIf(!TEST_DB)('credits wrappers', () => {
 describe.skipIf(!TEST_DB)('listActivePacks', () => {
   const PACK_KEY = 'credits-wrapper-test-pack';
 
-  beforeEach(async () => {
-    await db.execute(sql`delete from credit_packs where key = ${PACK_KEY} or key = ${PACK_KEY + '-inactive'}`);
-  });
+  const cleanup = () =>
+    db.execute(sql`delete from credit_packs where key = ${PACK_KEY} or key = ${PACK_KEY + '-inactive'}`);
+
+  beforeEach(cleanup);
+  // Without this, the row this test inserts survives past the test run and
+  // pollutes a real GET /credits/packs listing on whatever database TEST_DB
+  // points at (dev, if that's what's configured) - it did, once.
+  afterAll(cleanup);
 
   it('returns only active packs, ordered by sortOrder', async () => {
     await db.insert(creditPacks).values([
