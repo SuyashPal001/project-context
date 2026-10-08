@@ -8,7 +8,7 @@ import { Hono } from 'hono'
 // one of B's later turns.
 const {
   validateToken, agentBelongsToTenant, fetchAgentMemory, checkCreditBalance,
-  runChatStream, isInternalServiceKey, fetchConversationAllowMode,
+  runChatStream, isInternalServiceKey, fetchConversationAllowMode, conversationOwnership,
 } = vi.hoisted(() => ({
   validateToken: vi.fn(),
   agentBelongsToTenant: vi.fn(),
@@ -17,6 +17,7 @@ const {
   runChatStream: vi.fn(),
   isInternalServiceKey: vi.fn(),
   fetchConversationAllowMode: vi.fn(),
+  conversationOwnership: vi.fn(),
 }))
 
 vi.mock('../auth.js', () => ({ validateToken }))
@@ -29,6 +30,7 @@ vi.mock('../persistence.js', () => ({
   updateClarificationRequest: vi.fn(),
   updateGenerationConfirmRequest: vi.fn(),
   fetchConversationAllowMode,
+  conversationOwnership,
 }))
 
 import { chatRouter } from './chat.js'
@@ -95,5 +97,36 @@ describe('POST /api/chat — agentId must belong to the JWT tenant', () => {
     const res = await post({ conversationId: 'conv-1', message: 'hi' })
     expect(res.status).toBe(200)
     expect(agentBelongsToTenant).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST /api/chat — answering a card needs the chat's owner", () => {
+  const resumeBody = { conversationId: 'conv-1', message: 'Approve', resumeApproval: { confirmationId: 'tc-1', decision: 'approved' } }
+
+  it("refuses another user's chat in the same tenant and never resumes", async () => {
+    conversationOwnership.mockResolvedValue('not_owned')
+    const res = await post(resumeBody)
+    expect(res.status).toBe(404)
+    expect(conversationOwnership).toHaveBeenCalledWith(expect.any(String), 'conv-1')
+    expect(runChatStream).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when ownership cannot be checked', async () => {
+    conversationOwnership.mockResolvedValue('unknown')
+    const res = await post(resumeBody)
+    expect(res.status).toBe(503)
+    expect(runChatStream).not.toHaveBeenCalled()
+  })
+
+  it("resumes the owner's card", async () => {
+    conversationOwnership.mockResolvedValue('owned')
+    const res = await post(resumeBody)
+    expect(res.status).toBe(200)
+    expect(runChatStream).toHaveBeenCalledWith(expect.objectContaining({ resume: expect.objectContaining({ toolCallId: 'tc-1', decision: 'approved' }) }))
+  })
+
+  it('does not check ownership for an ordinary message', async () => {
+    await post({ conversationId: 'conv-1', message: 'hi' })
+    expect(conversationOwnership).not.toHaveBeenCalled()
   })
 })

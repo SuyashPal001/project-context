@@ -18,7 +18,7 @@ import {
   sessionActiveUpload, pendingUploads,
   checkRateLimit,
 } from '../types.js'
-import { updateClarificationRequest, updateUploadRequest, fetchConversationAllowMode } from '../persistence.js'
+import { updateClarificationRequest, updateUploadRequest, fetchConversationAllowMode, conversationOwnership } from '../persistence.js'
 
 // ─── SSE chat endpoint ────────────────────────────────────────────────────────
 
@@ -179,6 +179,18 @@ chatRouter.post('/api/chat', async (c) => {
     // bodyTenantId already does above.
     isInternalCall ? Promise.resolve(bodyAllowMode) : fetchConversationAllowMode(idToken, conversationId),
   ])
+
+  // Answering a card resumes a stored run of this chat, so only the chat's
+  // owner may: Mastra scopes the run to the tenant, not the user.
+  if (resumeApproval && !isInternalCall) {
+    const ownership = await conversationOwnership(idToken, conversationId)
+    if (ownership !== 'owned') {
+      console.warn(`[sse] resumeApproval refused user=${userId} conversationId=${conversationId} ownership=${ownership}`)
+      return ownership === 'not_owned'
+        ? c.json({ error: 'Conversation not found' }, 404)
+        : c.json({ error: 'Could not check this conversation. Try again.' }, 503)
+    }
+  }
 
   // Credit guard — checked before ReadableStream setup so we can return plain 402, not SSE error.
   if (!isInternalCall && !creditCheck.allowed) {

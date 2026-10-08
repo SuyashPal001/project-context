@@ -56,6 +56,24 @@ export async function fetchConversationAllowMode(idToken: string, conversationId
   }
 }
 
+/**
+ * Whether this user owns the conversation: the API's GET is scoped to the
+ * caller (tenant and user), so a 404 means another user's chat or none.
+ * 'unknown' on any other failure.
+ */
+export async function conversationOwnership(idToken: string, conversationId: string): Promise<'owned' | 'not_owned' | 'unknown'> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/conversations/${encodeURIComponent(conversationId)}`, {
+      headers: { 'Authorization': `Bearer ${idToken}` },
+    })
+    if (res.ok) return 'owned'
+    return res.status === 404 || res.status === 403 ? 'not_owned' : 'unknown'
+  } catch (err) {
+    console.error('[persistence] conversationOwnership error:', (err as Error).message)
+    return 'unknown'
+  }
+}
+
 export interface ConversationSkillSettings {
   /** Set only on a Test-in-chat conversation: that conversation runs exactly this one skill. */
   testSkillInstallId: string | null
