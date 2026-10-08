@@ -114,6 +114,16 @@ describe('overlayText execute', () => {
     expect(spendCredits).not.toHaveBeenCalled()
   })
 
+  // F6: a price is a super, never the disclaimer style.
+  it('refuses a price with size "legal", before charging', async () => {
+    const result = await overlayText.execute!(
+      { videoFileId: 'v1', overlays: [{ ...okOverlay, size: 'legal' as const, price: { amount: '₹499' } }] } as never,
+      baseCtx(),
+    )
+    expect(result).toMatchObject({ refused: true, refusalReason: "INVALID_OVERLAY: a price can't use the legal style" })
+    expect(spendCredits).not.toHaveBeenCalled()
+  })
+
   it('returns insufficientCredits when the debit is rejected', async () => {
     spendCredits.mockRejectedValueOnce(Object.assign(new Error('no'), { name: 'InsufficientCreditsError' }))
     const result = await overlayText.execute!({ videoFileId: 'v1', overlays: [okOverlay] } as never, baseCtx())

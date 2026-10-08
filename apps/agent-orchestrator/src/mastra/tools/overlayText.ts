@@ -196,6 +196,10 @@ export const overlayText = createTool({
     if (overlays.some((o) => !(o.endSeconds > o.startSeconds) || !escapeAssText(o.text))) {
       return { refused: true, refusalReason: 'INVALID_OVERLAY', jobId }
     }
+    // F6: a price is a super, never the disclaimer style; refused before the charge.
+    if (overlays.some((o) => o.price && o.size === 'legal')) {
+      return { refused: true, refusalReason: "INVALID_OVERLAY: a price can't use the legal style", jobId }
+    }
 
     // M2/X7: a price is checked before anything is downloaded or charged.
     for (const o of overlays) {
