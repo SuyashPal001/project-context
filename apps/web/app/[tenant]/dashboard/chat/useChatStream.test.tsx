@@ -158,6 +158,7 @@ describe('useChatStream message preparation', () => {
             [expect.objectContaining({ fileId: 'image-1', presignedUrl: 'https://files.example/avatar.jpg' })],
             undefined,
             true,
+            undefined,
         );
     });
 
@@ -205,7 +206,7 @@ describe('useChatStream message preparation', () => {
         });
 
         // Real signature (see the call site in useChatStream.ts's sendMessage):
-        // sendChatMessage(content, enriched, skillsUsed, isFirstMessage). This
+        // sendChatMessage(content, enriched, skillsUsed, isFirstMessage, resumeApproval). This
         // test doesn't pass skillsUsed, so it's `undefined` here (not
         // expect.anything(), which rejects undefined) — and this is the first
         // turn of an untitled, empty conversation, so isFirstMessage is `true`.
@@ -214,6 +215,7 @@ describe('useChatStream message preparation', () => {
             [expect.objectContaining({ presignedUrl: 'https://library.example/avatar.jpg' })],
             undefined,
             true,
+            undefined,
         );
     });
 });

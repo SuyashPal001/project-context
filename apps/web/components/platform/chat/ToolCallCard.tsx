@@ -70,7 +70,10 @@ export function extractResultFiles(
     }
     return [...byId.values()];
   }
-  if (!isMediaGenTool(toolName) && toolName !== 'show_files') return [];
+  // Narration is read here but stays out of isMediaGenTool: its file hangs
+  // under the Voice step, and it has no generating card of its own (2026-10-09).
+  const isNarration = toolName === 'generate_narration' || toolName === 'generate-narration';
+  if (!isMediaGenTool(toolName) && !isNarration && toolName !== 'show_files') return [];
 
   const toEntry = (entry: Record<string, unknown>): { fileId: string; name: string; fileType: string; size?: number } | null => {
     if (typeof entry.fileId !== 'string') return null;

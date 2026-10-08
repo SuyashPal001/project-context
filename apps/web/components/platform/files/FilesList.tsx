@@ -35,6 +35,7 @@ import { AddToChatMenu } from "./components/AddToChatMenu";
 import { AssetLightbox } from "@/components/platform/canvas/AssetLightbox";
 import { fileToAsset } from "./lib/assetFromFile";
 import { generatedFolderConversationId, generatedFolderDisplayName } from "./lib/generatedFolder";
+import { pageWindow } from './pageWindow';
 
 interface FilesListProps {
     prefix: string;
@@ -518,7 +519,9 @@ export const FilesList = forwardRef<FilesListHandle, FilesListProps>(function Fi
                                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1}>
                                     <ChevronLeft className="w-4 h-4" />
                                 </Button>
-                                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                {pageWindow(currentPage, totalPages).map((page, i) => page === 'gap' ? (
+                                    <span key={`gap-${i}`} className="w-7 text-center text-xs text-muted-foreground" aria-hidden>…</span>
+                                ) : (
                                     <Button key={page} variant={page === currentPage ? "secondary" : "ghost"} size="icon" className="h-7 w-7 text-xs" onClick={() => setCurrentPage(page)}>
                                         {page}
                                     </Button>
@@ -527,7 +530,7 @@ export const FilesList = forwardRef<FilesListHandle, FilesListProps>(function Fi
                                     <ChevronRight className="w-4 h-4" />
                                 </Button>
                             </div>
-                            <span className="text-xs text-muted-foreground/70">
+                            <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground/70">
                                 {allFolderCards.length > 0
                                     ? `Total ${allFolderCards.length} ${allFolderCards.length === 1 ? 'folder' : 'folders'}, ${filteredFiles.length} files`
                                     : `Total ${filteredFiles.length} files`}

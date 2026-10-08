@@ -78,6 +78,8 @@ export const askClarifyingQuestionsTool = createTool({
         const pending = pendingClarifications.get(clarificationId)
         pendingClarifications.delete(clarificationId)
         const collected = pending?.collected ?? []
+        // Nobody answered: a turn whose page is gone ends quietly (chatStream.ts).
+        ;(execContext?.requestContext?.get('endIfDetached' as never) as (() => void) | undefined)?.()
         resolve(collected)
 
         // Flip the DB row out of 'pending' so the message never becomes a

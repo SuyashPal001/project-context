@@ -150,7 +150,9 @@ export const pendingToolApprovals = new Map<string, {
   // declineReason carries the user's free-text note when they decline
   // instead of approving — same channel ClarificationAnswer.freeText
   // already uses, forwarded to Mastra's declineToolCall({ reason }).
-  resolve: (result: { confirmed: boolean; declineReason?: string }) => void
+  // abandoned: the page went away unanswered. The run is left suspended in
+  // storage so a later click on the card can still resume it (suspendedApprovals.ts).
+  resolve: (result: { confirmed: boolean; declineReason?: string; abandoned?: boolean }) => void
   tenantId: string
   runId: string
   toolCallId: string
@@ -158,11 +160,10 @@ export const pendingToolApprovals = new Map<string, {
   conversationId?: string
   idToken?: string
   // No `timer` field — unlike the old pendingGenerationConfirmations, this
-  // entry has no server-side expiry. It resolves on a human decision, on
-  // SSE disconnect (chat.ts's cancel() handler), or never — until the
-  // watchdog's 24h sweep declines the underlying Mastra run directly via
-  // declineToolCall, independent of whether this in-process entry still
-  // exists.
+  // entry has no server-side expiry. It resolves on a human decision, or as
+  // abandoned on SSE disconnect (chat.ts's cancel() handler), which leaves the
+  // Mastra run suspended for a later click (suspendedApprovals.ts). The
+  // watchdog's 24h sweep declines a run nobody ever answers.
 }>()
 
 // ─── Upload-request gate ──────────────────────────────────────────────────────

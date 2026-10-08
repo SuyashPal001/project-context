@@ -61,6 +61,8 @@ export const requestUploadTool = createTool({
       const timer = setTimeout(() => {
         const pending = pendingUploads.get(uploadId)
         pendingUploads.delete(uploadId)
+        // Nobody answered: a turn whose page is gone ends quietly (chatStream.ts).
+        ;(execContext?.requestContext?.get('endIfDetached' as never) as (() => void) | undefined)?.()
         resolve({ files: [], skipped: true })
 
         // Flip the DB row out of 'pending' so the message never becomes a

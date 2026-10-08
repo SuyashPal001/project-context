@@ -175,16 +175,13 @@ export function ClarificationCard({ request, onAnswer, promptOnly }: Clarificati
         if (firstUnanswered >= 0) setPageIndex(firstUnanswered);
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Auto-grow the free-text field to fit its content (up to a cap) instead of
-    // staying a fixed single line that scrolls its text off-screen horizontally.
+    // Auto-grow (up to max-h-[160px] on the Textarea below) comes from the
+    // shared Textarea's native field-sizing-content, not JS - a manual
+    // style.height effect here used to fight that same native resize, which
+    // is what caused the field to render oversized until the next keystroke
+    // forced both to recompute and agree.
     const freeTextRef = useRef<HTMLTextAreaElement>(null);
     const currentFreeText = freeTextByQuestion[pageIndex] ?? '';
-    useEffect(() => {
-        if (freeTextRef.current) {
-            freeTextRef.current.style.height = 'inherit';
-            freeTextRef.current.style.height = `${Math.min(freeTextRef.current.scrollHeight, 160)}px`;
-        }
-    }, [currentFreeText]);
 
     if (promptOnly) {
         return (

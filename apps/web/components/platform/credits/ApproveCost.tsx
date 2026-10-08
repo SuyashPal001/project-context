@@ -7,7 +7,7 @@
 // Don't invent a new visual language for the next one — extend one of these
 // two, or read ClarificationCard.tsx's header comment first.
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ArrowUp, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -247,15 +247,10 @@ function Shell({
     children: ReactNode;
 }) {
     const [freeText, setFreeText] = useState('');
+    // Auto-grow (up to max-h-[160px] on the Textarea below) comes from the
+    // shared Textarea's native field-sizing-content - see ClarificationCard.tsx
+    // for why a manual style.height effect here would fight that.
     const freeTextRef = useRef<HTMLTextAreaElement>(null);
-
-    // Auto-grow to fit content (up to a cap), same as ClarificationCard's field.
-    useEffect(() => {
-        if (freeTextRef.current) {
-            freeTextRef.current.style.height = 'inherit';
-            freeTextRef.current.style.height = `${Math.min(freeTextRef.current.scrollHeight, 160)}px`;
-        }
-    }, [freeText]);
 
     return (
         <div className="flex w-full justify-center my-5" data-testid={testId}>

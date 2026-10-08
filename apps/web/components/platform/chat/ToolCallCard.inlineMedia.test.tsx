@@ -47,6 +47,16 @@ describe('extractResultFiles', () => {
     expect(files.map(f => f.fileId)).toEqual(['b1', 'b2']);
   });
 
+  it('reads the narration a delegate made, so it hangs under the Voice step', () => {
+    const files = extractResultFiles('agent-director', {
+      subAgentToolResults: [
+        { toolName: 'generate_narration', result: { fileId: 'n1', name: 'Generated Narration.wav', fileType: 'audio/wav', size: 9 } },
+      ],
+    });
+    expect(files).toEqual([{ fileId: 'n1', name: 'Generated Narration.wav', fileType: 'audio/wav', size: 9 }]);
+    expect(extractResultFiles('generate_narration', { refused: true, refusalReason: 'GENERATION_FAILED' })).toEqual([]);
+  });
+
   it('returns empty for a non-media, non-show_files tool', () => {
     expect(extractResultFiles('web_search', { fileId: 'f1' })).toEqual([]);
   });

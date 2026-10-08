@@ -204,8 +204,9 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     file: officialSkillFile('tvc-ad.md'),
     director: { file: officialSkillFile('tvc-ad/director.md'), markers: ['flow: tvc ad'] },
     showcase: {
-      // Interim: the TVC actor still, until a live test produces a real example video.
-      imageUrl: '/creative/avatars/tvc-character.jpg',
+      // The Bubbli soft-drink ad from the 2026-10-05 recreation test (v5), 16:9.
+      imageUrl: '/creative/skills/tvc-ad-example.jpg',
+      videoUrl: '/creative/skills/tvc-ad-example.mp4',
       bestFor: ['TV-style ads', 'Product launches', 'Brand films'],
       starterPrompt: 'Make a TV commercial for my product',
     },

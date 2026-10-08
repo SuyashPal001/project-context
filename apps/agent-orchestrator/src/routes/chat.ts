@@ -6,18 +6,17 @@ import { agentBelongsToTenant, fetchAgentMemory } from '../usage.js'
 import { checkCreditBalance } from '../credits.js'
 import { filterTypedPII } from '../pii-filter.js'
 import { runChatStream } from './chatStream.js'
+import { parseResumeApproval } from './suspendedApprovals.js'
 import { isInternalServiceKey } from '../service-key.js'
 import { releaseMCPClientForSession } from '../mastra/tools.js'
 import {
   Attachment,
   getAllowedOrigin, INTERNAL_SERVICE_KEY, API_BASE_URL,
   sseApprovalChannels,
-  sessionActiveClarification, pendingClarifications,
   sessionActiveToolApprovals, pendingToolApprovals,
-  sessionActiveUpload, pendingUploads,
   checkRateLimit,
 } from '../types.js'
-import { updateClarificationRequest, updateUploadRequest, fetchConversationAllowMode } from '../persistence.js'
+import { fetchConversationAccess } from '../persistence.js'
 
 // ─── SSE chat endpoint ────────────────────────────────────────────────────────
 
@@ -98,8 +97,15 @@ chatRouter.post('/api/chat', async (c) => {
         !!s && typeof s === 'object' && typeof (s as any).id === 'string' && typeof (s as any).name === 'string')
     : []
   const isFirstMessage = (body as Record<string, unknown>).isFirstMessage === true
+  // A click on an approval card whose page is gone: the turn resumes that run
+  // instead of starting from a new message (suspendedApprovals.ts).
+  const rawResume = (body as Record<string, unknown>).resumeApproval
+  const resumeApproval = rawResume === undefined ? null : parseResumeApproval(rawResume)
+  if (rawResume !== undefined && !resumeApproval) {
+    return c.json({ error: 'invalid resumeApproval' }, 400)
+  }
 
-  if (!conversationId || (!rawMessage && attachments.length === 0)) {
+  if (!conversationId || (!rawMessage && attachments.length === 0 && !resumeApproval)) {
     return c.json({ error: 'conversationId and message or attachments are required' }, 400)
   }
 
@@ -137,7 +143,7 @@ chatRouter.post('/api/chat', async (c) => {
   // Per-agent memory (MEMORY.md), not per-tenant — each hired employee keeps
   // its own working notes rather than sharing one blob across a tenant's agents.
   const workingMemoryPromise = fetchAgentMemory(agentId)
-  const [, creditCheck, , allowMode] = await Promise.all([
+  const [, creditCheck, , access] = await Promise.all([
     // auth/me — resolve Cognito sub → internal UUID
     !isInternalCall
       ? fetch(`${API_BASE_URL}/api/v1/auth/me`, { headers: { 'Authorization': `Bearer ${idToken}` } })
@@ -165,12 +171,29 @@ chatRouter.post('/api/chat', async (c) => {
       : Promise.resolve({ allowed: true, balanceMicro: 0n, unlimited: true } as const),
     // working memory runs concurrently; awaited inside the async handler below
     workingMemoryPromise,
-    // allowMode: fetched from the conversation row, not trusted off the wire —
-    // an internal service call (watchdog etc.) has no per-user conversation
-    // ownership to check against, so it keeps trusting its own body like
-    // bodyTenantId already does above.
-    isInternalCall ? Promise.resolve(bodyAllowMode) : fetchConversationAllowMode(idToken, conversationId),
+    // The conversation row: whether this user owns it, and its allowMode
+    // (not trusted off the wire). An internal service call (watchdog etc.)
+    // has no per-user conversation ownership to check against, so it keeps
+    // trusting its own body like bodyTenantId already does above.
+    isInternalCall
+      ? Promise.resolve({ ownership: 'owned' as const, allowMode: bodyAllowMode })
+      : fetchConversationAccess(idToken, conversationId),
   ])
+  const allowMode = access.allowMode
+
+  // Only the chat's owner may write to it. Olmo's memory thread is the
+  // conversation id and Mastra scopes it to the tenant, not the user, so
+  // another member of the tenant who had the id would otherwise get replies
+  // built on that user's history (2026-10-09). Same 404 as a missing chat.
+  // When ownership cannot be checked, an ordinary message goes ahead (an API
+  // blip must not stop chat), but answering a card does not: it resumes a
+  // stored run.
+  if (access.ownership === 'not_owned' || (access.ownership === 'unknown' && resumeApproval)) {
+    console.warn(`[sse] refused user=${userId} conversationId=${conversationId} ownership=${access.ownership}${resumeApproval ? ' (card answer)' : ''}`)
+    return access.ownership === 'not_owned'
+      ? c.json({ error: 'Conversation not found' }, 404)
+      : c.json({ error: 'Could not check this conversation. Try again.' }, 503)
+  }
 
   // Credit guard — checked before ReadableStream setup so we can return plain 402, not SSE error.
   if (!isInternalCall && !creditCheck.allowed) {
@@ -239,76 +262,34 @@ chatRouter.post('/api/chat', async (c) => {
       try { clientStopHandler?.() } catch (err) { console.error(`[sse:${sessionId}] stop save failed:`, (err as Error).message) }
       sseApprovalChannels.delete(sessionId)
       releaseMCPClientForSession(sessionId)
-      // Resolve any pending clarification immediately so the server-side agent
-      // doesn't stay blocked for up to 120s after the client has gone away.
-      const clarId = sessionActiveClarification.get(sessionId)
-      if (clarId) {
-        const pending = pendingClarifications.get(clarId)
-        if (pending) {
-          clearTimeout(pending.timer)
-          pendingClarifications.delete(clarId)
-          sessionActiveClarification.delete(sessionId)
-          const collected = pending.collected
-          pending.resolve(collected)
-          if (pending.messageId && pending.conversationId && pending.idToken) {
-            const allSkipped = collected.length === 0 || collected.every((a) => a.skipped === true)
-            const answersMap: Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean }> = {}
-            for (const a of collected) {
-              answersMap[a.questionIndex] = { selectedIndex: a.selectedIndex, freeText: a.freeText, skipped: a.skipped }
-            }
-            updateClarificationRequest(pending.idToken, pending.conversationId, pending.messageId, {
-              status: allSkipped ? 'skipped' : 'answered',
-              answers: Object.keys(answersMap).length > 0 ? answersMap : undefined,
-              answeredAt: new Date().toISOString(),
-            })
-          }
-        }
-      }
+      // An open question or upload request is left open: the page may come
+      // back (a reload) and answer it, and the turn then carries on detached
+      // and saves its reply (chatStream.ts onClientStop). Its own timeout ends
+      // it if nobody does. Before 2026-10-09 this resolved it as skipped, and
+      // when the server noticed late, an answer after a reload ran a turn
+      // whose reply was never saved.
 
-      // Resolve every pending tool-call approval for this session
-      // immediately on disconnect — same reasoning as the clarification
-      // block above, don't leave the agent's Mastra run suspended
-      // indefinitely waiting on an in-process await nobody can answer
-      // anymore. The underlying Mastra run stays suspended in storage;
-      // only this local await is resolved (as a decline) so the request
-      // handler can finish. The watchdog's 24h sweep is what eventually
-      // declines the Mastra-side run itself if it's never revisited.
+      // Release every pending tool-call approval for this session on
+      // disconnect, so the request handler can finish instead of awaiting an
+      // answer nobody can give on this connection. The Mastra run itself
+      // stays suspended in storage.
       const approvalIds = sessionActiveToolApprovals.get(sessionId)
       if (approvalIds) {
         for (const toolCallId of Array.from(approvalIds)) {
           const pending = pendingToolApprovals.get(toolCallId)
           if (pending) {
             pendingToolApprovals.delete(toolCallId)
-            // Resolve only — no 'declined' PATCH here. chatStream.ts's
-            // turnLoop writes that PATCH unconditionally as soon as this
-            // promise resolves, from any resolver (the frontend decision
-            // route or this disconnect handler), so writing it here too
-            // would double every disconnect write.
-            pending.resolve({ confirmed: false })
+            // Abandoned, not declined: the card stays pending and its run stays
+            // suspended in storage, so a click after a reload resumes it
+            // (suspendedApprovals.ts). The watchdog's 24h sweep declines it if
+            // nobody ever does. Before 2026-10-09 this declined the run, and a
+            // dropped connection cancelled a video the user had not answered.
+            pending.resolve({ confirmed: false, abandoned: true })
           }
         }
         sessionActiveToolApprovals.delete(sessionId)
       }
 
-      // Resolve any pending upload request immediately, same reasoning as the
-      // clarification block above — don't leave the agent blocked for up to
-      // UPLOAD_TIMEOUT_MS after the client is gone.
-      const uploadId = sessionActiveUpload.get(sessionId)
-      if (uploadId) {
-        const pending = pendingUploads.get(uploadId)
-        if (pending) {
-          clearTimeout(pending.timer)
-          pendingUploads.delete(uploadId)
-          sessionActiveUpload.delete(sessionId)
-          pending.resolve({ files: [], skipped: true })
-          if (pending.messageId && pending.conversationId && pending.idToken) {
-            updateUploadRequest(pending.idToken, pending.conversationId, pending.messageId, {
-              status: 'skipped',
-              answeredAt: new Date().toISOString(),
-            })
-          }
-        }
-      }
     },
   })
 
@@ -320,6 +301,7 @@ chatRouter.post('/api/chat', async (c) => {
     isStreamClosed: () => streamClosed,
     onClientStop: (handler) => { clientStopHandler = handler },
     folderId, folderPrefix, allowMode, skillsUsed, isFirstMessage,
+    ...(resumeApproval ? { resume: resumeApproval } : {}),
   })
 
   const origin = getAllowedOrigin(c.req.header('Origin'))

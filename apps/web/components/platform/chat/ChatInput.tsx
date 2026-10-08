@@ -453,13 +453,9 @@ export function ChatInput({
         }
     };
 
-    useEffect(() => {
-        if (textareaRef.current) {
-            textareaRef.current.style.height = "inherit";
-            const scrollHeight = textareaRef.current.scrollHeight;
-            textareaRef.current.style.height = `${Math.min(scrollHeight, 200)}px`;
-        }
-    }, [content]);
+    // Auto-grow (up to max-h-[200px] on the Textarea below) comes from the
+    // shared Textarea's native field-sizing-content - see ClarificationCard.tsx
+    // for why a manual style.height effect here would fight that.
 
     useEffect(() => {
         if (prefill) {

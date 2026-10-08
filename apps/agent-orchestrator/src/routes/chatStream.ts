@@ -31,6 +31,8 @@ import { inputFileIdsOf, madeNewFile, markWorkingFiles } from './workingFiles.js
 import { handoverLine } from './turnAnswer.js'
 import { stepStart, stepEnd, type StepEvent } from './stepEvents.js'
 import { buildCancelNotice, backgroundDeclineReason, trackBackgroundDecline, waitForBackgroundDecline } from './cancelNotice.js'
+import { findSuspendedApproval, latestDelegationPrompt, resumingToolCalls, type ResumeApproval } from './suspendedApprovals.js'
+import { applyDelegationPromptFlags } from '../mastra/subagents/hooks.js'
 
 async function generateFollowUps(userMessage: string, assistantReply: string): Promise<string[]> {
   const prompt = `Based on this conversation turn, generate exactly 3 short, natural follow-up questions the user might want to ask next.
@@ -89,7 +91,12 @@ export interface ChatStreamOpts {
   // conversation (its own local message list) — cheaper than a DB round
   // trip here to re-derive it.
   isFirstMessage?: boolean
+  /** Answer to an approval card whose page is gone: resume that run instead of sending `message` (suspendedApprovals.ts). */
+  resume?: ResumeApproval
 }
+
+// The run was answered, expired (watchdog, 24h) or was never kept.
+const APPROVAL_EXPIRED_TEXT = 'That request has expired, so nothing was made. Ask again and I will set it up.'
 
 type ContentPart =
   | { type: 'text'; text: string }
@@ -253,7 +260,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     message, displayMessage, attachments, conversationId, tenantId,
     internalUserId, idToken, agentId, sessionId, startTime,
     workingMemoryPromise, sendEvent: sendToBrowser, sendHeartbeat, closeStream, isStreamClosed, onClientStop,
-    folderId, folderPrefix, allowMode, skillsUsed, isFirstMessage,
+    folderId, folderPrefix, allowMode, skillsUsed, isFirstMessage, resume,
   } = opts
   // The newest id token for this conversation — see freshIdToken.ts.
   const liveIdToken = (): string => latestIdToken(conversationId, idToken)
@@ -399,6 +406,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const isGatedTool = (name: unknown): boolean => typeof name === 'string' && name in GENERATION_APPROVAL_METADATA
   let backgroundAutoDeclines = 0
   let releaseBackgroundDecline: () => void = () => {}
+  // Set when this turn holds resumingToolCalls for its card (see the resume path).
+  let ownsResumeLock = false
 
   const flushMetrics = (): void => {
     if (pendingMetrics) { fireMetrics(pendingMetrics); pendingMetrics = null }
@@ -678,8 +687,15 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // the same one throughout — only how the turn is saved and shown changes
     // (2026-10-07: one ever-growing block hid every answer and picture inside it).
     let paused = false
+    // The page went away while a question was open (onClientStop below): the
+    // turn waits on, and if the question is answered (after a reload) it
+    // carries on with nobody watching and saves its reply, which the reloaded
+    // page picks up. Without this the reply went to the closed connection and
+    // was never saved (2026-10-09, the Pebbi earbuds plan).
+    let detached = false
+    const live = (): boolean => !isStreamClosed() || detached
     const pauseTurn = (): void => {
-      if (paused || backgroundDecline || isStreamClosed()) return
+      if (paused || backgroundDecline || !live()) return
       paused = true
       // A part that made pictures or clips but has no words hands them over
       // in one line before the question (handoverLine, turnAnswer.ts).
@@ -708,8 +724,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const resumeTurn = (answer: string, files?: Array<{ fileId: string; name: string; type: string }>): void => {
       if (!paused) return
       paused = false
-      // The page closed while the question was open: nothing was answered.
-      if (isStreamClosed()) return
+      // The page closed and the question timed out: nothing was answered.
+      if (!live()) return
       const at = Date.now()
       const text = answer.trim() || 'OK'
       sendEvent('turn_resume', { conversationId, text, ...(files?.length ? { attachments: files } : {}) })
@@ -718,6 +734,14 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     }
     requestContext.set('pauseTurn' as never, pauseTurn as never)
     requestContext.set('resumeTurn' as never, resumeTurn as never)
+    // A detached question that times out ends the turn quietly: no reply
+    // about an answer nobody gave (askClarifyingQuestions.ts, requestUpload.ts).
+    const endIfDetached = (): void => {
+      if (!detached) return
+      console.log(`[sse:${sessionId}] detached turn ended: its question was never answered`)
+      detached = false
+    }
+    requestContext.set('endIfDetached' as never, endIfDetached as never)
 
     // Stop mid-turn: keep what was already made. The stills and clips shown so
     // far are paid for and sit in Drive; without this save the whole turn,
@@ -725,6 +749,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // "if i stop all these cards will be lost"). Saved at the moment of Stop,
     // so it never lands after a message the user sends next.
     onClientStop?.(() => {
+      if (paused && !backgroundDecline) {
+        detached = true
+        console.log(`[sse:${sessionId}] page went away during a question; the turn waits for its answer detached`)
+      }
       if (backgroundDecline || (pendingAttachments.length === 0 && !fullText.trim())) {
         // Stopped while a question was open: the parts before it are saved; the user's own message may not be yet.
         if (!backgroundDecline) saveUserOnce(displayMessage)
@@ -759,8 +787,76 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         },
       }
 
+      let currentStream: any
+      if (resume) {
+        // A card answered after its page went away: find its run again and
+        // continue it here, in this new turn (suspendedApprovals.ts).
+        const live = pendingToolApprovals.get(resume.toolCallId)
+        if (live && live.tenantId === tenantId && live.conversationId === conversationId) {
+          // Its page is still open somewhere: answer it there; that page streams the rest.
+          pendingToolApprovals.delete(resume.toolCallId)
+          live.resolve({ confirmed: resume.decision === 'approved', declineReason: resume.declineReason })
+          closeStream()
+          return
+        }
+        if (resumingToolCalls.has(resume.toolCallId)) {
+          // A second click, tab or retry for a card already being resumed.
+          console.log(`[sse:${sessionId}] resume: toolCallId=${resume.toolCallId.slice(-10)} is already being resumed`)
+          closeStream()
+          return
+        }
+        resumingToolCalls.add(resume.toolCallId)
+        ownsResumeLock = true
+        const lookup = await findSuspendedApproval(activeAgent as never, conversationId, tenantId, resume.toolCallId)
+        if (lookup.status === 'error') {
+          // The run may still be there: leave the card as it is so it can be clicked again.
+          sendEvent('error', { message: 'Could not reach this request just now. Please try the card again.', conversationId })
+          closeStream()
+          return
+        }
+        const markCard = (status: 'approved' | 'declined'): void => {
+          if (!resume.cardMessageId || !idToken) return
+          updateGenerationConfirmRequest(liveIdToken(), conversationId, resume.cardMessageId, {
+            status,
+            decisionAt: new Date().toISOString(),
+            ...(resume.declineReason ? { declineReason: resume.declineReason } : {}),
+          })
+        }
+        if (lookup.status === 'missing') {
+          console.log(`[sse:${sessionId}] resume: no suspended run for toolCallId=${resume.toolCallId.slice(-10)}; telling the user it expired`)
+          markCard('declined')
+          sendEvent('approval_expired', { confirmationId: resume.toolCallId, conversationId })
+          const out = appendText('parent', APPROVAL_EXPIRED_TEXT)
+          if (out) sendEvent('delta', { text: out, conversationId })
+          sendEvent('done', { text: fullText, conversationId, messageId: assistantMessageId })
+          saveTurn()
+          stopHeartbeat()
+          closeStream()
+          return
+        }
+        const found = lookup.approval
+        console.log(`[sse:${sessionId}] resume: ${resume.decision} runId=${found.runId} toolCallId=${resume.toolCallId.slice(-10)} tool=${found.toolName ?? ''}`)
+        // This turn's request context is new: the flags the delegation read
+        // off Olmo's prompt (the reviewed ad flow, a TVC's reference video)
+        // are read again from it, or a batch would skip its first-shot review.
+        applyDelegationPromptFlags(requestContext as never, await latestDelegationPrompt(conversationId, tenantId))
+        if (resume.decision === 'approved') {
+          generationActivity++
+          if (found.toolName) {
+            toolCallNames.set(resume.toolCallId, found.toolName)
+            holdStep(found.toolName, resume.toolCallId, found.args ?? {}, 'running')
+          }
+          // The delegate's own tool-call chunk was in the earlier turn, so
+          // nothing here would start the heartbeat while a long video runs.
+          onToolCallStart()
+          currentStream = await (activeAgent as any).approveToolCall({ runId: found.runId, toolCallId: resume.toolCallId, requestContext, memory: titleMemory, ...olmoOptions })
+        } else {
+          currentStream = await (activeAgent as any).declineToolCall({ runId: found.runId, toolCallId: resume.toolCallId, reason: resume.declineReason ?? DECLINED_BY_USER_REASON, requestContext, memory: titleMemory, ...olmoOptions })
+        }
+        markCard(resume.decision)
+      } else {
       mark('calling agent.stream')
-      let currentStream: any = await (activeAgent as any).stream(mastraMessage, {
+      currentStream = await (activeAgent as any).stream(mastraMessage, {
         memory: {
           thread: conversationId || crypto.randomUUID(),
           resource: tenantId,
@@ -773,10 +869,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         ...(skillInvocationPrepareStep ? { prepareStep: skillInvocationPrepareStep } : {}),
       })
       mark('agent.stream returned')
+      }
 
     turnLoop: while (true) {
     for await (const part of currentStream.fullStream as AsyncIterable<any>) {
-      if (isStreamClosed() && !backgroundDecline) break turnLoop
+      if (!live() && !backgroundDecline) break turnLoop
 
       // TEMP INSTRUMENTATION — task 8 delegate approval test
       console.log(`[task8:${sessionId}] +${Date.now() - startTime}ms chunk type=${part.type}${part.payload?.toolName ? ` toolName=${part.payload.toolName}` : ''}${part.payload?.toolCallId ? ` toolCallId=${part.payload.toolCallId}` : ''}${part.payload?.agentId ? ` agentId=${part.payload.agentId}` : ''}`)
@@ -950,12 +1047,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
           // No timeout here — unlike the old CONFIRM_TIMEOUT_MS, this waits
           // until the human answers (sessions.ts's /api/chat/generation-confirm
-          // route resolves this entry), the connection drops (chat.ts's
-          // cancel() handler resolves it), or neither happens and the
-          // watchdog's 24h sweep declines the underlying Mastra run directly
-          // — which this in-process await never sees resolve, matching the
-          // spec's accepted trade-off for a connection abandoned that long.
-          const { confirmed, declineReason } = await new Promise<{ confirmed: boolean; declineReason?: string }>((resolve) => {
+          // route resolves this entry) or the connection drops (chat.ts's
+          // cancel() handler resolves it as abandoned: the run stays
+          // suspended, and a click after a reload resumes it in a new turn).
+          const { confirmed, declineReason, abandoned } = await new Promise<{ confirmed: boolean; declineReason?: string; abandoned?: boolean }>((resolve) => {
             pendingToolApprovals.set(toolCallId, {
               resolve, tenantId, runId, toolCallId,
               messageId: approvalMessageId, conversationId, idToken: liveIdToken(),
@@ -964,6 +1059,13 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
           sessionActiveToolApprovals.get(sessionId)?.delete(toolCallId)
           if (sessionActiveToolApprovals.get(sessionId)?.size === 0) sessionActiveToolApprovals.delete(sessionId)
+          // The page went away unanswered: leave the run suspended and the card
+          // pending, so the card still works after a reload (suspendedApprovals.ts).
+          // What this turn made so far was saved by the stop handler.
+          if (abandoned) {
+            console.log(`[sse:${sessionId}] approval left open on disconnect runId=${runId} toolCallId=${toolCallId.slice(-10)} tool=${toolName}`)
+            break turnLoop
+          }
           resumeTurn(confirmed ? 'Approve' : declineReason?.trim() || 'Cancel')
 
           // The user just answered the card, so the browser handed over a fresh
@@ -1181,7 +1283,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // or navigation) before the agent finished, isStreamClosed() is already
           // true here. Skip persistence so a cancelled turn can't write an
           // out-of-order message into the conversation after the user has moved on.
-          if (isStreamClosed()) break
+          // A detached turn is the exception: the user answered its question.
+          if (!live()) break
 
           saveTurn()
           if (pendingArtifactRef) fireArtifactNotification(tenantId, internalUserId, pendingArtifactRef)
@@ -1238,5 +1341,6 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     closeStream()
   } finally {
     releaseBackgroundDecline()
+    if (ownsResumeLock && resume) resumingToolCalls.delete(resume.toolCallId)
   }
 }
