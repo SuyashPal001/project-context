@@ -160,11 +160,10 @@ export const pendingToolApprovals = new Map<string, {
   conversationId?: string
   idToken?: string
   // No `timer` field — unlike the old pendingGenerationConfirmations, this
-  // entry has no server-side expiry. It resolves on a human decision, on
-  // SSE disconnect (chat.ts's cancel() handler), or never — until the
-  // watchdog's 24h sweep declines the underlying Mastra run directly via
-  // declineToolCall, independent of whether this in-process entry still
-  // exists.
+  // entry has no server-side expiry. It resolves on a human decision, or as
+  // abandoned on SSE disconnect (chat.ts's cancel() handler), which leaves the
+  // Mastra run suspended for a later click (suspendedApprovals.ts). The
+  // watchdog's 24h sweep declines a run nobody ever answers.
 }>()
 
 // ─── Upload-request gate ──────────────────────────────────────────────────────

@@ -532,6 +532,8 @@ function ChatPage() {
             // The page that showed this card is gone (reload, closed tab,
             // restart), but its run may still be kept: answer it as a new turn.
             // The orchestrator says so in the reply when it has expired.
+            // While a reply is still streaming nothing could be sent, so the card stays open.
+            if (isStreaming || isPreparingMessage) { toast.error('Wait for the reply to finish, then answer this.'); return; }
             markGenerationConfirm(messageId, 'approved');
             sendMessage('Approve', undefined, undefined, { confirmationId, decision: 'approved', cardMessageId: messageId });
             return;
@@ -549,11 +551,12 @@ function ChatPage() {
         queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
             old ? { data: old.data.map(m => m.id === messageId ? { ...m, generationConfirmRequest: m.generationConfirmRequest ? { ...m.generationConfirmRequest, status: resolvedStatus, decisionAt: new Date().toISOString() } : undefined } : m) } : old
         );
-    }, [conversationId, queryClient, sendGenerationConfirm, sendMessage, markGenerationConfirm]);
+    }, [conversationId, queryClient, sendGenerationConfirm, sendMessage, markGenerationConfirm, isStreaming, isPreparingMessage]);
 
     const handleGenerationDecline = useCallback(async (messageId: string, confirmationId: string, reason?: string) => {
         const ok = await sendGenerationConfirm(confirmationId, 'declined', reason);
         if (ok === 'gone') {
+            if (isStreaming || isPreparingMessage) { toast.error('Wait for the reply to finish, then answer this.'); return; }
             markGenerationConfirm(messageId, 'declined', reason);
             sendMessage(reason?.trim() || 'Cancel', undefined, undefined, { confirmationId, decision: 'declined', ...(reason ? { reason } : {}), cardMessageId: messageId });
             return;
@@ -567,7 +570,7 @@ function ChatPage() {
         queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
             old ? { data: old.data.map(m => m.id === messageId ? { ...m, generationConfirmRequest: m.generationConfirmRequest ? { ...m.generationConfirmRequest, status: 'declined' as const, decisionAt: new Date().toISOString(), ...(reason ? { declineReason: reason } : {}) } : undefined } : m) } : old
         );
-    }, [conversationId, queryClient, sendGenerationConfirm, sendMessage, markGenerationConfirm]);
+    }, [conversationId, queryClient, sendGenerationConfirm, sendMessage, markGenerationConfirm, isStreaming, isPreparingMessage]);
 
     // Tracks, per clarificationId, whether every answer submitted so far was a
     // skip — used to label the completed card "Skipped" only when the WHOLE

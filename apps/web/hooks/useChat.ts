@@ -203,7 +203,9 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
-        pendingRetryPayloadRef.current = { text, attachments, skillsUsed, isFirstMessage, resumeApproval };
+        // A card answer is never retried: if the first try reached the
+        // orchestrator, a second would run the generation twice, or call it expired.
+        pendingRetryPayloadRef.current = resumeApproval ? null : { text, attachments, skillsUsed, isFirstMessage };
 
         let { accessToken: token, idToken } = await getFreshAuthTokens();
 
@@ -529,6 +531,10 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                             break;
                         }
 
+                        // The card's run was gone; the reply that follows says so.
+                        case 'approval_expired':
+                            break;
+
                         default:
                             console.warn('[useChat] Unknown SSE event type:', event.type, payload);
                     }
@@ -549,7 +555,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                     window.location.href = '/auth/login';
                     return;
                 }
-                await sendMessageRef.current?.(text, attachments, skillsUsed, isFirstMessage).catch(console.error);
+                await sendMessageRef.current?.(text, attachments, skillsUsed, isFirstMessage, resumeApproval).catch(console.error);
                 return;
             }
         } catch (err: unknown) {

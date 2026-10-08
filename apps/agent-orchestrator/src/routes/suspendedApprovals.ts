@@ -5,6 +5,13 @@
 // the chat (threadId) and the tenant (resourceId), and resumed in a new turn.
 // Before this, a dropped connection declined the run, and the user's later
 // "yes" in the chat found nothing to approve.
+//
+// A card left open is not declined when the user writes something else: the
+// web hides the composer while a card is pending, and the watchdog's 24h sweep
+// declines whatever is never answered (internal.ts).
+
+import { sql } from 'drizzle-orm'
+import { executeSql } from '../mastra/tools/folderScope.js'
 
 export interface ResumeApproval {
   toolCallId: string
@@ -21,12 +28,14 @@ export interface SuspendedApproval {
   args?: unknown
 }
 
+/** found: resume it. missing: answered, expired or never kept. error: storage failed, the run may still be there. */
+export type SuspendedApprovalLookup =
+  | { status: 'found'; approval: SuspendedApproval }
+  | { status: 'missing' }
+  | { status: 'error' }
+
 interface SuspendedRunsAgent {
   listSuspendedRuns: (opts: { threadId: string; resourceId: string }) => Promise<{ runs?: Array<{ runId: string; toolCalls?: Array<{ toolCallId?: string; toolName?: string; args?: unknown; requiresApproval?: boolean }> }> }>
-}
-
-interface DecliningAgent extends SuspendedRunsAgent {
-  declineToolCall: (opts: { runId: string; toolCallId: string; reason: string }) => Promise<{ consumeStream?: (opts?: { onError?: (err: unknown) => void }) => Promise<unknown> }>
 }
 
 const MAX_REASON_LEN = 500
@@ -44,47 +53,53 @@ export function parseResumeApproval(raw: unknown): ResumeApproval | null {
   return { toolCallId, decision: r.decision, ...(declineReason ? { declineReason } : {}), ...(cardMessageId ? { cardMessageId } : {}) }
 }
 
-/** The run still waiting on this card in this chat, or null when it is gone (answered, expired, or never existed). */
-export async function findSuspendedApproval(agent: SuspendedRunsAgent, threadId: string, resourceId: string, toolCallId: string): Promise<SuspendedApproval | null> {
+/** The run still waiting on this card in this chat. */
+export async function findSuspendedApproval(agent: SuspendedRunsAgent, threadId: string, resourceId: string, toolCallId: string): Promise<SuspendedApprovalLookup> {
   try {
     const { runs = [] } = await agent.listSuspendedRuns({ threadId, resourceId })
     for (const run of runs) {
       const call = (run.toolCalls ?? []).find(tc => tc.requiresApproval && tc.toolCallId === toolCallId)
-      if (call) return { runId: run.runId, toolCallId, ...(call.toolName ? { toolName: call.toolName } : {}), ...(call.args !== undefined ? { args: call.args } : {}) }
+      if (call) return { status: 'found', approval: { runId: run.runId, toolCallId, ...(call.toolName ? { toolName: call.toolName } : {}), ...(call.args !== undefined ? { args: call.args } : {}) } }
     }
+    return { status: 'missing' }
   } catch (err) {
     console.error(`[resume-approval] listSuspendedRuns failed thread=${threadId}:`, (err as Error).message)
+    return { status: 'error' }
   }
-  return null
+}
+
+// Cards being resumed right now, so a second click, a second tab or a retried
+// request cannot run the same generation twice.
+export const resumingToolCalls = new Set<string>()
+
+function rowsOf(result: unknown): Array<Record<string, unknown>> {
+  const r = result as { rows?: unknown }
+  return ((r?.rows ?? result) ?? []) as Array<Record<string, unknown>>
 }
 
 /**
- * The user wrote a new message instead of answering a card left from an
- * earlier visit: that run is declined first, so two runs never write to one
- * chat. A card a live page still holds is left alone. Never throws.
+ * The prompt Olmo last gave a delegate in this chat. A resumed turn starts
+ * with a new request context, so the flags onDelegationStart read off that
+ * prompt (the reviewed ad flow, a TVC's reference video) are read again from
+ * it (hooks.ts applyDelegationPromptFlags). Delegate threads are named
+ * `<conversationId>-<uuid>` and owned by `<tenantId>-<delegate>`.
  */
-export async function declineStaleApprovals(agent: DecliningAgent, threadId: string, resourceId: string, isLive: (toolCallId: string) => boolean, reason: string): Promise<number> {
-  let runs: Awaited<ReturnType<SuspendedRunsAgent['listSuspendedRuns']>>['runs'] = []
+export async function latestDelegationPrompt(conversationId: string, tenantId: string): Promise<string | null> {
+  if (!conversationId || !tenantId) return null
   try {
-    runs = (await agent.listSuspendedRuns({ threadId, resourceId })).runs ?? []
+    const result = await executeSql(sql`
+      SELECT content FROM mastra.mastra_messages
+      WHERE thread_id LIKE ${conversationId + '-%'} AND "resourceId" LIKE ${tenantId + '-%'} AND role = 'user'
+      ORDER BY "createdAt" DESC
+      LIMIT 1
+    `)
+    const raw = rowsOf(result)[0]?.content
+    const content = typeof raw === 'string' ? JSON.parse(raw) : raw
+    const parts = (content as { parts?: Array<{ type?: string; text?: string }> } | undefined)?.parts ?? []
+    const text = parts.filter(p => p.type === 'text' && typeof p.text === 'string').map(p => p.text).join('\n')
+    return text || null
   } catch (err) {
-    console.error(`[stale-approval] listSuspendedRuns failed thread=${threadId}:`, (err as Error).message)
-    return 0
+    console.error(`[resume-approval] delegation prompt lookup failed conversation=${conversationId}:`, (err as Error).message)
+    return null
   }
-  let declined = 0
-  for (const run of runs ?? []) {
-    for (const call of run.toolCalls ?? []) {
-      if (!call.requiresApproval || !call.toolCallId || isLive(call.toolCallId)) continue
-      try {
-        const stream = await agent.declineToolCall({ runId: run.runId, toolCallId: call.toolCallId, reason })
-        // The decline only lands in the thread's history once its turn is drained.
-        await stream?.consumeStream?.({ onError: (err) => console.error(`[stale-approval] resumed stream error runId=${run.runId}:`, (err as Error)?.message) })
-        declined++
-        console.log(`[stale-approval] declined runId=${run.runId} toolCallId=${call.toolCallId.slice(-10)} tool=${call.toolName ?? ''}`)
-      } catch (err) {
-        console.error(`[stale-approval] decline failed runId=${run.runId}:`, (err as Error).message)
-      }
-    }
-  }
-  return declined
 }

@@ -30,6 +30,10 @@ describe('referencedFiles', () => {
     ])
     expect(referencedFiles(`Reference video: \`${FAKE_VIDEO}\``)).toEqual([{ label: 'Reference video', fileId: FAKE_VIDEO }])
     expect(referencedFiles('make an image of a cat')).toEqual([])
+    expect(referencedFiles(`- Product reference: ${PRODUCT}\n1. **Avatar reference:** ${AVATAR}`)).toEqual([
+      { label: 'Product reference', fileId: PRODUCT },
+      { label: 'Avatar reference', fileId: AVATAR },
+    ])
   })
 })
 

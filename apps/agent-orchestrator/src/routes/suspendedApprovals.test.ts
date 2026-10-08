@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
-import { parseResumeApproval, findSuspendedApproval, declineStaleApprovals } from './suspendedApprovals.js'
+
+const { executeSql } = vi.hoisted(() => ({ executeSql: vi.fn() }))
+vi.mock('../mastra/tools/folderScope.js', () => ({ executeSql }))
+
+import { parseResumeApproval, findSuspendedApproval, latestDelegationPrompt } from './suspendedApprovals.js'
 
 const run = (runId: string, toolCalls: Array<Record<string, unknown>>) => ({ runId, status: 'suspended', toolCalls })
 
@@ -26,38 +30,27 @@ describe('findSuspendedApproval', () => {
     ] })
     const found = await findSuspendedApproval({ listSuspendedRuns }, 'conv1', 'tenant1', 'c1')
     expect(listSuspendedRuns).toHaveBeenCalledWith({ threadId: 'conv1', resourceId: 'tenant1' })
-    expect(found).toEqual({ runId: 'r2', toolCallId: 'c1', toolName: 'generate_video', args: { prompt: 'p' } })
+    expect(found).toEqual({ status: 'found', approval: { runId: 'r2', toolCallId: 'c1', toolName: 'generate_video', args: { prompt: 'p' } } })
   })
-  it('is null when the run is gone or the call is not an approval', async () => {
+  it('tells a run that is gone from a lookup that failed', async () => {
     const agent = { listSuspendedRuns: vi.fn().mockResolvedValue({ runs: [run('r1', [{ toolCallId: 'c1', requiresApproval: false }])] }) }
-    expect(await findSuspendedApproval(agent, 'conv1', 'tenant1', 'c1')).toBeNull()
-    expect(await findSuspendedApproval({ listSuspendedRuns: vi.fn().mockRejectedValue(new Error('db')) }, 'conv1', 'tenant1', 'c1')).toBeNull()
+    expect(await findSuspendedApproval(agent, 'conv1', 'tenant1', 'c1')).toEqual({ status: 'missing' })
+    expect(await findSuspendedApproval({ listSuspendedRuns: vi.fn().mockRejectedValue(new Error('db')) }, 'conv1', 'tenant1', 'c1')).toEqual({ status: 'error' })
   })
 })
 
-describe('declineStaleApprovals', () => {
-  it('declines every approval left waiting on this chat, except one a live page still holds', async () => {
-    const consumeStream = vi.fn().mockResolvedValue(undefined)
-    const agent = {
-      listSuspendedRuns: vi.fn().mockResolvedValue({ runs: [
-        run('r1', [{ toolCallId: 'stale', requiresApproval: true }]),
-        run('r2', [{ toolCallId: 'live', requiresApproval: true }]),
-        run('r3', [{ toolCallId: 'wf', requiresApproval: false }]),
-      ] }),
-      declineToolCall: vi.fn().mockResolvedValue({ consumeStream }),
-    }
-    const n = await declineStaleApprovals(agent, 'conv1', 'tenant1', (id) => id === 'live', 'moved on')
-    expect(n).toBe(1)
-    expect(agent.declineToolCall).toHaveBeenCalledTimes(1)
-    expect(agent.declineToolCall).toHaveBeenCalledWith({ runId: 'r1', toolCallId: 'stale', reason: 'moved on' })
-    expect(consumeStream).toHaveBeenCalled()
+describe('latestDelegationPrompt', () => {
+  it("reads the text of Olmo's last delegate prompt in this chat", async () => {
+    executeSql.mockResolvedValueOnce([{ content: { format: 2, parts: [{ type: 'text', text: 'flow: animation character ad' }] } }])
+    expect(await latestDelegationPrompt('conv1', 'tenant1')).toBe('flow: animation character ad')
+    executeSql.mockResolvedValueOnce({ rows: [{ content: JSON.stringify({ parts: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }] }) }] })
+    expect(await latestDelegationPrompt('conv1', 'tenant1')).toBe('a\nb')
   })
-  it('never throws: a failed lookup or decline leaves the new message to go ahead', async () => {
-    expect(await declineStaleApprovals({ listSuspendedRuns: vi.fn().mockRejectedValue(new Error('db')), declineToolCall: vi.fn() }, 'c', 't', () => false, 'r')).toBe(0)
-    const agent = {
-      listSuspendedRuns: vi.fn().mockResolvedValue({ runs: [run('r1', [{ toolCallId: 'x', requiresApproval: true }])] }),
-      declineToolCall: vi.fn().mockRejectedValue(new Error('snapshot not found')),
-    }
-    expect(await declineStaleApprovals(agent, 'c', 't', () => false, 'r')).toBe(0)
+  it('is null with nothing to read or a failed lookup', async () => {
+    executeSql.mockResolvedValueOnce([])
+    expect(await latestDelegationPrompt('conv1', 'tenant1')).toBeNull()
+    executeSql.mockRejectedValueOnce(new Error('db'))
+    expect(await latestDelegationPrompt('conv1', 'tenant1')).toBeNull()
+    expect(await latestDelegationPrompt('', 'tenant1')).toBeNull()
   })
 })

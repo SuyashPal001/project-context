@@ -9,7 +9,8 @@ import { executeSql } from '../tools/folderScope.js'
 // not a real file stops the delegation before anything runs.
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
-const REFERENCE_LINE = new RegExp(`^[ \\t]*((?:[A-Za-z0-9][A-Za-z0-9 _-]*? )?reference(?: [A-Za-z]+)?)[ \\t]*:[ \\t]*[\`'"(]?(${UUID})`, 'gim')
+// Allows a list marker ("- ", "1. ") and markdown bold around the label.
+const REFERENCE_LINE = new RegExp(`^[ \\t]*(?:[-*•][ \\t]+|\\d+[.)][ \\t]+)?\\**((?:[A-Za-z0-9][A-Za-z0-9 _-]*? )?reference(?: [A-Za-z]+)?)[ \\t]*:\\**[ \\t]*[\`'"(]?(${UUID})`, 'gim')
 
 export interface FileReference { label: string; fileId: string }
 
@@ -41,6 +42,10 @@ export async function existingFileIds(tenantId: string, ids: string[]): Promise<
     UNION
     SELECT id::text AS id FROM creative_library_assets
     WHERE id IN (${list}) AND (tenant_id IS NULL OR tenant_id = ${tenantId})
+    UNION
+    -- A template's reference ad is a platform file, owned by no tenant of ours.
+    SELECT reference_file_id::text AS id FROM creative_templates
+    WHERE reference_file_id IN (${list})
   `)
   return new Set(rowsOf(result).map(r => String(r.id).toLowerCase()))
 }

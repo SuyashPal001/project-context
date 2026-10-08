@@ -381,14 +381,14 @@ export const handler: ScheduledHandler = async () => {
   // mechanism, which — unlike the old hand-rolled confirm gate this replaced
   // — has no built-in expiry: it persists indefinitely until answered. See
   // docs/superpowers/specs/2026-09-10-mastra-native-runtime-migration-design.md
-  // Design §2. chatStream.ts's SSE disconnect handler already declines the
-  // *local* wait the instant a browser tab closes, so this sweep only ever
-  // catches a run whose Mastra-side snapshot survived that — a PM2 restart
-  // mid-wait, or a decision nobody ever made.
+  // Design §2. Since 2026-10-09 a closed tab or dropped connection no longer
+  // declines the run: it stays suspended so the card can still be answered
+  // after a reload (agent-orchestrator routes/suspendedApprovals.ts). This
+  // sweep is what ends every card nobody ever answers.
   //
-  // The threshold is 24h, not this schedule's 5 minutes, because an open SSE
-  // connection resolves the overwhelming majority of these in seconds, not
-  // minutes — this sweep exists for the rare leftover, not the common case.
+  // The threshold is 24h, not this schedule's 5 minutes, so a card left on a
+  // closed tab can still be answered later that day. The card's messages row
+  // is not updated here; clicking it afterwards gets an "expired" reply.
   //
   // Declines via the agent-orchestrator's own declineToolCall (not a direct
   // storage write) so the run's model loop actually resumes and the decline

@@ -41,6 +41,30 @@ export interface DelegationHost {
 }
 
 /**
+ * The facts a delegation prompt carries that the delegate's tools read back
+ * off the request context. Also called when a card is answered after its page
+ * went away: that turn has a new request context (routes/chatStream.ts).
+ */
+export function applyDelegationPromptFlags(ctx: { set: (key: never, value: never) => void }, prompt: unknown): void {
+  if (typeof prompt !== 'string') return
+  // The delegate's own tools read this before showing an approval card
+  // (reviewGate.ts): a batch waits until the user has seen the first one.
+  if (briefIsReviewedAdFlow(prompt)) ctx.set(AD_FLOW_KEY as never, true as never)
+  // F4: plan_tvc's check can't trust Director to keep brief.reference —
+  // a live run dropped it on the very first check. Olmo's own delegation
+  // prompt is the one place that fact can't be edited away: when it
+  // recreates a reference ad, it carries "Reference video: <id>" (same
+  // pattern as AD_FLOW_KEY above), and planTvc.ts reads this back off
+  // requestContext to refuse a plan that disagrees. Anchored on the
+  // fileId's actual UUID shape, not just "the next non-space run" — a
+  // plain \S+ capture also swallows surrounding punctuation or quoting
+  // ("<id>.", "`<id>`", "\"<id>\""), which would make every correct plan
+  // fail the comparison in planTvc.ts and get wrongly refused.
+  const refMatch = /Reference video:\s*[`'"(]?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(prompt)
+  if (refMatch) ctx.set('tvcReferenceVideoFileId' as never, refMatch[1] as never)
+}
+
+/**
  * The delegation lifecycle for the Olmo path.
  *
  * NOTE: `delegation` is a per-EXECUTION option, not an Agent constructor
@@ -85,21 +109,7 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
 
     onDelegationStart: async (context: DelegationStartContext) => {
       const ctx = context.requestContext
-      // The delegate's own tools read this before showing an approval card
-      // (reviewGate.ts): a batch waits until the user has seen the first one.
-      if (briefIsReviewedAdFlow(context.prompt)) ctx.set(AD_FLOW_KEY as never, true as never)
-      // F4: plan_tvc's check can't trust Director to keep brief.reference —
-      // a live run dropped it on the very first check. Olmo's own delegation
-      // prompt is the one place that fact can't be edited away: when it
-      // recreates a reference ad, it carries "Reference video: <id>" (same
-      // pattern as AD_FLOW_KEY above), and planTvc.ts reads this back off
-      // requestContext to refuse a plan that disagrees. Anchored on the
-      // fileId's actual UUID shape, not just "the next non-space run" — a
-      // plain \S+ capture also swallows surrounding punctuation or quoting
-      // ("<id>.", "`<id>`", "\"<id>\""), which would make every correct plan
-      // fail the comparison in planTvc.ts and get wrongly refused.
-      const refMatch = /Reference video:\s*[`'"(]?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(context.prompt)
-      if (refMatch) ctx.set('tvcReferenceVideoFileId' as never, refMatch[1] as never)
+      applyDelegationPromptFlags(ctx, context.prompt)
       const spec = lookup(context.primitiveId)
       const tenantId = host.tenantId || (ctx.get('tenantId') as string | undefined) || ''
       const agentId = host.agentId ?? (ctx.get('agentId') as string | undefined) ?? null

@@ -149,6 +149,11 @@ vi.mock('../llm/quickCall.js', () => ({
   quickGeminiCall: vi.fn().mockResolvedValue('[]'),
 }))
 
+vi.mock('./suspendedApprovals.js', async () => {
+  const actual = await vi.importActual<typeof import('./suspendedApprovals.js')>('./suspendedApprovals.js')
+  return { ...actual, latestDelegationPrompt: vi.fn().mockResolvedValue('flow: ugc ad\nReference video: 11111111-2222-3333-4444-555555555555') }
+})
+
 import { runChatStream, attachmentsFromToolResult, type ChatStreamOpts } from './chatStream.js'
 import { pendingToolApprovals } from '../types.js'
 import * as persistence from '../persistence.js'
@@ -220,15 +225,40 @@ describe('runChatStream — tool-call-approval round trip', () => {
     expect(closeStream).toHaveBeenCalled()
   })
 
-  it('a new message first declines a card left waiting from an earlier visit', async () => {
-    const consumeStream = vi.fn().mockResolvedValue(undefined)
-    listSuspendedRuns.mockResolvedValueOnce({ runs: [{ runId: 'run-old', toolCalls: [{ toolCallId: 'tc-old', requiresApproval: true }] }] })
-    declineToolCall.mockResolvedValueOnce({ consumeStream })
+  it('a new message does not look for suspended runs', async () => {
     streamMock.mockResolvedValueOnce(fakeStream([{ type: 'finish', payload: { output: { usage: {} } } }], 'run-new'))
     await runChatStream(baseOpts({ sendEvent: vi.fn() }))
-    expect(declineToolCall).toHaveBeenCalledWith(expect.objectContaining({ runId: 'run-old', toolCallId: 'tc-old' }))
-    expect(consumeStream).toHaveBeenCalled()
-    expect(declineToolCall.mock.invocationCallOrder[0]).toBeLessThan(streamMock.mock.invocationCallOrder[0])
+    expect(listSuspendedRuns).not.toHaveBeenCalled()
+  })
+
+  it('a resumed turn gets the flags of the delegation it belongs to', async () => {
+    listSuspendedRuns.mockResolvedValueOnce({ runs: [{ runId: 'run-f', toolCalls: [{ toolCallId: 'tc-f', toolName: 'generate_videos', requiresApproval: true }] }] })
+    approveToolCall.mockResolvedValueOnce(fakeStream([{ type: 'finish', payload: { output: { usage: {} } } }], 'run-f'))
+    await runChatStream(baseOpts({ sendEvent: vi.fn(), message: 'Approve', displayMessage: 'Approve', resume: { toolCallId: 'tc-f', decision: 'approved' } }))
+    const ctx = approveToolCall.mock.calls[0][0].requestContext
+    expect(ctx.get('tvcReferenceVideoFileId')).toBe('11111111-2222-3333-4444-555555555555')
+  })
+
+  it('a failed lookup leaves the card alone and says to try again', async () => {
+    listSuspendedRuns.mockRejectedValueOnce(new Error('db blip'))
+    const sendEvent = vi.fn()
+    await runChatStream(baseOpts({ sendEvent, message: 'Approve', displayMessage: 'Approve', resume: { toolCallId: 'tc-e', decision: 'approved', cardMessageId: 'card-e' } }))
+    expect(sendEvent).toHaveBeenCalledWith('error', expect.objectContaining({ message: expect.stringContaining('try the card again') }))
+    expect(persistence.updateGenerationConfirmRequest).not.toHaveBeenCalled()
+    expect(approveToolCall).not.toHaveBeenCalled()
+  })
+
+  it('the same card resumed twice at once runs once', async () => {
+    listSuspendedRuns.mockResolvedValue({ runs: [{ runId: 'run-d', toolCalls: [{ toolCallId: 'tc-d', toolName: 'generate-image', requiresApproval: true }] }] })
+    let release!: () => void
+    approveToolCall.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve(fakeStream([{ type: 'finish', payload: { output: { usage: {} } } }], 'run-d')) }))
+    const opts = { message: 'Approve', displayMessage: 'Approve', resume: { toolCallId: 'tc-d', decision: 'approved' as const } }
+    const first = runChatStream(baseOpts({ sendEvent: vi.fn(), sessionId: 's1', ...opts }))
+    await vi.waitFor(() => expect(approveToolCall).toHaveBeenCalledTimes(1))
+    await runChatStream(baseOpts({ sendEvent: vi.fn(), sessionId: 's2', ...opts }))
+    release()
+    await first
+    expect(approveToolCall).toHaveBeenCalledTimes(1)
   })
 
   it('approves: sends generation_confirm_request, then resumes via approveToolCall', async () => {
