@@ -93,7 +93,7 @@ export const tvcPlanSchema = z.object({
     actorLook: z.string().optional().describe('The lead\'s look, e.g. "long dark wavy hair, magenta shirt"; extras never share it'),
     brandName: z.string().optional().describe('The brand name as it appears on screen; not counted in a disclaimer\'s hold time'),
     jingle: jingleSchema.optional().describe('A sung sign-off over the ending; only when the user wants one or the reference ad has one'),
-    logoFileId: z.string().optional().describe('The brand logo the user uploaded (PNG or JPG), laid on the packshot; never the product photo'),
+    logoFileId: z.string().optional().describe('The brand logo the user uploaded (PNG, JPG or WebP), laid on the packshot; never the product photo'),
     vegMark: z.enum(['veg', 'non_veg']).optional().describe('Food and drink: the veg or non-veg mark on the packshot'),
   }),
   look: z.string().min(1),
@@ -591,6 +591,10 @@ export function sliceTvcPlan(plan: TvcPlan, slice: string): unknown {
         n: s.n, type: s.type, startSeconds: starts[s.n - 1], durationSeconds: s.durationSeconds, text: s.text, clipFileId: s.clipFileId,
         ...(s.motion ? { motion: s.motion } : {}),
         ...(s.price ? { price: s.price } : {}),
+        // F1: in 16:9, overlay_text's top band sits inside the logo box. With a
+        // logo, every overlay the packshot shows (its text, its price) sits at
+        // center instead; without one the packshot is unchanged.
+        ...(s.type === 'packshot' && plan.brief.logoFileId ? { position: 'center' as const } : {}),
       })),
       voiceover: plan.voiceover, packshot: plan.packshot,
       legal: legalTimings(plan).timings.flatMap((t) => (t ? [{ text: t.text, startSeconds: t.startSeconds, endSeconds: t.endSeconds, style: 'legal' as const }] : [])),

@@ -749,6 +749,22 @@ describe('Part 2.2: motion, prices, logo and veg mark in the plan (M2, M4, M5)',
     expect(slice.shots[5]).not.toHaveProperty('motion')
     expect(slice.packshot).toMatchObject({ tagline: 'Soft all day', motion: 'fade' })
   })
+  // F1: in 16:9 the overlay_text top band falls inside the logo box; with a
+  // logo, the packshot's overlays move to center instead of top.
+  it('F1: a packshot price gets center with a logo, and is unchanged without one', () => {
+    const p = goodPlan(); p.shots[6].price = { amount: '₹499' } // n=7, the packshot
+    const noLogo = sliceTvcPlan(validateTvcPlan(p).plan, 'finish') as { shots: Array<Record<string, unknown>> }
+    expect(noLogo.shots[6]).toMatchObject({ n: 7, price: { amount: '₹499' } })
+    expect(noLogo.shots[6]).not.toHaveProperty('position')
+    p.brief.logoFileId = 'logo-1'
+    const withLogo = sliceTvcPlan(validateTvcPlan(p).plan, 'finish') as { shots: Array<Record<string, unknown>> }
+    expect(withLogo.shots[6]).toMatchObject({ n: 7, price: { amount: '₹499' }, position: 'center' })
+  })
+  it('F1: a non-packshot shot never gets a position override, even with a logo', () => {
+    const p = goodPlan(); p.brief.logoFileId = 'logo-1'
+    const slice = sliceTvcPlan(validateTvcPlan(p).plan, 'finish') as { shots: Array<Record<string, unknown>> }
+    expect(slice.shots[2]).not.toHaveProperty('position') // n=3, has shot text "SPF 30"
+  })
   it.each([
     [{ amount: 'cheap' }, /^PRICE_INVALID: "cheap" is not a price.*\(shot 6\)$/],
     [{ amount: '₹499', mrp: '₹499' }, /^PRICE_MRP_NOT_HIGHER: .*\(shot 6\)$/],

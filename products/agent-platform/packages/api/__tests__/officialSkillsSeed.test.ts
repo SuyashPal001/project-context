@@ -133,6 +133,16 @@ describe('OFFICIAL_SKILLS', () => {
     // The shipped lines are still there, word for word (append only).
     expect(card).toMatch(/or the veg mark cannot be added yet/)
     expect(card).not.toMatch(/forVoiceoverBlock|overlay_text|plan_tvc|composite_end_card/)
+    // F1: packshot overlays sit at center with a logo, so they never cover it.
+    expect(director).toMatch(/When the finish slice gives an overlay a position, use it exactly \(with a logo, packshot text and prices sit at center so they never cover the logo\)\./)
+    // F4: a plain-words script for every logo refusal, including the one new on this branch.
+    expect(director).toMatch(/LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_RASTER, LOGO_NOT_IMAGE, LOGO_UNCHECKED or LOGO_FROM_REFERENCE/)
+    expect(card).toMatch(/that image came from the reference ad, not your brand; please upload your own logo/)
+    expect(card).toMatch(/I couldn't read the logo; please try uploading it again/)
+    // F5: the logo accepts PNG, JPG or WebP everywhere the card says so.
+    expect(card).toMatch(/PNG, JPG or WebP\? A see-through PNG looks best/)
+    expect(card).toMatch(/ask for a PNG, JPG or WebP logo in one plain sentence/)
+    expect(card).not.toMatch(/PNG or JPG/)
   });
 
   it('each entry file exists and is non-empty', () => {
