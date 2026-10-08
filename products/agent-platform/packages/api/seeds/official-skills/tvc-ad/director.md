@@ -81,3 +81,11 @@ Legal disclaimers (supersede the legal parts of the lines above):
 - overlay_text refused with LEGAL_TOO_LONG, or composite_end_card refused with END_CARD_OVER_DISCLAIMER: return the reason to Olmo; never make the disclaimer smaller.
 - "Creative visualisation" is added for a mechanism or superpower shot as industry practice; it does not make a performance claim acceptable, so a claim still needs its own disclaimer.
 - When the finish slice has finishOrder, follow it exactly; it supersedes the order of the finish lines above (overlay_text runs last, so text sits on top of the end card and nothing after it removes the disclaimer marker).
+
+Logo, veg mark, text motion and prices (supersede the matching lines above):
+- step plan: write brief.logoFileId from Olmo's "Logo: <fileId>" and, for food or beverage, brief.vegMark ("veg" or "non_veg") from "Veg mark:". Never use the product photo as the logo.
+- step plan: a price from Olmo's "Price: …" goes in the price field ({amount, mrp, note}) of the shot where it shows, never in its text; that shot must be at least 1.2 seconds. Leave motion unset unless Olmo asks for a move; plan_tvc sets pop for shot text and fade for the tagline.
+- On PRICE_INVALID, PRICE_MRP_NOT_HIGHER or PRICE_TOO_SHORT from plan_tvc check, fix what it says and check again. On LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_RASTER, LOGO_NOT_IMAGE or LOGO_UNCHECKED, return the reason to Olmo.
+- step finish, composite_end_card: when the finish slice has endCard, pass its logoFileId, vegMark and disclaimerLines exactly as given.
+- step finish, overlay_text: pass each shot's motion exactly as the finish slice gives it (omit motion when the slice has none), and the packshot's motion with the tagline. For a shot with a price, add one overlay with price exactly as given, text = the price's amount, position center (top on the packshot), the shot's start and end, and no motion (it stamps in by itself). Legal entries never take a motion.
+- composite_end_card or overlay_text refused with a LOGO_ or PRICE_ reason: return it to Olmo in plain words; never drop the logo or the price on your own.

@@ -117,6 +117,22 @@ describe('OFFICIAL_SKILLS', () => {
     expect(director).toMatch(/When the finish slice has finishOrder, follow it exactly; it supersedes the order of the finish lines above/)
     // F4: a 9:16 disclaimer must be kept short.
     expect(card).toMatch(/For a 9:16 ad keep a disclaimer to about 45 characters \(two short lines\); a 16:9 ad fits about twice that\./)
+    // Part 2.2: logo, veg mark, text motion and prices (additive section).
+    expect(director).toMatch(/Logo, veg mark, text motion and prices \(supersede the matching lines above\)/)
+    expect(director).toMatch(/write brief\.logoFileId from Olmo's "Logo: <fileId>"/)
+    expect(director).toMatch(/brief\.vegMark \("veg" or "non_veg"\)/)
+    expect(director).toMatch(/never in its text; that shot must be at least 1\.2 seconds/)
+    expect(director).toMatch(/when the finish slice has endCard, pass its logoFileId, vegMark and disclaimerLines exactly as given/)
+    expect(director).toMatch(/pass each shot's motion exactly as the finish slice gives it/)
+    expect(director).toContain('LOGO_NOT_RASTER')
+    expect(director).toContain('PRICE_TOO_SHORT')
+    expect(card).toMatch(/18\. Logo, veg mark and prices \(supersedes the veg-mark part of item 8\)/)
+    expect(card).toMatch(/"Logo: <fileId>"/)
+    expect(card).toMatch(/"Veg mark: veg" or "Veg mark: non-veg"/)
+    expect(card).toMatch(/"Price: <amount>; MRP: <higher price>; note: <short line>"/)
+    // The shipped lines are still there, word for word (append only).
+    expect(card).toMatch(/or the veg mark cannot be added yet/)
+    expect(card).not.toMatch(/forVoiceoverBlock|overlay_text|plan_tvc|composite_end_card/)
   });
 
   it('each entry file exists and is non-empty', () => {
