@@ -8,7 +8,7 @@ import { Hono } from 'hono'
 // one of B's later turns.
 const {
   validateToken, agentBelongsToTenant, fetchAgentMemory, checkCreditBalance,
-  runChatStream, isInternalServiceKey, fetchConversationAllowMode, conversationOwnership,
+  runChatStream, isInternalServiceKey, fetchConversationAccess,
 } = vi.hoisted(() => ({
   validateToken: vi.fn(),
   agentBelongsToTenant: vi.fn(),
@@ -16,8 +16,7 @@ const {
   checkCreditBalance: vi.fn(),
   runChatStream: vi.fn(),
   isInternalServiceKey: vi.fn(),
-  fetchConversationAllowMode: vi.fn(),
-  conversationOwnership: vi.fn(),
+  fetchConversationAccess: vi.fn(),
 }))
 
 vi.mock('../auth.js', () => ({ validateToken }))
@@ -29,8 +28,7 @@ vi.mock('../mastra/tools.js', () => ({ releaseMCPClientForSession: vi.fn() }))
 vi.mock('../persistence.js', () => ({
   updateClarificationRequest: vi.fn(),
   updateGenerationConfirmRequest: vi.fn(),
-  fetchConversationAllowMode,
-  conversationOwnership,
+  fetchConversationAccess,
 }))
 
 import { chatRouter } from './chat.js'
@@ -54,7 +52,7 @@ beforeEach(() => {
   validateToken.mockResolvedValue({ sub: `user-${Math.random()}`, 'custom:tenantId': 'tenant-A' })
   fetchAgentMemory.mockResolvedValue(null)
   checkCreditBalance.mockResolvedValue({ allowed: true, balanceMicro: 0n, unlimited: true })
-  fetchConversationAllowMode.mockResolvedValue('ask')
+  fetchConversationAccess.mockResolvedValue({ ownership: 'owned', allowMode: 'ask' })
   runChatStream.mockResolvedValue(undefined)
 })
 
@@ -100,33 +98,29 @@ describe('POST /api/chat — agentId must belong to the JWT tenant', () => {
   })
 })
 
-describe("POST /api/chat — answering a card needs the chat's owner", () => {
+describe("POST /api/chat — only the chat's owner may write to it", () => {
   const resumeBody = { conversationId: 'conv-1', message: 'Approve', resumeApproval: { confirmationId: 'tc-1', decision: 'approved' } }
 
-  it("refuses another user's chat in the same tenant and never resumes", async () => {
-    conversationOwnership.mockResolvedValue('not_owned')
-    const res = await post(resumeBody)
-    expect(res.status).toBe(404)
-    expect(conversationOwnership).toHaveBeenCalledWith(expect.any(String), 'conv-1')
+  it("refuses another user's chat in the same tenant, for a message or a card answer", async () => {
+    fetchConversationAccess.mockResolvedValue({ ownership: 'not_owned', allowMode: 'ask' })
+    expect((await post({ conversationId: 'conv-1', message: 'what did we talk about?' })).status).toBe(404)
+    expect((await post(resumeBody)).status).toBe(404)
+    expect(fetchConversationAccess).toHaveBeenCalledWith(expect.any(String), 'conv-1')
     expect(runChatStream).not.toHaveBeenCalled()
   })
 
-  it('fails closed when ownership cannot be checked', async () => {
-    conversationOwnership.mockResolvedValue('unknown')
-    const res = await post(resumeBody)
-    expect(res.status).toBe(503)
+  it('when ownership cannot be checked, a message goes ahead but a card answer does not', async () => {
+    fetchConversationAccess.mockResolvedValue({ ownership: 'unknown', allowMode: 'ask' })
+    expect((await post(resumeBody)).status).toBe(503)
     expect(runChatStream).not.toHaveBeenCalled()
+    expect((await post({ conversationId: 'conv-1', message: 'hi' })).status).toBe(200)
+    expect(runChatStream).toHaveBeenCalledTimes(1)
   })
 
-  it("resumes the owner's card", async () => {
-    conversationOwnership.mockResolvedValue('owned')
+  it("resumes the owner's card with the chat's own Allow mode", async () => {
+    fetchConversationAccess.mockResolvedValue({ ownership: 'owned', allowMode: 'auto' })
     const res = await post(resumeBody)
     expect(res.status).toBe(200)
-    expect(runChatStream).toHaveBeenCalledWith(expect.objectContaining({ resume: expect.objectContaining({ toolCallId: 'tc-1', decision: 'approved' }) }))
-  })
-
-  it('does not check ownership for an ordinary message', async () => {
-    await post({ conversationId: 'conv-1', message: 'hi' })
-    expect(conversationOwnership).not.toHaveBeenCalled()
+    expect(runChatStream).toHaveBeenCalledWith(expect.objectContaining({ allowMode: 'auto', resume: expect.objectContaining({ toolCallId: 'tc-1', decision: 'approved' }) }))
   })
 })

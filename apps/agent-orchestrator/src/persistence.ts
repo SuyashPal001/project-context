@@ -56,21 +56,24 @@ export async function fetchConversationAllowMode(idToken: string, conversationId
   }
 }
 
-/**
- * Whether this user owns the conversation: the API's GET is scoped to the
- * caller (tenant and user), so a 404 means another user's chat or none.
- * 'unknown' on any other failure.
- */
-export async function conversationOwnership(idToken: string, conversationId: string): Promise<'owned' | 'not_owned' | 'unknown'> {
+export interface ConversationAccess {
+  /** The API's GET is scoped to the caller (tenant and user): a 404 is another user's chat, or none. 'unknown' on any other failure. */
+  ownership: 'owned' | 'not_owned' | 'unknown'
+  allowMode: 'ask' | 'auto'
+}
+
+/** One read of the conversation row per message: who may write to it, and its Allow mode. */
+export async function fetchConversationAccess(idToken: string, conversationId: string): Promise<ConversationAccess> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/conversations/${encodeURIComponent(conversationId)}`, {
       headers: { 'Authorization': `Bearer ${idToken}` },
     })
-    if (res.ok) return 'owned'
-    return res.status === 404 || res.status === 403 ? 'not_owned' : 'unknown'
+    if (!res.ok) return { ownership: res.status === 404 || res.status === 403 ? 'not_owned' : 'unknown', allowMode: 'ask' }
+    const json = await res.json() as { data?: { metadata?: { allowMode?: string } } }
+    return { ownership: 'owned', allowMode: json.data?.metadata?.allowMode === 'auto' ? 'auto' : 'ask' }
   } catch (err) {
-    console.error('[persistence] conversationOwnership error:', (err as Error).message)
-    return 'unknown'
+    console.error('[persistence] fetchConversationAccess error:', (err as Error).message)
+    return { ownership: 'unknown', allowMode: 'ask' }
   }
 }
 

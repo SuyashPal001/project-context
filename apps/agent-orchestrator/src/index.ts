@@ -16,7 +16,7 @@ import { API_BASE_URL, sessions } from './types.js'
 import { downloadMediaAttachment, buildAttachmentNote } from './media.js'
 import type { RelaySessionCtx, DownloadedMedia } from './types.js'
 import { validateToken } from './auth.js'
-import { createConversation, saveUserMessage, saveAssistantMessage, fetchConversationAllowMode } from './persistence.js'
+import { createConversation, saveUserMessage, saveAssistantMessage, fetchConversationAccess } from './persistence.js'
 import { fetchAgentMemory, fetchAllowedSubAgents } from './usage.js'
 import { isClientHiddenTool } from './toolVisibility.js'
 import { filterPII } from './pii-filter.js'
@@ -118,9 +118,18 @@ async function handleSession(
         // silently ignoring the per-conversation Auto grant for WebSocket
         // (mobile) callers. Same server-held-grant fetch as chat.ts: never
         // trust allowMode off the wire, always re-read the conversation row.
-        const allowMode = conversationId
-          ? await fetchConversationAllowMode(idToken, conversationId)
-          : 'ask' as const
+        const access = conversationId
+          ? await fetchConversationAccess(idToken, conversationId)
+          : { ownership: 'owned' as const, allowMode: 'ask' as const }
+        // Only the chat's owner may write to it (same rule as routes/chat.ts):
+        // the memory thread is the conversation id, scoped to the tenant only.
+        if (access.ownership === 'not_owned') {
+          console.warn(`[session:${sessionId}] refused conversation ${conversationId}: not this user's`)
+          streamingActive = false
+          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'error', message: 'Conversation not found', conversationId }))
+          return
+        }
+        const allowMode = access.allowMode
 
         const workingMemory = await fetchAgentMemory(agentId)
         const memPreamble = workingMemory

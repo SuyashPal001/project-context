@@ -18,7 +18,7 @@ import {
   sessionActiveUpload, pendingUploads,
   checkRateLimit,
 } from '../types.js'
-import { updateClarificationRequest, updateUploadRequest, fetchConversationAllowMode, conversationOwnership } from '../persistence.js'
+import { updateClarificationRequest, updateUploadRequest, fetchConversationAccess } from '../persistence.js'
 
 // ─── SSE chat endpoint ────────────────────────────────────────────────────────
 
@@ -145,7 +145,7 @@ chatRouter.post('/api/chat', async (c) => {
   // Per-agent memory (MEMORY.md), not per-tenant — each hired employee keeps
   // its own working notes rather than sharing one blob across a tenant's agents.
   const workingMemoryPromise = fetchAgentMemory(agentId)
-  const [, creditCheck, , allowMode] = await Promise.all([
+  const [, creditCheck, , access] = await Promise.all([
     // auth/me — resolve Cognito sub → internal UUID
     !isInternalCall
       ? fetch(`${API_BASE_URL}/api/v1/auth/me`, { headers: { 'Authorization': `Bearer ${idToken}` } })
@@ -173,23 +173,28 @@ chatRouter.post('/api/chat', async (c) => {
       : Promise.resolve({ allowed: true, balanceMicro: 0n, unlimited: true } as const),
     // working memory runs concurrently; awaited inside the async handler below
     workingMemoryPromise,
-    // allowMode: fetched from the conversation row, not trusted off the wire —
-    // an internal service call (watchdog etc.) has no per-user conversation
-    // ownership to check against, so it keeps trusting its own body like
-    // bodyTenantId already does above.
-    isInternalCall ? Promise.resolve(bodyAllowMode) : fetchConversationAllowMode(idToken, conversationId),
+    // The conversation row: whether this user owns it, and its allowMode
+    // (not trusted off the wire). An internal service call (watchdog etc.)
+    // has no per-user conversation ownership to check against, so it keeps
+    // trusting its own body like bodyTenantId already does above.
+    isInternalCall
+      ? Promise.resolve({ ownership: 'owned' as const, allowMode: bodyAllowMode })
+      : fetchConversationAccess(idToken, conversationId),
   ])
+  const allowMode = access.allowMode
 
-  // Answering a card resumes a stored run of this chat, so only the chat's
-  // owner may: Mastra scopes the run to the tenant, not the user.
-  if (resumeApproval && !isInternalCall) {
-    const ownership = await conversationOwnership(idToken, conversationId)
-    if (ownership !== 'owned') {
-      console.warn(`[sse] resumeApproval refused user=${userId} conversationId=${conversationId} ownership=${ownership}`)
-      return ownership === 'not_owned'
-        ? c.json({ error: 'Conversation not found' }, 404)
-        : c.json({ error: 'Could not check this conversation. Try again.' }, 503)
-    }
+  // Only the chat's owner may write to it. Olmo's memory thread is the
+  // conversation id and Mastra scopes it to the tenant, not the user, so
+  // another member of the tenant who had the id would otherwise get replies
+  // built on that user's history (2026-10-09). Same 404 as a missing chat.
+  // When ownership cannot be checked, an ordinary message goes ahead (an API
+  // blip must not stop chat), but answering a card does not: it resumes a
+  // stored run.
+  if (access.ownership === 'not_owned' || (access.ownership === 'unknown' && resumeApproval)) {
+    console.warn(`[sse] refused user=${userId} conversationId=${conversationId} ownership=${access.ownership}${resumeApproval ? ' (card answer)' : ''}`)
+    return access.ownership === 'not_owned'
+      ? c.json({ error: 'Conversation not found' }, 404)
+      : c.json({ error: 'Could not check this conversation. Try again.' }, 503)
   }
 
   // Credit guard — checked before ReadableStream setup so we can return plain 402, not SSE error.
