@@ -725,3 +725,72 @@ describe('lengthSeconds reaches Gemini without a numeric enum', () => {
     expect(tvcPlanSchema.safeParse(goodPlan()).success).toBe(true)
   })
 })
+
+describe('Part 2.2: motion, prices, logo and veg mark in the plan (M2, M4, M5)', () => {
+  it('check sets pop on shot text and fade on the tagline, and keeps what Director chose', () => {
+    const p = goodPlan(); p.shots[1].text = 'Go'; p.shots[1].motion = 'slide_up'
+    const out = validateTvcPlan(p).plan
+    expect(out.shots[2].motion).toBe('pop')          // "SPF 30"
+    expect(out.shots[1].motion).toBe('slide_up')
+    expect(out.shots[0].motion).toBeUndefined()       // no text
+    expect(out.packshot.motion).toBe('fade')
+  })
+  // Review Focus 2: a plan saved before this change was never checked by this code.
+  it('an old saved plan slices exactly as before: no motion, price or endCard at slice time (X12)', () => {
+    const slice = sliceTvcPlan(goodPlan(), 'finish')
+    expect(JSON.stringify(slice)).not.toMatch(/motion|price|endCard|logoFileId|vegMark/)
+    expect(Object.keys(slice as object)).toEqual(['brief', 'shots', 'voiceover', 'packshot', 'legal', 'narrationFileIds', 'songFileId'])
+  })
+  it('the finish slice carries each shot\'s motion and price', () => {
+    const p = goodPlan(); p.shots[5].price = { amount: '₹499', mrp: '₹699', note: 'Launch offer' }
+    const slice = sliceTvcPlan(validateTvcPlan(p).plan, 'finish') as { shots: Array<Record<string, unknown>>; packshot: Record<string, unknown> }
+    expect(slice.shots[2]).toMatchObject({ n: 3, text: 'SPF 30', motion: 'pop' })
+    expect(slice.shots[5]).toMatchObject({ n: 6, price: { amount: '₹499', mrp: '₹699', note: 'Launch offer' } })
+    expect(slice.shots[5]).not.toHaveProperty('motion')
+    expect(slice.packshot).toMatchObject({ tagline: 'Soft all day', motion: 'fade' })
+  })
+  it.each([
+    [{ amount: 'cheap' }, /^PRICE_INVALID: "cheap" is not a price.*\(shot 6\)$/],
+    [{ amount: '₹499', mrp: '₹499' }, /^PRICE_MRP_NOT_HIGHER: .*\(shot 6\)$/],
+  ])('refuses a bad price %o', (price, reason) => {
+    const p = goodPlan(); p.shots[5].price = price
+    expect(validateTvcPlan(p).errors.some((e) => reason.test(e))).toBe(true)
+  })
+  it('refuses a price on a shot under 1.2 s (X7)', () => {
+    const p = goodPlan()
+    p.shots[3] = { ...p.shots[3], durationSeconds: 0.6, flashCut: true, price: { amount: '₹499' } }
+    p.shots[6].durationSeconds = 3.9
+    expect(validateTvcPlan(p).errors).toContain('PRICE_TOO_SHORT: the price in shot 4 is on screen for 0.6s; a price needs at least 1.2s. Put it on a shot of 1.2s or longer')
+  })
+  it('reminds about the offer disclaimer for an MRP, without inventing one', () => {
+    const p = goodPlan(); p.shots[5].price = { amount: '₹499', mrp: '₹699' }
+    const r = validateTvcPlan(p)
+    expect(r.warnings.join(' ')).toMatch(/a price with an MRP is an offer claim/)
+    expect(r.plan.legal).toEqual([])
+  })
+  it('the veg warning tells Director to set brief.vegMark, and goes once it is set (M5)', () => {
+    const p = goodPlan(); p.brief.market = 'india'; p.brief.category = 'food'
+    const w = validateTvcPlan(p).warnings.join(' ')
+    expect(w).toMatch(/veg mark is recommended for food and drink \(an FSSAI packaging rule; common practice in TV ads\)/)
+    expect(w).toMatch(/set brief\.vegMark \(veg or non_veg\) for food and drink/)
+    expect(w).not.toMatch(/cannot be added yet/)
+    p.brief.vegMark = 'veg'
+    expect(validateTvcPlan(p).warnings.join(' ')).not.toMatch(/veg mark/)
+  })
+  it('endCard: the logo; the veg mark for food and drink only; disclaimer lines only when one is over the packshot', () => {
+    const p = goodPlan(); p.brief.logoFileId = 'logo-1'; p.brief.vegMark = 'veg'
+    const endCard = (plan: typeof p) => (sliceTvcPlan(plan, 'finish') as { endCard?: unknown }).endCard
+    expect(endCard(p)).toEqual({ logoFileId: 'logo-1' })                         // beauty: no veg mark
+    p.brief.category = 'food'
+    expect(endCard(p)).toEqual({ logoFileId: 'logo-1', vegMark: 'veg' })
+    p.legal = [{ text: HY, forVoiceoverBlock: 1 }]                               // 2–10s, gone before the 12s packshot
+    expect(endCard(validateTvcPlan(p).plan)).toEqual({ logoFileId: 'logo-1', vegMark: 'veg' })
+    p.legal = [{ text: HY, wholeAd: true }]                                      // 2 lines at 9:16, over the packshot
+    expect(endCard(validateTvcPlan(p).plan)).toEqual({ logoFileId: 'logo-1', vegMark: 'veg', disclaimerLines: 2 })
+  })
+  it('the schema stays Gemini-safe: motion and vegMark are string enums', () => {
+    const p = goodPlan(); p.shots[2].motion = 'stamp'; p.brief.vegMark = 'non_veg'
+    expect(tvcPlanSchema.safeParse(p).success).toBe(true)
+    expect(tvcPlanSchema.safeParse({ ...p, brief: { ...p.brief, vegMark: 'vegan' } }).success).toBe(false)
+  })
+})

@@ -8,6 +8,7 @@ import { detectCutTimes } from './detectCuts.js'
 import { computeCreditPlan, priceFromRates, readBalanceForTenant } from './checkCreditPlan.js'
 import { recordOnPlan, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, jingleErrors, legalTimings, type TvcPlan } from './tvcPlan.js'
 import { stillPassedCheck } from './checkStill.js'
+import { LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_IMAGE, LOGO_NOT_RASTER, LOGO_UNCHECKED, isSvgFile } from './packshotMarks.js'
 
 // The TVC ad's plan lives in ONE file whose id never changes: it is always
 // re-uploaded to the same storage key, and /files/:id/confirm keeps the
@@ -167,7 +168,10 @@ function carryOver(previous: TvcPlan, next: TvcPlan): TvcPlan {
     out.signoffFileId = previous.signoffFileId
     out.signoffSeconds = previous.signoffSeconds
   }
-  const strip = (s: TvcPlan['shots'][number]) => JSON.stringify({ ...s, stillFileId: undefined, clipFileId: undefined })
+  // motion and price only change overlay_text, never the picture: a re-check
+  // that adds them (or writes the default pop into an old plan) keeps the
+  // recorded still and clip.
+  const strip = (s: TvcPlan['shots'][number]) => JSON.stringify({ ...s, stillFileId: undefined, clipFileId: undefined, motion: undefined, price: undefined })
   out.shots.forEach((s) => {
     const before = previous.shots.find((p) => p.n === s.n)
     if (before && strip(before) === strip(s) && !s.stillFileId && !s.clipFileId) {
@@ -239,6 +243,20 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     // use Coca-Cola's bottle as "the product".
     if (isExtractedFramePath(productPhotoInfo.pathname)) {
       return { refused: true, refusalReason: 'PRODUCT_PHOTO_FROM_REFERENCE: that image was taken from the reference ad, not the user\'s product; ask the user for a product photo' }
+    }
+    // M3: the logo is checked like the product photo, and is never the product photo itself.
+    const logoFileId = planInput.brief.logoFileId
+    if (logoFileId) {
+      if (logoFileId === productPhotoFileId) return { refused: true, refusalReason: LOGO_IS_PRODUCT_PHOTO }
+      let logoInfo: ProductPhotoInfo
+      try {
+        logoInfo = await deps.productPhotoInfo(logoFileId)
+      } catch (err) {
+        console.error('[planTvc] logo lookup failed:', (err as Error).message)
+        return { refused: true, refusalReason: LOGO_UNCHECKED }
+      }
+      if (isSvgFile(logoInfo.mimeType, logoInfo.pathname)) return { refused: true, refusalReason: LOGO_NOT_RASTER }
+      if (!looksLikeProductPhoto(logoInfo.mimeType, logoInfo.pathname)) return { refused: true, refusalReason: LOGO_NOT_IMAGE }
     }
     // A re-check loads the previously saved plan up front (not only later,
     // for storageKey/carryOver) so the reference-video identity check below
@@ -347,7 +365,7 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
 
 export const planTvc = createTool({
   id: 'plan-tvc',
-  description: 'Free. The TVC ad plan: "check" validates the plan against the TVC craft rules and saves it (returns the plan id and cost, or plain errors to fix); "get" returns only the slice one step needs; "record" attaches finished stills or clips to their shots (all of a step\'s files in one call, with records) and the finish narration and song to the plan. The finish can also record the sung sign-off (jingleFileId, signoffFileId, signoffSeconds); record refuses one that overlaps speech or is too long. Use only in the TVC ad flow. check also works out every disclaimer\'s start (from the voiceover block that makes the claim) and its ASCI hold, and refuses LEGAL_TOO_LONG, LEGAL_HOLD_TOO_LONG, LEGAL_OVERLAP or LEGAL_CLAIM_MISSING; the finish slice lists the legal lines with their times and the finish order.',
+  description: 'Free. The TVC ad plan: "check" validates the plan against the TVC craft rules and saves it (returns the plan id and cost, or plain errors to fix); "get" returns only the slice one step needs; "record" attaches finished stills or clips to their shots (all of a step\'s files in one call, with records) and the finish narration and song to the plan. The finish can also record the sung sign-off (jingleFileId, signoffFileId, signoffSeconds); record refuses one that overlaps speech or is too long. Use only in the TVC ad flow. check also works out every disclaimer\'s start (from the voiceover block that makes the claim) and its ASCI hold, and refuses LEGAL_TOO_LONG, LEGAL_HOLD_TOO_LONG, LEGAL_OVERLAP or LEGAL_CLAIM_MISSING; the finish slice lists the legal lines with their times and the finish order. check also validates prices (PRICE_INVALID, PRICE_MRP_NOT_HIGHER, PRICE_TOO_SHORT) and the logo (LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_RASTER, LOGO_NOT_IMAGE, LOGO_UNCHECKED), and sets pop on shot text and fade on the tagline when no motion is given; the finish slice carries each shot\'s motion and price, and an endCard (logoFileId, vegMark, disclaimerLines) for composite_end_card.',
   inputSchema: planTvcInputSchema,
   outputSchema: z.object({
     planFileId: z.string().optional(),

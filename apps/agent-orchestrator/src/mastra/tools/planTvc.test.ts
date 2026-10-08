@@ -551,3 +551,50 @@ describe('plan_tvc get finish — refuses rather than dropping a disclaimer (E7)
     expect(out.refusalReason).toMatch(/^LEGAL_CLAIM_MISSING: legal line "As per lab test\. Results may vary\." points at voiceover block 1, which doesn't exist/)
   })
 })
+
+describe('runPlanTvc check: the logo (M3, X3, X5)', () => {
+  const withLogo = (id: string) => { const p = plan(); p.brief.logoFileId = id; return p }
+  const photo = { mimeType: 'image/jpeg', pathname: '/generated/conv1/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa-product-photo.jpg' }
+  it('refuses the product photo as the logo, before looking the logo up', async () => {
+    const lookups: string[] = []
+    const { deps, store } = fakeDeps({ productPhotoInfo: async (id) => { lookups.push(id); return photo } })
+    const out = await runPlanTvc({ action: 'check', plan: withLogo('prod') }, deps)
+    expect(out.refusalReason).toMatch(/^LOGO_IS_PRODUCT_PHOTO: /)
+    expect(lookups).toEqual(['prod'])
+    expect(store.size).toBe(0)
+  })
+  it.each([
+    [{ mimeType: 'image/svg+xml', pathname: '/x/logo.svg' }, /^LOGO_NOT_RASTER: upload the logo as PNG, JPG or WebP$/],
+    [{ mimeType: 'application/octet-stream', pathname: '/x/logo.svg' }, /^LOGO_NOT_RASTER: /],
+    [{ mimeType: 'video/mp4', pathname: '/x/ad.mp4' }, /^LOGO_NOT_IMAGE: /],
+  ])('refuses a logo that is %o', async (logoInfo, reason) => {
+    const { deps, store } = fakeDeps({ productPhotoInfo: async (id) => (id === 'logo-1' ? logoInfo : photo) })
+    expect((await runPlanTvc({ action: 'check', plan: withLogo('logo-1') }, deps)).refusalReason).toMatch(reason)
+    expect(store.size).toBe(0)
+  })
+  it('refuses LOGO_UNCHECKED when the logo cannot be read', async () => {
+    const { deps } = fakeDeps({ productPhotoInfo: async (id) => { if (id === 'logo-1') throw new Error('403'); return photo } })
+    expect((await runPlanTvc({ action: 'check', plan: withLogo('logo-1') }, deps)).refusalReason).toBe('LOGO_UNCHECKED: could not read the logo; try again')
+  })
+  it('accepts a PNG logo and hands it to the end card through the finish slice', async () => {
+    const { deps } = fakeDeps({ productPhotoInfo: async (id) => ({ mimeType: 'image/png', pathname: `/x/${id}.png` }) })
+    const out = await runPlanTvc({ action: 'check', plan: withLogo('logo-1') }, deps)
+    expect(out.errors).toEqual([])
+    const finish = JSON.parse((await runPlanTvc({ action: 'get', planFileId: out.planFileId!, slice: 'finish' }, deps)).slice!)
+    expect(finish.endCard).toEqual({ logoFileId: 'logo-1' })
+  })
+  // Review Focus 2: the old plan has no motion; the re-check writes pop into shot 1's text.
+  it('a logo added to an old saved plan keeps its recorded stills and clips (X5, X12)', async () => {
+    const { deps } = fakeDeps()
+    const old = plan()
+    old.shots[0].text = 'Ice cold'; old.shots[0].stillFileId = 's1'; old.shots[0].clipFileId = 'c1'; old.shots[2].clipFileId = 'c3'
+    const id = await deps.save({ version: 1, storageKey: 'generated/conv/tvc-plan-old.json', plan: old })
+    const again = plan(); again.shots[0].text = 'Ice cold'; again.brief.logoFileId = 'logo-1'
+    const out = await runPlanTvc({ action: 'check', plan: again, planFileId: id! }, deps)
+    expect(out.errors).toEqual([])
+    const finish = JSON.parse((await runPlanTvc({ action: 'get', planFileId: id!, slice: 'finish' }, deps)).slice!)
+    expect(finish.shots.map((s: { clipFileId?: string }) => s.clipFileId)).toEqual(['c1', undefined, 'c3'])
+    expect(finish.shots[0].motion).toBe('pop')
+    expect(finish.endCard).toEqual({ logoFileId: 'logo-1' })
+  })
+})

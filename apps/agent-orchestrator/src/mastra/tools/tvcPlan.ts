@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { LEGAL_MAX_LINES, countLegalWords, escapeAssText, firstWords, legalHoldSeconds, legalLineCount, nominalFrame, tooWideWord } from './legalText.js'
+import { MOTIONS, PRICE_MIN_SECONDS, priceError, priceSchema, priceTooShortReason } from './textMotion.js'
 
 // The TVC ad's plan and its craft rules, checked in code so a long skill text
 // is not the only thing holding them (spec 2026-10-05-tvc-ad-design.md §4-5).
@@ -47,6 +48,8 @@ const shotSchema = z.object({
   continuesFrom: z.number().int().min(1).optional().describe('The previous shot\'s number when this shot continues the same action at the same place; its start frame is that clip\'s last frame, and it is trimmed from 0'),
   angle: z.enum(['eye', 'low', 'high', 'top', 'side', 'pov']).optional().describe('Camera angle. The same angle with the same or a neighbouring size as the shot before is a jump cut'),
   flashCut: z.boolean().optional().describe('A deliberate flash cut, allowed down to 0.3s'),
+  motion: z.enum(MOTIONS).optional().describe('How this shot\'s text comes in; plan_tvc sets pop for a shot with text when it is missing'),
+  price: priceSchema.optional().describe('A price or offer shown on this shot, e.g. {amount: "₹499", mrp: "₹699", note: "Launch offer"}; never also in text. The shot must be at least 1.2s'),
 })
 
 // A sung sign-off over the packshot (spec 2026-10-05-tvc-jingle-design.md J5).
@@ -90,6 +93,8 @@ export const tvcPlanSchema = z.object({
     actorLook: z.string().optional().describe('The lead\'s look, e.g. "long dark wavy hair, magenta shirt"; extras never share it'),
     brandName: z.string().optional().describe('The brand name as it appears on screen; not counted in a disclaimer\'s hold time'),
     jingle: jingleSchema.optional().describe('A sung sign-off over the ending; only when the user wants one or the reference ad has one'),
+    logoFileId: z.string().optional().describe('The brand logo the user uploaded (PNG or JPG), laid on the packshot; never the product photo'),
+    vegMark: z.enum(['veg', 'non_veg']).optional().describe('Food and drink: the veg or non-veg mark on the packshot'),
   }),
   look: z.string().min(1),
   locations: z.array(z.union([z.string().min(1), z.object({
@@ -101,6 +106,7 @@ export const tvcPlanSchema = z.object({
   packshot: z.object({
     kind: z.enum(['product', 'product_range', 'actor_product_tagline', 'logo_over_scene']),
     tagline: z.string().optional(),
+    motion: z.enum(MOTIONS).optional().describe('How the tagline comes in; plan_tvc sets fade when missing'),
   }),
   legal: z.array(legalLineSchema).default([]),
   // Saved by plan_tvc record during the finish, so a second finish reuses
@@ -434,6 +440,18 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
     if (s.text && s.type !== 'packshot' && countWords(s.text) > 3) errors.push(`the text in shot ${s.n} must be 3 words or fewer`)
   })
 
+  // 13. Text motion and prices (spec 2026-10-09 M1, M2, M5, X7). The default
+  //     motion is written into the plan here, at check, so a plan saved
+  //     before this change (never re-checked) stays static (X12).
+  shots.forEach((s) => {
+    if (s.text && !s.motion) s.motion = 'pop'
+    if (!s.price) return
+    const err = priceError(s.price)
+    if (err) errors.push(`${err} (shot ${s.n})`)
+    else if (s.durationSeconds < PRICE_MIN_SECONDS - EPS) errors.push(priceTooShortReason(s.durationSeconds, `the price in shot ${s.n}`))
+  })
+  if (plan.packshot.tagline && !plan.packshot.motion) plan.packshot.motion = 'fade'
+
   // P5: a recreation copies the reference's product TYPE; only the brand changes.
   const refType = brief.reference?.productType
   if (refType) {
@@ -477,7 +495,11 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
         warnings.push(`added "${VISUALISATION}" from ${start}s for shot ${s.n}`)
       }
     })
-    if (brief.category === 'food' || brief.category === 'beverage') warnings.push('the veg mark is recommended for food and drink (an FSSAI packaging rule; common practice in TV ads) but cannot be added yet; tell the user')
+    if ((brief.category === 'food' || brief.category === 'beverage') && !brief.vegMark) warnings.push('the veg mark is recommended for food and drink (an FSSAI packaging rule; common practice in TV ads); set brief.vegMark (veg or non_veg) for food and drink')
+  }
+  // M2: an MRP next to a lower price is an offer claim; remind, never invent a disclaimer.
+  if (shots.some((s) => s.price?.mrp) && !plan.legal.some((l) => !l.auto)) {
+    warnings.push('a price with an MRP is an offer claim; ASCI expects a disclaimer for it (for example "Offer valid till stocks last"); ask the user for one')
   }
   plan.locations.forEach((loc) => {
     if (PUBLIC_PLACE_RE.test(locationName(loc)) && !locationExtras(loc)) warnings.push(`"${locationName(loc)}" is a public place; add extras (who is in the background) so it does not look empty`)
@@ -531,14 +553,38 @@ export function signoffTiming(plan: TvcPlan): { signoffStartSeconds: number; mus
   return { signoffStartSeconds: start, musicFadeOutAtSeconds: r2(Math.max(0, start - BED_CLEAR)) }
 }
 
+/** M3/M4: what composite_end_card needs. The veg mark is for food and drink
+ *  only; disclaimerLines is the most lines of any disclaimer still on screen
+ *  during the packshot, so the mark sits above that box. */
+export function endCardInputs(plan: TvcPlan): { logoFileId?: string; vegMark?: 'veg' | 'non_veg'; disclaimerLines?: number } | undefined {
+  const food = plan.brief.category === 'food' || plan.brief.category === 'beverage'
+  const vegMark = food ? plan.brief.vegMark : undefined
+  if (!plan.brief.logoFileId && !vegMark) return undefined
+  const out: { logoFileId?: string; vegMark?: 'veg' | 'non_veg'; disclaimerLines?: number } = {}
+  if (plan.brief.logoFileId) out.logoFileId = plan.brief.logoFileId
+  if (vegMark) {
+    out.vegMark = vegMark
+    const packIdx = plan.shots.findIndex((s) => s.type === 'packshot')
+    const packStart = packIdx >= 0 ? shotStarts(plan)[packIdx] : plan.brief.lengthSeconds
+    const lines = legalTimings(plan).timings.reduce((n, t) => (t && t.endSeconds > packStart + EPS ? Math.max(n, t.lines) : n), 0)
+    if (lines > 0) out.disclaimerLines = Math.min(lines, 2)
+  }
+  return out
+}
+
 export function sliceTvcPlan(plan: TvcPlan, slice: string): unknown {
   const starts = shotStarts(plan)
   const withStart = (s: TvcShot) => ({ ...s, startSeconds: starts[plan.shots.indexOf(s)] })
   if (slice === 'brief') return { brief: plan.brief, look: plan.look, locations: plan.locations, packshot: plan.packshot }
   if (slice === 'finish') {
+    const endCard = endCardInputs(plan)
     return {
       brief: { lengthSeconds: plan.brief.lengthSeconds, aspectRatio: plan.brief.aspectRatio, productPhotoFileId: plan.brief.productPhotoFileId, market: plan.brief.market, tier: plan.brief.tier, category: plan.brief.category, voiceId: plan.brief.voiceId },
-      shots: plan.shots.map((s) => ({ n: s.n, type: s.type, startSeconds: starts[s.n - 1], durationSeconds: s.durationSeconds, text: s.text, clipFileId: s.clipFileId })),
+      shots: plan.shots.map((s) => ({
+        n: s.n, type: s.type, startSeconds: starts[s.n - 1], durationSeconds: s.durationSeconds, text: s.text, clipFileId: s.clipFileId,
+        ...(s.motion ? { motion: s.motion } : {}),
+        ...(s.price ? { price: s.price } : {}),
+      })),
       voiceover: plan.voiceover, packshot: plan.packshot,
       legal: legalTimings(plan).timings.flatMap((t) => (t ? [{ text: t.text, startSeconds: t.startSeconds, endSeconds: t.endSeconds, style: 'legal' as const }] : [])),
       narrationFileIds: plan.narrationFileIds, songFileId: plan.songFileId,
@@ -547,6 +593,7 @@ export function sliceTvcPlan(plan: TvcPlan, slice: string): unknown {
         ? { jingleFileId: plan.jingleFileId, signoffFileId: plan.signoffFileId, signoffSeconds: plan.signoffSeconds, ...signoffTiming(plan) }
         : {}),
       ...(plan.legal.length > 0 ? { finishOrder: finishOrder(plan) } : {}),
+      ...(endCard ? { endCard } : {}),
     }
   }
   const m = /^shots (\d+)-(\d+)$/.exec(slice.trim())
