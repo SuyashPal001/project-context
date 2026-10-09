@@ -145,6 +145,28 @@ describe('OFFICIAL_SKILLS', () => {
     expect(card).not.toMatch(/PNG or JPG/)
   });
 
+  it('tvc-ad offers 30 seconds and joins it in two stages (Part 2.3, append only)', () => {
+    const tvc = OFFICIAL_SKILLS.find((s) => s.slug === 'tvc-ad')!;
+    const card = readFileSync(tvc.file, 'utf8');
+    const director = readFileSync(tvc.director!.file, 'utf8');
+    expect(director).toMatch(/30-second ads and the two-stage join \(supersede the matching lines above\):/);
+    expect(director).toMatch(/the length may also be 30 seconds: up to 20 shots, a word cap of 45 across voiceover and lines/);
+    expect(director).toMatch(/On JOIN_SPLIT_IMPOSSIBLE, remove continuesFrom from one continuing shot in the middle of the ad and check again\. On REFERENCE_TOO_MANY_CUTS, return the reason to Olmo in plain words\./);
+    expect(director).toMatch(/when the finish slice has joinGroups, join each group with assemble_clips in order/);
+    expect(director).toMatch(/preserveAudio true, roomTone true, the plan's aspect ratio/);
+    expect(director).toMatch(/Then join the two results with assemble_clips: just those two videos in order, preserveAudio true, roomTone false \(each half already carries its room tone\), no transitions/);
+    expect(director).toMatch(/"assemble_clips group 1", "assemble_clips group 2" and "assemble_clips final" in finishOrder are these three joins/);
+    expect(director).toMatch(/If any of the three joins refuses with DURATION_MISMATCH \(it was refunded\), return the reason to Olmo, saying which join failed and the fileIds of the halves already joined/);
+    expect(card).toMatch(/20\. 30-second ads \(supersedes the length list in item 1\): 30 seconds is also offered/);
+    expect(card).toMatch(/costs about twice a 15-second one/);
+    // The shipped lines are still there, word for word (append only).
+    expect(director).toMatch(/assemble_clips once with every recorded clip in shot order \(the carded packshot last\), preserveAudio true, the plan's aspect ratio\./);
+    expect(director).toMatch(/step finish: assemble_clips with roomTone true\./);
+    expect(card).toMatch(/6 and 20 are also possible/);
+    expect(card).not.toMatch(/30 are also possible/);
+    expect(card).not.toMatch(/forVoiceoverBlock|overlay_text|plan_tvc|composite_end_card|assemble_clips/);
+  });
+
   it('each entry file exists and is non-empty', () => {
     for (const entry of OFFICIAL_SKILLS) {
       expect(existsSync(entry.file)).toBe(true);
