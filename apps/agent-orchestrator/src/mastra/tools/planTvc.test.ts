@@ -624,3 +624,9 @@ describe('runPlanTvc check: the logo (M3, X3, X5)', () => {
     expect(out.errors).toEqual([])
   })
 })
+
+describe('Part 2.3: the tool description names the two-stage join', () => {
+  it('tells Director that a 30s finish slice has joinGroups', () => {
+    expect(planTvc.description).toMatch(/A 30s plan may have up to 20 shots; when it has more than 12, the finish slice also has joinGroups \(two lists of shot numbers\) and finalJoin true, and finishOrder lists the three joins/)
+  })
+})

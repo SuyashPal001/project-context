@@ -340,11 +340,14 @@ export function joinGroupsFor(plan: TvcPlan): number[][] | undefined {
   return split && 'groups' in split ? split.groups : undefined
 }
 
+/** J2: the three joins that replace the single assemble_clips step. */
+export const JOIN_STEPS = ['assemble_clips group 1', 'assemble_clips group 2', 'assemble_clips final']
+
 /** E4: the end card is laid first and the text last — after every mix step,
  *  not just voiceover — so a disclaimer is always the top layer and nothing
  *  after overlay_text can remove its marker. */
 export function finishOrder(plan: TvcPlan): string[] {
-  const order = ['composite_end_card', 'assemble_clips']
+  const order = ['composite_end_card', ...(joinGroupsFor(plan) ? JOIN_STEPS : ['assemble_clips'])]
   if (plan.voiceover.length > 0 || plan.brief.jingle) order.push('mix_voiceover')
   order.push('mix_music_bed', 'overlay_text')
   return order
@@ -638,6 +641,7 @@ export function sliceTvcPlan(plan: TvcPlan, slice: string): unknown {
   if (slice === 'brief') return { brief: plan.brief, look: plan.look, locations: plan.locations, packshot: plan.packshot }
   if (slice === 'finish') {
     const endCard = endCardInputs(plan)
+    const joinGroups = joinGroupsFor(plan)
     return {
       brief: { lengthSeconds: plan.brief.lengthSeconds, aspectRatio: plan.brief.aspectRatio, productPhotoFileId: plan.brief.productPhotoFileId, market: plan.brief.market, tier: plan.brief.tier, category: plan.brief.category, voiceId: plan.brief.voiceId },
       shots: plan.shots.map((s) => ({
@@ -656,8 +660,9 @@ export function sliceTvcPlan(plan: TvcPlan, slice: string): unknown {
       ...(plan.signoffSeconds !== undefined
         ? { jingleFileId: plan.jingleFileId, signoffFileId: plan.signoffFileId, signoffSeconds: plan.signoffSeconds, ...signoffTiming(plan) }
         : {}),
-      ...(plan.legal.length > 0 ? { finishOrder: finishOrder(plan) } : {}),
+      ...(plan.legal.length > 0 || joinGroups ? { finishOrder: finishOrder(plan) } : {}),
       ...(endCard ? { endCard } : {}),
+      ...(joinGroups ? { joinGroups, finalJoin: true as const } : {}),
     }
   }
   const m = /^shots (\d+)-(\d+)$/.exec(slice.trim())
@@ -716,6 +721,10 @@ export function tvcCreditSteps(plan: TvcPlan): Array<{ kind: 'image' | 'video' |
   // The jingle is priced as a second music step (the lyria-002 rate, 8
   // credits, is above Lyria 3's 4, so the estimate never runs short).
   if (plan.brief.jingle) steps.push({ kind: 'music', count: 1 })
-  steps.push({ kind: 'edit', count: n + 5 })
+  // J4: one join per half plus the final join when the plan has more than
+  // 12 shots; otherwise the single join, so the count stays n + 5.
+  const groups = joinGroupsFor(plan)
+  const joins = groups ? groups.length + 1 : 1
+  steps.push({ kind: 'edit', count: n + 4 + joins })
   return steps
 }

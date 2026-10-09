@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { MAX_JOIN_CLIPS, WORD_CAPS, joinGroupsFor, joinSplit, maxShotsFor, tvcPlanSchema, validateTvcPlan, type TvcPlan } from './tvcPlan.js'
+import { createHash } from 'node:crypto'
+import {
+  JOIN_STEPS, MAX_JOIN_CLIPS, WORD_CAPS, finishOrder, joinGroupsFor, joinSplit, maxShotsFor, sliceTvcPlan, tvcCreditSteps,
+  tvcPlanSchema, validateTvcPlan, type TvcPlan,
+} from './tvcPlan.js'
 
 // A valid plan of n shots at `length` seconds: n-1 alternating close-up/wide
 // shots at location 0, packshot last, durations summing to `length`.
@@ -111,5 +115,55 @@ describe('J2: where the halves split', () => {
     const p = cont(planOf(30, 20), 9, 10, 11, 12, 13) // a chain: boundaries 8..12 all blocked
     expect(joinSplit(p)).toEqual({ error: expect.stringMatching(/^JOIN_SPLIT_IMPOSSIBLE: 20 shots can't be joined as two halves of at most 12 without separating a shot from the shot that continues it/) })
     expect(validateTvcPlan(p).errors.join(' | ')).toMatch(/JOIN_SPLIT_IMPOSSIBLE/)
+  })
+})
+
+const sha = (v: unknown) => createHash('sha256').update(JSON.stringify(v)).digest('hex')
+
+describe('J2, J4: the finish slice, its order and the price for more than 12 shots', () => {
+  it('a 20-shot plan carries joinGroups, finalJoin and the joins in the finish order', () => {
+    const p = validateTvcPlan(planOf(30, 20)).plan
+    const slice = sliceTvcPlan(p, 'finish') as { joinGroups: number[][]; finalJoin: boolean; finishOrder: string[] }
+    expect(slice.joinGroups).toEqual([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], [12, 13, 14, 15, 16, 17, 18, 19, 20]])
+    expect(slice.finalJoin).toBe(true)
+    // The end card is laid on the packshot clip before it is joined; the joins replace the one assemble_clips.
+    expect(slice.finishOrder).toEqual(['composite_end_card', ...JOIN_STEPS, 'mix_voiceover', 'mix_music_bed', 'overlay_text'])
+    expect(JOIN_STEPS).toEqual(['assemble_clips group 1', 'assemble_clips group 2', 'assemble_clips final'])
+    expect(finishOrder(p)).toEqual(slice.finishOrder)
+  })
+  it('a 13-shot plan carries the same keys, after the existing ones', () => {
+    const slice = sliceTvcPlan(validateTvcPlan(planOf(30, 13)).plan, 'finish') as Record<string, unknown>
+    expect(Object.keys(slice)).toEqual(['brief', 'shots', 'voiceover', 'packshot', 'legal', 'narrationFileIds', 'songFileId', 'finishOrder', 'joinGroups', 'finalJoin'])
+    expect(slice.joinGroups).toEqual([[1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11, 12, 13]])
+  })
+  it('prices one join per half plus the final join', () => {
+    expect(tvcCreditSteps(planOf(30, 20))).toEqual([
+      { kind: 'image', count: 20 }, { kind: 'video', count: 20 }, { kind: 'narration', count: 1 },
+      { kind: 'music', count: 1 }, { kind: 'edit', count: 27 },
+    ])
+    expect(tvcCreditSteps(planOf(30, 12))).toEqual([
+      { kind: 'image', count: 12 }, { kind: 'video', count: 12 }, { kind: 'narration', count: 1 },
+      { kind: 'music', count: 1 }, { kind: 'edit', count: 17 },
+    ])
+  })
+})
+
+// E6: plans of 12 shots or fewer slice and price byte-identically.
+// Hashes measured on origin/main 723ddab0 before this change.
+describe('E6: 12 shots or fewer are untouched', () => {
+  it('slices byte-identically to before', () => {
+    const p12 = validateTvcPlan(planOf(20, 12)).plan
+    expect(sha(sliceTvcPlan(p12, 'finish'))).toBe('2b813d2b4df17d298badaf6ed8baace026d5b52b5998dd7b6ca0bc59dd4ed408')
+    expect(sha(sliceTvcPlan(p12, 'shots 1-12'))).toBe('d48541a023703cd9634db2ab6db1f00c55ee47901549990a736ead0da807faf3')
+    expect(sha(sliceTvcPlan(validateTvcPlan(planOf(20, 8)).plan, 'finish'))).toBe('3f1e82ea1e2dad47c5438b38248aa4efdffe7722c8c1be39efe3703f63764466')
+    expect(finishOrder(p12)).toEqual(['composite_end_card', 'assemble_clips', 'mix_voiceover', 'mix_music_bed', 'overlay_text'])
+    expect(JSON.stringify(sliceTvcPlan(p12, 'finish'))).not.toMatch(/joinGroups|finalJoin|finishOrder/)
+  })
+  it('prices the same', () => {
+    expect(tvcCreditSteps(planOf(20, 12))).toEqual([
+      { kind: 'image', count: 12 }, { kind: 'video', count: 12 }, { kind: 'narration', count: 1 },
+      { kind: 'music', count: 1 }, { kind: 'edit', count: 17 },
+    ])
+    expect(tvcCreditSteps(planOf(20, 8)).at(-1)).toEqual({ kind: 'edit', count: 13 })
   })
 })
