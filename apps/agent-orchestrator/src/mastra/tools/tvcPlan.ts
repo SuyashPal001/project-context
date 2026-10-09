@@ -5,9 +5,14 @@ import { MOTIONS, priceError, priceSchema, priceTooShort, priceTooShortReason } 
 // The TVC ad's plan and its craft rules, checked in code so a long skill text
 // is not the only thing holding them (spec 2026-10-05-tvc-ad-design.md §4-5).
 export const WORDS_PER_SECOND = 2.7
-export const WORD_CAPS: Record<number, number> = { 6: 8, 15: 22, 20: 30 }
+export const WORD_CAPS: Record<number, number> = { 6: 8, 15: 22, 20: 30, 30: 45 }
 // assemble_clips joins at most 12 clips, and every shot is one clip.
 export const MAX_SHOTS = 12
+// Part 2.3: a 30s ad is joined in two halves of at most 12 clips each, then
+// the two halves are joined, so it may have up to 20 shots.
+export const MAX_JOIN_CLIPS = 12
+export const MAX_SHOTS_30 = 20
+export const maxShotsFor = (lengthSeconds: number): number => (lengthSeconds === 30 ? MAX_SHOTS_30 : MAX_SHOTS)
 const SHOT_MIN = 1.2, SHOT_MAX = 2.5, PACK_MIN = 2, PACK_MAX = 4
 const BRAND_BY = 2.0, PRODUCT_BY = 3.0, VO_TAIL = 2.0, MAX_LINES = 2, MAX_LOCATIONS = 2
 const EPS = 0.05
@@ -79,7 +84,7 @@ export const tvcPlanSchema = z.object({
     market: z.enum(['india', 'generic']),
     // A plain number, not z.union of literals: Gemini's function declarations
     // only accept STRING enums, and a numeric enum 400s every Director call.
-    lengthSeconds: z.number().refine((n) => n === 6 || n === 15 || n === 20, { message: 'lengthSeconds must be 6, 15 or 20' }).describe('6, 15 or 20 seconds; word cap across voiceover and lines: 6s 8, 15s 22, 20s 30'),
+    lengthSeconds: z.number().refine((n) => n === 6 || n === 15 || n === 20 || n === 30, { message: 'lengthSeconds must be 6, 15, 20 or 30' }).describe('6, 15, 20 or 30 seconds; word cap across voiceover and lines: 6s 8, 15s 22, 20s 30, 30s 45'),
     aspectRatio: z.enum(['16:9', '9:16']),
     productPhotoFileId: z.string().min(1),
     actorAvatarId: z.string().optional(),
@@ -101,7 +106,7 @@ export const tvcPlanSchema = z.object({
     name: z.string().min(1),
     extras: z.string().optional().describe('Who is in the background, e.g. "students walking past and chatting"; required for public places'),
   })])),
-  shots: z.array(shotSchema).min(2).describe(`At most ${MAX_SHOTS} shots`),
+  shots: z.array(shotSchema).min(2).describe(`At most ${MAX_SHOTS} shots (${MAX_SHOTS_30} for a 30s ad)`),
   voiceover: z.array(z.object({ text: z.string().min(1), startSeconds: z.number().min(0) })).describe('Announcer blocks; may be empty (a mood ad). Blocks never overlap, never play over a line shot, and end 2s before the end and by the packshot start'),
   packshot: z.object({
     kind: z.enum(['product', 'product_range', 'actor_product_tagline', 'logo_over_scene']),
@@ -297,6 +302,44 @@ export function legalTimings(plan: TvcPlan, opts: { autoAddedIndex?: number } = 
   return { timings, errors }
 }
 
+export type JoinSplit = { groups: number[][] } | { error: string }
+
+/** J2: where a plan of more than 12 shots is joined in two halves. null for
+ *  12 shots or fewer (one join, exactly as before). Boundary k means the
+ *  first half is shots 1..k. A boundary is valid when both halves have at
+ *  most 12 shots and shot k+1 does not continue shot k. The valid boundary
+ *  nearest half the ad's length (by time, earlier on a tie) wins, unless a
+ *  valid boundary within 2 shots of it changes place (both shots have a
+ *  location and they differ); then the nearest such one wins. */
+export function joinSplit(plan: TvcPlan): JoinSplit | null {
+  const n = plan.shots.length
+  if (n <= MAX_JOIN_CLIPS) return null
+  const starts = shotStarts(plan)
+  const half = plan.brief.lengthSeconds / 2
+  const dist = (k: number) => Math.abs(starts[k] - half)
+  const nearest = (ks: number[]) => ks.reduce((best, k) => (dist(k) < dist(best) - 1e-9 ? k : best))
+  const valid = Array.from({ length: n - 1 }, (_, i) => i + 1)
+    .filter((k) => k <= MAX_JOIN_CLIPS && n - k <= MAX_JOIN_CLIPS && plan.shots[k].continuesFrom !== k)
+  if (valid.length === 0) {
+    return { error: `JOIN_SPLIT_IMPOSSIBLE: ${n} shots can't be joined as two halves of at most ${MAX_JOIN_CLIPS} without separating a shot from the shot that continues it; make one of the continuing shots in the middle of the ad its own shot` }
+  }
+  const middle = nearest(valid)
+  const placeChange = (k: number) => {
+    const a = plan.shots[k - 1].location, b = plan.shots[k].location
+    return a !== undefined && b !== undefined && a !== b
+  }
+  const preferred = valid.filter((k) => Math.abs(k - middle) <= 2 && placeChange(k))
+  const k = preferred.length ? nearest(preferred) : middle
+  const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i) => a + i)
+  return { groups: [range(1, k), range(k + 1, n)] }
+}
+
+/** The two halves' shot numbers, or undefined when the plan is joined once. */
+export function joinGroupsFor(plan: TvcPlan): number[][] | undefined {
+  const split = joinSplit(plan)
+  return split && 'groups' in split ? split.groups : undefined
+}
+
 /** E4: the end card is laid first and the text last — after every mix step,
  *  not just voiceover — so a disclaimer is always the top layer and nothing
  *  after overlay_text can remove its marker. */
@@ -323,8 +366,14 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
   if (/[.!?](\s|$)/.test(inner)) errors.push('the message must be one sentence')
   if (countWords(brief.message) > 12) errors.push(`the message is ${countWords(brief.message)} words; keep it to 12 words or fewer`)
 
-  // assemble_clips joins at most 12 clips.
-  if (shots.length > MAX_SHOTS) errors.push(`there are ${shots.length} shots; at most ${MAX_SHOTS}`)
+  // assemble_clips joins at most 12 clips; a 30s ad joins in two halves (J1, J2).
+  const maxShots = maxShotsFor(length)
+  if (shots.length > maxShots) {
+    errors.push(`there are ${shots.length} shots; a ${length}s ad takes at most ${maxShots}`)
+  } else {
+    const split = joinSplit(plan)
+    if (split && 'error' in split) errors.push(split.error)
+  }
 
   // 2. Durations.
   const total = r1(shots.reduce((sum, s) => sum + s.durationSeconds, 0))
@@ -470,6 +519,10 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
   }
   // P6: when recreating, shot boundaries follow the reference's real cuts.
   const refCuts = (brief.reference?.cutTimes ?? []).filter((t) => t < length - EPS).sort((x, y) => x - y)
+  // E7: a reference with more cuts than this length allows can never be matched.
+  if (refCuts.length + 1 > maxShotsFor(length)) {
+    errors.push(`REFERENCE_TOO_MANY_CUTS: the reference has ${refCuts.length} cuts in ${length}s, so matching it needs ${refCuts.length + 1} shots; a ${length}s ad takes at most ${maxShotsFor(length)}. Make a shorter cutdown of the reference, or plan a ${length}s ad at our own pace without its cuts`)
+  }
   if (refCuts.length) {
     const boundaries = starts.slice(1)
     if (boundaries.length !== refCuts.length) {

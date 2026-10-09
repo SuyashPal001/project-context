@@ -78,10 +78,12 @@ describe('validateTvcPlan — a good plan', () => {
     })
     expect(validateTvcPlan(p).errors).toEqual([])
   })
-  it('lengths are 6, 15 or 20 seconds; 30 is rejected', () => {
+  it('lengths are 6, 15, 20 or 30 seconds; 25 is rejected', () => {
     const p = goodPlan() as unknown as { brief: { lengthSeconds: number } }
-    p.brief.lengthSeconds = 30
+    p.brief.lengthSeconds = 25
     expect(tvcPlanSchema.safeParse(p).success).toBe(false)
+    p.brief.lengthSeconds = 30
+    expect(tvcPlanSchema.safeParse(p).success).toBe(true)
     p.brief.lengthSeconds = 20
     expect(tvcPlanSchema.safeParse(p).success).toBe(true)
   })
@@ -134,8 +136,8 @@ describe('validateTvcPlan — blocking checks', () => {
   it('12: on-screen text is at most 3 words, except the packshot', () => {
     expect(errorsFor((p) => { p.shots[2].text = 'with SPF thirty now' })).toMatch(/shot 3 .*3 words/)
   })
-  it('at most 12 shots (assemble_clips joins at most 12 clips)', () => {
-    expect(validateTvcPlan(plan20(13)).errors.join(' | ')).toMatch(/13 shots; at most 12/)
+  it('at most 12 shots for 20s (a 30s ad joins in two halves, Part 2.3)', () => {
+    expect(validateTvcPlan(plan20(13)).errors.join(' | ')).toMatch(/there are 13 shots; a 20s ad takes at most 12/)
   })
   it('voiceover blocks never overlap each other', () => {
     expect(errorsFor((p) => { p.voiceover = [{ text: 'New Hya lip duo.', startSeconds: 2 }, { text: 'With SPF thirty.', startSeconds: 2.5 }] })).toMatch(/voiceover blocks 1 and 2 overlap/)
