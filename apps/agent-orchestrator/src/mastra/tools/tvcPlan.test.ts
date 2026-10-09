@@ -150,6 +150,14 @@ describe('validateTvcPlan — blocking checks', () => {
   it('shot numbers must run 1..N', () => {
     expect(errorsFor((p) => { p.shots[3].n = 7 })).toMatch(/numbered 1 to 7/)
   })
+  // M2: mix_voiceover takes at most MAX_VOICEOVER_BLOCKS (5) blocks; a plan
+  // with more must be refused before any charge, not at finish.
+  it('5 voiceover blocks pass; 6 are refused before any charge (M2)', () => {
+    const fiveBlocks = (p: TvcPlan) => { p.voiceover = [2, 3, 4, 5, 6].map((s) => ({ text: 'Hi', startSeconds: s })) }
+    expect(errorsFor(fiveBlocks)).toBe('')
+    expect(errorsFor((p) => { fiveBlocks(p); p.voiceover.push({ text: 'Hi', startSeconds: 7 }) }))
+      .toMatch(/VOICEOVER_TOO_MANY_BLOCKS: the voiceover has 6 blocks; the mix takes at most 5\. Merge lines into fewer blocks/)
+  })
 })
 
 describe('validateTvcPlan — warnings', () => {

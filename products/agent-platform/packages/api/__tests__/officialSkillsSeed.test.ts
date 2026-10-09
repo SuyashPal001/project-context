@@ -157,6 +157,8 @@ describe('OFFICIAL_SKILLS', () => {
     expect(director).toMatch(/Then join the two results with assemble_clips: just those two videos in order, preserveAudio true, roomTone false \(each half already carries its room tone\), no transitions/);
     expect(director).toMatch(/"assemble_clips group 1", "assemble_clips group 2" and "assemble_clips final" in finishOrder are these three joins/);
     expect(director).toMatch(/If any of the three joins refuses with DURATION_MISMATCH \(it was refunded\), return the reason to Olmo, saying which join failed and the fileIds of the halves already joined/);
+    // I2: the final join (not either half) is the finished ad.
+    expect(director).toMatch(/When the finish slice has joinGroups, the finished ad is the result of the "assemble_clips final" step \(the join of both halves\), never group 1 or group 2 alone; use that video for every later step\./);
     expect(card).toMatch(/20\. 30-second ads \(supersedes the length list in item 1\): 30 seconds is also offered/);
     expect(card).toMatch(/costs about twice a 15-second one/);
     // The shipped lines are still there, word for word (append only).

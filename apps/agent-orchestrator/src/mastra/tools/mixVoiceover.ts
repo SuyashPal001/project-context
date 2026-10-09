@@ -27,13 +27,18 @@ const MIN_ACCEPTABLE_VO_LUFS = -35
 const MASTER = 'loudnorm=I=-14:TP=-1.5:LRA=11'
 const r2 = (x: number) => Math.round(x * 100) / 100
 
+// The mix takes at most this many blocks (jingle counts as one). tvcPlan.ts's
+// check uses the same constant, so a plan can never pass check and then be
+// refused here for having too many blocks.
+export const MAX_VOICEOVER_BLOCKS = 5
+
 export const inputSchema = z.object({
   videoFileId: z.string().describe('The joined TVC video, with its clips\' own sound kept (assemble_clips preserveAudio true).'),
   blocks: z.array(z.object({
     audioFileId: z.string().describe('One voiceover block from generate_narration, or the sign-off from generate_jingle'),
     startSeconds: z.number().min(0).describe('Where this block starts in the video, from the TVC plan'),
     kind: z.enum(['voice', 'jingle']).optional().describe('jingle = the sung sign-off (signoffFileId at the finish slice\'s signoffStartSeconds): level-matched to the speech before it instead of ducking. Default voice'),
-  })).min(1).max(5),
+  })).min(1).max(MAX_VOICEOVER_BLOCKS),
   room: z.boolean().optional().describe('true = the narrator sits in the scene\'s room (a little quieter, a touch of room echo) instead of a dry studio voice on top. Use for the animated ad\'s narrator.'),
 })
 

@@ -43,7 +43,7 @@ The TVC skill can make a 30 s ad, the most common Indian TV length. A 30 s ad at
 ### J3: the two-stage join, using the existing tool
 - Each half is joined by `assemble_clips` with `preserveAudio`, `roomTone` and the same flags as today, so each stage gets its own length check and keeps the frame rate.
 - The halves are joined by `assemble_clips` with the two half videos and `preserveAudio`, with no transitions. This seam gets the same 40 ms audio fades as any other cut.
-- The length check at every stage catches drift early. The final video's length must equal the planned length within the existing tolerance for 2 clips.
+- The length check at every stage catches drift early: each stage checks `assemble_clips`' own length against its inputs, not against the overall planned length. The real run gave 30.21s for 30.0s of clips, which is outside the 2-clip tolerance against the planned length — within tolerance only when measured stage by stage, against each stage's own inputs.
 - Room tone is not added twice: the final join passes `roomTone: false`, because each half already carries it. A test pins this.
 - `assemble_clips`'s 12-clip cap is unchanged. A 13-clip call is still refused.
 

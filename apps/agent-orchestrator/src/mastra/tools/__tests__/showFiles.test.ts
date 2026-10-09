@@ -4,7 +4,7 @@ import { RequestContext } from '@mastra/core/request-context'
 const { execute } = vi.hoisted(() => ({ execute: vi.fn() }))
 vi.mock('@serverless-saas/database', () => ({ db: { execute } }))
 
-import { showFilesTool, fetchTenantFile } from '../showFiles.js'
+import { showFilesTool, fetchTenantFile, inputSchema as showFilesInputSchema } from '../showFiles.js'
 
 function ctx(tenantId?: string) {
   const requestContext = new RequestContext()
@@ -58,5 +58,20 @@ describe('showFilesTool', () => {
     const result = await showFilesTool.execute!({ fileIds: [F1] } as never, ctx(undefined))
     expect(result).toEqual({ files: [], missing: [F1] })
     expect(execute).not.toHaveBeenCalled()
+  })
+})
+
+// M4: a 30s TVC ad plans up to 20 shots (tvcPlan.ts's MAX_SHOTS_30); "show them
+// all together" (tvc-ad.md item 4) must not be refused by show_files' own cap.
+describe('showFilesTool input schema cap', () => {
+  const mkIds = (n: number) => Array.from({ length: n }, (_, i) =>
+    `${String(i + 1).padStart(8, '0')}-1111-1111-1111-111111111111`)
+
+  it('accepts 20 fileIds', () => {
+    expect(showFilesInputSchema.safeParse({ fileIds: mkIds(20) }).success).toBe(true)
+  })
+
+  it('refuses 21 fileIds', () => {
+    expect(showFilesInputSchema.safeParse({ fileIds: mkIds(21) }).success).toBe(false)
   })
 })

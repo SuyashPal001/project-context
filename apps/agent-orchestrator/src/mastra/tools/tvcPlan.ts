@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { LEGAL_MAX_LINES, countLegalWords, escapeAssText, firstWords, legalHoldSeconds, legalLineCount, nominalFrame, tooWideWord } from './legalText.js'
 import { MOTIONS, priceError, priceSchema, priceTooShort, priceTooShortReason } from './textMotion.js'
+import { MAX_VOICEOVER_BLOCKS } from './mixVoiceover.js'
 
 // The TVC ad's plan and its craft rules, checked in code so a long skill text
 // is not the only thing holding them (spec 2026-10-05-tvc-ad-design.md §4-5).
@@ -398,6 +399,14 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
   const words = plan.voiceover.reduce((n, v) => n + countWords(v.text), 0) + lineShots.reduce((n, s) => n + countWords(s.line ?? ''), 0)
   const cap = WORD_CAPS[length]
   if (words > cap) errors.push(`the script is ${words} words; cap ${cap} for ${length}s`)
+
+  // 5b. mix_voiceover takes at most MAX_VOICEOVER_BLOCKS blocks (the jingle
+  // sign-off counts as one). Caught here, before any charge, instead of at
+  // finish when mix_voiceover itself rejects an already-paid-for plan.
+  const voBlockCount = plan.voiceover.length + (brief.jingle ? 1 : 0)
+  if (voBlockCount > MAX_VOICEOVER_BLOCKS) {
+    errors.push(`VOICEOVER_TOO_MANY_BLOCKS: the voiceover has ${voBlockCount} blocks; the mix takes at most ${MAX_VOICEOVER_BLOCKS}. Merge lines into fewer blocks`)
+  }
 
   // 6. Voiceover ends early.
   const voEnds = plan.voiceover.map((v) => r1(v.startSeconds + countWords(v.text) / WORDS_PER_SECOND))

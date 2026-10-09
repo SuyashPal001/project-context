@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { askClarifyingQuestionsTool } from './askClarifyingQuestions.js'
 import { briefRefsFor, clipCheckFailure, markShotReviewed, notMadeHere, type ShotKind } from './reviewGate.js'
 import { checkClip } from './checkClip.js'
+import { MAX_SHOTS_30 } from './tvcPlan.js'
 
 // The one way an ad's stills and clips are put to the user, built here rather
 // than written freely each time. 2026-10-06 (Lakmē ad): the free-form review
@@ -102,18 +103,22 @@ export function reviewOutcome(kind: ShotKind, shots: Array<{ fileId: string; lab
   return { decision: 'fix', fix, note, nextStep: `${how} Then call review_shots again with just the fixed ${kind}${fix.length > 1 ? 's' : ''}.` }
 }
 
+export const inputSchema = z.object({
+  kind: z.enum(['still', 'clip', 'voice']).describe('"still" for pictures, "clip" for videos, "voice" for the first narration line'),
+  // MAX_SHOTS_30 (20): a 30s TVC ad can plan up to 20 shots (tvcPlan.ts), and
+  // Ask mode reviews all of them in one call once the first scene is approved.
+  shots: z.array(shotSchema).min(1).max(MAX_SHOTS_30).describe('In scene order'),
+  question: z.string().max(200).optional().describe('Optional wording for the question; a plain default is used without it'),
+  productFileId: z.string().optional().describe('The product photo, when the ad has one; stills are checked against it before the user sees them. Taken from the brief when left out.'),
+})
+
 export const reviewShotsTool = createTool({
   id: 'review_shots',
   description:
     'Show the user an ad\'s stills, clips or first narration line (kind "voice") and ask whether they look right — the ONLY way to review them in an ad flow (never ask_clarifying_questions for this). ' +
     'Call it with the first scene\'s still (or clip) alone as soon as Director returns it, before any more are made, and again with the rest once they exist. ' +
     'One shot: asks "does this look right?". Several: the user picks the scenes that need a fix. Returns decision, the scenes to fix, the user\'s note and the exact next step. Free.',
-  inputSchema: z.object({
-    kind: z.enum(['still', 'clip', 'voice']).describe('"still" for pictures, "clip" for videos, "voice" for the first narration line'),
-    shots: z.array(shotSchema).min(1).max(8).describe('In scene order'),
-    question: z.string().max(200).optional().describe('Optional wording for the question; a plain default is used without it'),
-    productFileId: z.string().optional().describe('The product photo, when the ad has one; stills are checked against it before the user sees them. Taken from the brief when left out.'),
-  }),
+  inputSchema,
   execute: async (inputData, execContext) => {
     const given = inputData as { kind: ShotKind; shots: Array<{ fileId: string; label: string }>; question?: string; productFileId?: string }
     const { kind, question } = given

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('./askClarifyingQuestions.js', () => ({ askClarifyingQuestionsTool: { execute: vi.fn() } }))
 vi.mock('./checkClip.js', () => ({ checkClip: { execute: vi.fn() } }))
-import { reviewOutcome, reviewShotsTool, shotLabel } from './reviewShots.js'
+import { reviewOutcome, reviewShotsTool, shotLabel, inputSchema as reviewShotsInputSchema } from './reviewShots.js'
 import { checkClip } from './checkClip.js'
 import { askClarifyingQuestionsTool } from './askClarifyingQuestions.js'
 import { firstShotUnreviewed, firstVoiceUnreviewed, noteNarrationMade, markShotReviewed, briefIsReviewedAdFlow, noteClipCheck, noteBriefRefs, briefRefsFor, noteMadeFile, AD_FLOW_KEY } from './reviewGate.js'
@@ -161,5 +161,24 @@ describe('narration: the voice is heard first, then the rest in one take (Pip ad
     expect(out.decision).toBe('fix')
     expect(out.nextStep).toContain('remake ONLY the first narration line')
     expect(out.nextStep).toContain('warmer, slower')
+  })
+})
+
+// I1: a 30s TVC ad plans up to 20 shots (tvcPlan.ts's MAX_SHOTS_30); the
+// Ask-mode review of all of them must not be refused by review_shots' own cap.
+describe('review_shots shot cap matches the 30s plan cap', () => {
+  const mkShots = (n: number) => Array.from({ length: n }, (_, i) => ({
+    fileId: `${String(i + 1).padStart(8, '0')}-1111-4111-8111-111111111111`,
+    label: `Scene ${i + 1}`,
+  }))
+
+  it('accepts 20 shots', () => {
+    const result = reviewShotsInputSchema.safeParse({ kind: 'still', shots: mkShots(20) })
+    expect(result.success).toBe(true)
+  })
+
+  it('refuses 21 shots', () => {
+    const result = reviewShotsInputSchema.safeParse({ kind: 'still', shots: mkShots(21) })
+    expect(result.success).toBe(false)
   })
 })

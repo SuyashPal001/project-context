@@ -49,6 +49,12 @@ export async function fetchTenantFile(tenantId: string, fileId: string): Promise
 // credits or creates anything, only re-surfaces a fileId the model already has
 // from an earlier tool result. The web renders the output the same way it
 // renders a generate_image result (see ToolCallCard's extractResultFiles).
+export const inputSchema = z.object({
+  // 20: a 30s TVC ad plans up to 20 shots (tvcPlan.ts's MAX_SHOTS_30), and
+  // "show them all together" (tvc-ad.md item 4) can ask for every still at once.
+  fileIds: z.array(z.string().uuid()).min(1).max(20).describe('fileId(s) from an earlier tool result in this conversation'),
+})
+
 export const showFilesTool = createTool({
   id: 'show_files',
   description:
@@ -57,9 +63,7 @@ export const showFilesTool = createTool({
     'find_past_tasks, never re-generating — whenever the user asks to see something already made ' +
     'or attached in this conversation.',
   requestContextSchema: tenantContextSchema,
-  inputSchema: z.object({
-    fileIds: z.array(z.string().uuid()).min(1).max(12).describe('fileId(s) from an earlier tool result in this conversation'),
-  }),
+  inputSchema,
   outputSchema: z.object({
     files: z.array(z.object({
       fileId: z.string(),
