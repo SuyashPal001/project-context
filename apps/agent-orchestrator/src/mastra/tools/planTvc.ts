@@ -1,7 +1,7 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
-import { uploadFileWithKey } from '../../persistence.js'
+import { uploadFileWithKey, uploadGeneratedFile } from '../../persistence.js'
 import { fetchPresignedUrl } from './mediaCache.js'
 import { EXTRACTED_FRAME_KEY_MARKER } from './extractFrame.js'
 import { detectCutTimes } from './detectCuts.js'
@@ -12,6 +12,8 @@ import { findClaims, mergeClaims, reviewClaims, TVC_CLAIM_ANSWERS_KEY, type Find
 import { animaticSlice } from './animatic.js'
 import { stillPassedCheck } from './checkStill.js'
 import { LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_IMAGE, LOGO_NOT_RASTER, LOGO_UNCHECKED, isSvgFile } from './packshotMarks.js'
+import { claimsSummaryMarkdown, productLabel, summaryCounts } from './claimsSummary.js'
+import { fileTitle } from './fileTitle.js'
 
 // The TVC ad's plan lives in ONE file whose id never changes: it is always
 // re-uploaded to the same storage key, and /files/:id/confirm keeps the
@@ -130,7 +132,7 @@ export interface PlanTvcDeps {
 }
 
 export const planTvcInputSchema = z.object({
-  action: z.enum(['check', 'get', 'record', 'cutdown']).describe('check: validate and save the plan; get: read one slice; record: attach finished stills or clips to their shots, or the finish\'s narration, song and jingle to the plan; cutdown: a draft shorter version of a finished ad (planFileId = the original, lengthSeconds), free and not saved'),
+  action: z.enum(['check', 'get', 'record', 'cutdown', 'summary']).describe('check: validate and save the plan; get: read one slice; record: attach finished stills or clips to their shots, or the finish\'s narration, song and jingle to the plan; cutdown: a draft shorter version of a finished ad (planFileId = the original, lengthSeconds), free and not saved; summary: write the claims summary (markdown, free) for planFileId and return its fileId'),
   plan: tvcPlanSchema.optional().describe('check only: the full plan'),
   planFileId: z.string().optional().describe('The TVC plan id. Required for get and record; pass it on a re-check so the plan keeps its id'),
   slice: z.string().optional().describe('get only: "brief", "finish", "animatic" (the rough cut\'s audio and steps), "plan" (the whole saved plan with every recorded file id stripped, for an edit with no other slice open; check it back with the same planFileId) or "shots a-b", e.g. "shots 4-6"'),
@@ -456,6 +458,14 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
   }
   if (!input.planFileId) return { refused: true, refusalReason: 'PLAN_FILE_ID_REQUIRED' }
   const doc = await deps.load(input.planFileId)
+  if (input.action === 'summary') {
+    if (!deps.upload) return { refused: true, refusalReason: 'SUMMARY_UNAVAILABLE' }
+    const findings = findClaims(doc.plan)
+    const content = claimsSummaryMarkdown(doc.plan, findings, { now: deps.now?.() ?? new Date() })
+    const fileId = await deps.upload(`Claims summary — ${fileTitle(productLabel(doc.plan), 'TVC ad')}`, content)
+    if (!fileId) return { refused: true, refusalReason: 'STORAGE_FAILED' }
+    return { planFileId: input.planFileId, fileId, ...summaryCounts(doc.plan, findings) }
+  }
   if (input.action === 'cutdown') {
     if (input.lengthSeconds === undefined) return { refused: true, refusalReason: 'CUTDOWN_LENGTH_REQUIRED: pass lengthSeconds (6, 15 or 20)' }
     // I2 (review): a shorter version at its own length is being edited — return
@@ -554,7 +564,7 @@ export async function loadSavedPlan(planFileId: string, idToken: string): Promis
 
 export const planTvc = createTool({
   id: 'plan-tvc',
-  description: 'Free. The TVC ad plan: "check" validates the plan against the TVC craft rules and saves it (returns the plan id and cost, or plain errors to fix); "get" returns only the slice one step needs; "record" attaches finished stills or clips to their shots (all of a step\'s files in one call, with records) and the finish narration and song to the plan. The finish can also record the sung sign-off (jingleFileId, signoffFileId, signoffSeconds); record refuses one that overlaps speech or is too long. Use only in the TVC ad flow. check also works out every disclaimer\'s start (from the voiceover block that makes the claim) and its ASCI hold, and refuses LEGAL_TOO_LONG, LEGAL_HOLD_TOO_LONG, LEGAL_OVERLAP or LEGAL_CLAIM_MISSING; the finish slice lists the legal lines with their times and the finish order. check also validates prices (PRICE_INVALID, PRICE_MRP_NOT_HIGHER, PRICE_TOO_SHORT) and the logo (LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_RASTER, LOGO_NOT_IMAGE, LOGO_UNCHECKED, LOGO_FROM_REFERENCE), and sets pop on shot text and fade on the tagline when no motion is given; the finish slice carries each shot\'s motion and price, and an endCard (logoFileId, vegMark, disclaimerLines) for composite_end_card. A 30s plan may have up to 20 shots; when it has more than 12, the finish slice also has joinGroups (two lists of shot numbers) and finalJoin true, and finishOrder lists the three joins (assemble_clips group 1, group 2, final). cutdown (free, saves nothing) returns a draft shorter version of a finished ad from its own clips: the shots plan_tvc picked (each with its source), their new lengths, and the original\'s voiceover; write the shorter voiceover and legal lines into the draft and check it without planFileId. Given a shorter version\'s own id at its own length, cutdown returns its saved plan to edit (re-check with that id). A cutdown\'s finish slice lists retrims (trim_clip from the original clip, then record) and musicFadeOutAtSeconds. A shorter version refuses a shots slice or a still (CUTDOWN_REDO_ON_ORIGINAL): moments are changed on the original. get "animatic" (Ask mode, after the stills) lists the audio still to make and the steps ending in render_animatic; a shorter version refuses it (ANIMATIC_CUTDOWN). get "plan" returns the whole saved plan with every recorded file id stripped, for a fresh thread (e.g. "step: animatic change") that needs to edit the plan with no other slice already open; check it back with the same planFileId to keep every still, clip and audio file. check also finds risky claims (superlatives, numbers, "proven", endorsements, absolutes, health claims) in the voiceover, lines, text, price note, tagline and jingle: once the craft is right, a plan with unanswered claims is saved with claimsToReview, and the shots, animatic and finish slices and still or clip records refuse CLAIM_UNREVIEWED until plan.claims holds an answer for each (text, status proof/no_proof/not_a_claim, proof); check keeps earlier answers on a re-check.',
+  description: 'Free. The TVC ad plan: "check" validates the plan against the TVC craft rules and saves it (returns the plan id and cost, or plain errors to fix); "get" returns only the slice one step needs; "record" attaches finished stills or clips to their shots (all of a step\'s files in one call, with records) and the finish narration and song to the plan. The finish can also record the sung sign-off (jingleFileId, signoffFileId, signoffSeconds); record refuses one that overlaps speech or is too long. Use only in the TVC ad flow. check also works out every disclaimer\'s start (from the voiceover block that makes the claim) and its ASCI hold, and refuses LEGAL_TOO_LONG, LEGAL_HOLD_TOO_LONG, LEGAL_OVERLAP or LEGAL_CLAIM_MISSING; the finish slice lists the legal lines with their times and the finish order. check also validates prices (PRICE_INVALID, PRICE_MRP_NOT_HIGHER, PRICE_TOO_SHORT) and the logo (LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_RASTER, LOGO_NOT_IMAGE, LOGO_UNCHECKED, LOGO_FROM_REFERENCE), and sets pop on shot text and fade on the tagline when no motion is given; the finish slice carries each shot\'s motion and price, and an endCard (logoFileId, vegMark, disclaimerLines) for composite_end_card. A 30s plan may have up to 20 shots; when it has more than 12, the finish slice also has joinGroups (two lists of shot numbers) and finalJoin true, and finishOrder lists the three joins (assemble_clips group 1, group 2, final). cutdown (free, saves nothing) returns a draft shorter version of a finished ad from its own clips: the shots plan_tvc picked (each with its source), their new lengths, and the original\'s voiceover; write the shorter voiceover and legal lines into the draft and check it without planFileId. Given a shorter version\'s own id at its own length, cutdown returns its saved plan to edit (re-check with that id). A cutdown\'s finish slice lists retrims (trim_clip from the original clip, then record) and musicFadeOutAtSeconds. A shorter version refuses a shots slice or a still (CUTDOWN_REDO_ON_ORIGINAL): moments are changed on the original. get "animatic" (Ask mode, after the stills) lists the audio still to make and the steps ending in render_animatic; a shorter version refuses it (ANIMATIC_CUTDOWN). get "plan" returns the whole saved plan with every recorded file id stripped, for a fresh thread (e.g. "step: animatic change") that needs to edit the plan with no other slice already open; check it back with the same planFileId to keep every still, clip and audio file. check also finds risky claims (superlatives, numbers, "proven", endorsements, absolutes, health claims) in the voiceover, lines, text, price note, tagline and jingle: once the craft is right, a plan with unanswered claims is saved with claimsToReview, and the shots, animatic and finish slices and still or clip records refuse CLAIM_UNREVIEWED until plan.claims holds an answer for each (text, status proof/no_proof/not_a_claim, proof); check keeps earlier answers on a re-check. summary (free) writes the claims summary for planFileId as a markdown file (what needs proof before airing, the claims table, the full script and, for India food, drink and health ads, the SDC description and checklist) and returns its fileId, needsProof and unreviewed.',
   inputSchema: planTvcInputSchema,
   outputSchema: z.object({
     planFileId: z.string().optional(),
@@ -596,6 +606,7 @@ export const planTvc = createTool({
       expectedReferenceVideoFileId: execContext?.requestContext?.get('tvcReferenceVideoFileId') as string | undefined,
       claimAnswers: (execContext?.requestContext?.get(TVC_CLAIM_ANSWERS_KEY) as string[] | undefined) ?? [],
       autoMode: execContext?.requestContext?.get('allowMode') === 'auto',
+      upload: async (title, content) => (await uploadGeneratedFile(idToken, { conversationId, title, content, contentType: 'text/markdown', extension: 'md' }))?.fileId ?? null,
     }
     try {
       return await runPlanTvc(inputData as PlanTvcInput, deps)
