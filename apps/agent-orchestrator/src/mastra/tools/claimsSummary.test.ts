@@ -51,6 +51,12 @@ describe('claims summary markdown', () => {
     expect(row).toContain('Source: Nielsen 2026')
     expect(row).toContain('Nielsen MAT 2026')
   })
+  it('flattens a newline in productName so it cannot inject a fake heading', () => {
+    const p = tvcPlanSchema.parse({ ...plan6(), brief: { ...plan6().brief, productName: 'Bubbli\n## Fake' } })
+    const s = md(p)
+    expect(s.split('\n')[0]).toBe('# Claims summary — Bubbli ## Fake')
+    expect(headings(s)).toEqual(['Needs proof before airing', 'Claims', 'Also in the ad', 'Reviewed, not claims', 'SDC description', 'Full script', 'SDC checklist'])
+  })
   it('puts the script in time order', () => {
     const s = md(plan6({ vo: ['Cold fizz', 'Any time'], text: 'Wake up' }))
     const script = s.split('## Full script')[1].split('\n## ')[0].split('\n').filter((l) => l.startsWith('- '))

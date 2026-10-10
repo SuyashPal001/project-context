@@ -8,9 +8,14 @@ const SDC_CATEGORIES = new Set(['food', 'beverage', 'health'])
 export const sdcApplies = (p: TvcPlan): boolean => p.brief.market === 'india' && SDC_CATEGORIES.has(p.brief.category)
 
 const tc = (s: number) => { const m = Math.floor(s / 60); return `[${m}:${(s - m * 60).toFixed(1).padStart(4, '0')}]` }
+// A newline (or several) anywhere in free text — productName, brandName, a
+// claim phrase — must never inject a fake heading or a new line into the
+// file outside the Claims table. Flattened to one space, not pipe-escaped:
+// this is prose, not a table cell.
+const line = (s: string): string => s.replace(/\r?\n+/g, ' ').trim()
 const cell = (s: string) => s.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').trim()
 const categoryWord = (c: string) => c.replace(/_/g, ' ')
-export const productLabel = (p: TvcPlan): string => p.brief.productName?.trim() || `${p.brief.brandName ?? 'The product'} ${categoryWord(p.brief.category)}`
+export const productLabel = (p: TvcPlan): string => line(p.brief.productName?.trim() || `${p.brief.brandName ?? 'The product'} ${categoryWord(p.brief.category)}`)
 
 const placeLabel = (w: Where) => ({
   voiceover: `voiceover ${w.ref}`, line: `shot ${w.ref} line`, shot_text: `shot ${w.ref} text`, price_note: `shot ${w.ref} price note`,
@@ -142,7 +147,7 @@ export function claimsSummaryMarkdown(p: TvcPlan, findings: Finding[], opts: { n
   L.push(`Ad: ${p.brief.lengthSeconds}s, ${p.brief.aspectRatio}, ${p.brief.market} market`, `Made: ${opts.now.toISOString().slice(0, 10)}`, '')
   L.push('## Needs proof before airing', '')
   const needs = needsProofItems(p, findings)
-  if (needs.length) needs.forEach((n) => L.push(`- ${n.text} — ${n.why}`))
+  if (needs.length) needs.forEach((n) => L.push(`- ${line(n.text)} — ${n.why}`))
   else L.push('Nothing flagged.')
   L.push('', '## Claims', '')
   if (listed.length) {
@@ -150,14 +155,14 @@ export function claimsSummaryMarkdown(p: TvcPlan, findings: Finding[], opts: { n
     for (const f of listed) L.push(`| ${cell(f.text)} | ${f.kind} | ${cell(f.where.map((w) => `${placeLabel(w)} ${tc(w.startSeconds)}`).join('; '))} | ${cell(disclaimerFor(p, f))} | ${cell(proofCell(byKey.get(f.key)))} |`)
   } else L.push('No claims found.')
   const whole = p.legal.filter((l) => l.wholeAd)
-  if (whole.length) L.push('', `Whole-ad disclaimer: ${whole.map((l) => l.text).join('; ')}`)
+  if (whole.length) L.push('', `Whole-ad disclaimer: ${whole.map((l) => line(l.text)).join('; ')}`)
   L.push('', '## Also in the ad', '')
   if (info.length) {
     const auto = p.legal.find((l) => l.auto)
-    info.forEach((f) => L.push(`- ${f.kind === 'offer' ? 'Offer' : 'Product shown working'}: ${f.text} (${f.where.map((w) => `${placeLabel(w)} ${tc(w.startSeconds)}`).join('; ')})${f.kind === 'visual' && auto ? ` — "${auto.text}" on screen` : ''}`))
+    info.forEach((f) => L.push(`- ${f.kind === 'offer' ? 'Offer' : 'Product shown working'}: ${line(f.text)} (${f.where.map((w) => `${placeLabel(w)} ${tc(w.startSeconds)}`).join('; ')})${f.kind === 'visual' && auto ? ` — "${line(auto.text)}" on screen` : ''}`))
   } else L.push('Nothing else.')
   L.push('', '## Reviewed, not claims', '')
-  if (notClaims.length) notClaims.forEach((f) => L.push(`- ${f.text}`))
+  if (notClaims.length) notClaims.forEach((f) => L.push(`- ${line(f.text)}`))
   else L.push('None.')
   if (sdcApplies(p)) L.push('', '## SDC description', '', sdcDescription(p, findings))
   L.push('', '## Full script', '', ...scriptLines(p))
