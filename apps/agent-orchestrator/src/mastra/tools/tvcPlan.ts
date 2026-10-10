@@ -14,9 +14,9 @@ export const MAX_SHOTS = 12
 export const MAX_JOIN_CLIPS = 12
 export const MAX_SHOTS_30 = 20
 export const maxShotsFor = (lengthSeconds: number): number => (lengthSeconds === 30 ? MAX_SHOTS_30 : MAX_SHOTS)
-const SHOT_MIN = 1.2, SHOT_MAX = 2.5, PACK_MIN = 2, PACK_MAX = 4
-const BRAND_BY = 2.0, PRODUCT_BY = 3.0, VO_TAIL = 2.0, MAX_LINES = 2, MAX_LOCATIONS = 2
-const EPS = 0.05
+export const SHOT_MIN = 1.2, SHOT_MAX = 2.5, PACK_MIN = 2, PACK_MAX = 4
+export const BRAND_BY = 2.0, PRODUCT_BY = 3.0, VO_TAIL = 2.0, MAX_LINES = 2, MAX_LOCATIONS = 2
+export const EPS = 0.05
 const JINGLE_GAP = 0.75, JINGLE_OVER_PACK = 2.0, BED_CLEAR = 0.3
 const MAX_OVERLAYS = 12
 export { legalHoldSeconds }
@@ -56,6 +56,11 @@ const shotSchema = z.object({
   flashCut: z.boolean().optional().describe('A deliberate flash cut, allowed down to 0.3s'),
   motion: z.enum(MOTIONS).optional().describe('How this shot\'s text comes in; plan_tvc sets pop for a shot with text when it is missing'),
   price: priceSchema.optional().describe('A price or offer shown on this shot, e.g. {amount: "₹499", mrp: "₹699", note: "Launch offer"}; never also in text. The shot must be at least 1.2s'),
+  source: z.object({
+    shot: z.number().int().min(1).describe('The original ad\'s shot number'),
+    clipFileId: z.string().optional(),
+    seconds: z.number().positive().optional(),
+  }).optional().describe('Cutdowns only, set by plan_tvc cutdown: the original shot this shot is cut from. Keep it exactly as given; its clip and length are always re-read from the original'),
 })
 
 // A sung sign-off over the packshot (spec 2026-10-05-tvc-jingle-design.md J5).
@@ -122,6 +127,10 @@ export const tvcPlanSchema = z.object({
   jingleFileId: z.string().optional().describe('Set by plan_tvc record: the full sung clip from generate_jingle'),
   signoffFileId: z.string().optional().describe('Set by plan_tvc record: the sign-off cut from generate_jingle'),
   signoffSeconds: z.number().positive().optional().describe('Set by plan_tvc record: the sign-off cut\'s length'),
+  cutdownOf: z.object({
+    planFileId: z.string().min(1).describe('The original ad\'s TVC plan id'),
+    fromReference: z.boolean().optional(),
+  }).optional().describe('Set by plan_tvc cutdown: this plan is a shorter version of that original ad, made from its clips. Keep it exactly as given'),
 })
 
 export type TvcPlan = z.infer<typeof tvcPlanSchema>
@@ -179,7 +188,7 @@ export function shotStarts(plan: TvcPlan): number[] {
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x))
 export function minShotSeconds(plan: TvcPlan, shot: TvcShot): number {
   if (shot.flashCut) return 0.3
-  return plan.brief.reference?.cutTimes?.length ? 0.6 : SHOT_MIN
+  return plan.brief.reference?.cutTimes?.length || plan.cutdownOf?.fromReference ? 0.6 : SHOT_MIN
 }
 /** P1: the 0.4s warm-up plus a margin, or the line's length; a continuing shot is trimmed from 0. */
 export function generateSecondsFor(shot: TvcShot): number {
@@ -344,14 +353,43 @@ export function joinGroupsFor(plan: TvcPlan): number[][] | undefined {
 /** J2: the three joins that replace the single assemble_clips step. */
 export const JOIN_STEPS = ['assemble_clips group 1', 'assemble_clips group 2', 'assemble_clips final']
 
+export interface Retrim { n: number; sourceClipFileId: string; startSeconds: number; endSeconds: number }
+
+/** C5: a cutdown shot kept shorter than its original clip is trimmed again
+ *  from that clip at the finish: the packshot from its start (the end card
+ *  covers it), any other shot centred on its moment. Empty for every plan
+ *  that is not a cutdown, and once the re-trimmed clip is recorded. */
+export function retrimsFor(plan: TvcPlan): Retrim[] {
+  if (!plan.cutdownOf) return []
+  return plan.shots.flatMap((s) => {
+    if (s.clipFileId || !s.source?.clipFileId || s.source.seconds === undefined) return []
+    const start = s.type === 'packshot' ? 0 : r2(Math.max(0, (s.source.seconds - s.durationSeconds) / 2))
+    return [{ n: s.n, sourceClipFileId: s.source.clipFileId, startSeconds: start, endSeconds: r2(start + s.durationSeconds) }]
+  })
+}
+
 /** E4: the end card is laid first and the text last — after every mix step,
  *  not just voiceover — so a disclaimer is always the top layer and nothing
  *  after overlay_text can remove its marker. */
 export function finishOrder(plan: TvcPlan): string[] {
-  const order = ['composite_end_card', ...(joinGroupsFor(plan) ? JOIN_STEPS : ['assemble_clips'])]
+  const order = [...(retrimsFor(plan).length ? ['trim_clip'] : []), 'composite_end_card', ...(joinGroupsFor(plan) ? JOIN_STEPS : ['assemble_clips'])]
   if (plan.voiceover.length > 0 || plan.brief.jingle) order.push('mix_voiceover')
   order.push('mix_music_bed', 'overlay_text')
   return order
+}
+
+/** Rule 9: the size changes from one shot to the next; the same size needs a
+ *  different angle; the same angle with a neighbouring size is a jump cut.
+ *  Shared with cutdowns, where dropping shots makes new neighbours. */
+export function cutError(a: TvcShot, b: TvcShot): string | null {
+  const sameAngle = !!a.angle && a.angle === b.angle
+  if (a.size === b.size && (!a.angle || !b.angle || sameAngle)) {
+    return `shots ${a.n} and ${b.n} are the same size (${b.size}); change one, or give them different angles`
+  }
+  if (sameAngle && Math.abs(SIZE_ORDER.indexOf(a.size) - SIZE_ORDER.indexOf(b.size)) === 1) {
+    return `shots ${a.n} and ${b.n} are near-identical framings (same ${b.angle} angle, ${a.size} then ${b.size}): a jump cut. Change the angle, or keep the action in one shot`
+  }
+  return null
 }
 
 export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: string[]; plan: TvcPlan } {
@@ -460,14 +498,9 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
   // 9. Shot sizes change; the same size needs a different angle; the same
   //    angle with a neighbouring size is a jump cut (v4's two-shot opener).
   for (let i = 1; i < shots.length; i++) {
-    const a = shots[i - 1], b = shots[i]
-    if (b.continuesFrom) continue
-    const sameAngle = !!a.angle && a.angle === b.angle
-    if (a.size === b.size && (!a.angle || !b.angle || sameAngle)) {
-      errors.push(`shots ${a.n} and ${b.n} are the same size (${b.size}); change one, or give them different angles`)
-    } else if (sameAngle && Math.abs(SIZE_ORDER.indexOf(a.size) - SIZE_ORDER.indexOf(b.size)) === 1) {
-      errors.push(`shots ${a.n} and ${b.n} are near-identical framings (same ${b.angle} angle, ${a.size} then ${b.size}): a jump cut. Change the angle, or keep the action in one shot`)
-    }
+    if (shots[i].continuesFrom) continue
+    const cut = cutError(shots[i - 1], shots[i])
+    if (cut) errors.push(cut)
   }
   // P2: continuity only with the shot right before, at the same place.
   shots.forEach((s, i) => {
@@ -651,6 +684,7 @@ export function sliceTvcPlan(plan: TvcPlan, slice: string): unknown {
   if (slice === 'finish') {
     const endCard = endCardInputs(plan)
     const joinGroups = joinGroupsFor(plan)
+    const retrims = retrimsFor(plan)
     return {
       brief: { lengthSeconds: plan.brief.lengthSeconds, aspectRatio: plan.brief.aspectRatio, productPhotoFileId: plan.brief.productPhotoFileId, market: plan.brief.market, tier: plan.brief.tier, category: plan.brief.category, voiceId: plan.brief.voiceId },
       shots: plan.shots.map((s) => ({
@@ -669,9 +703,11 @@ export function sliceTvcPlan(plan: TvcPlan, slice: string): unknown {
       ...(plan.signoffSeconds !== undefined
         ? { jingleFileId: plan.jingleFileId, signoffFileId: plan.signoffFileId, signoffSeconds: plan.signoffSeconds, ...signoffTiming(plan) }
         : {}),
-      ...(plan.legal.length > 0 || joinGroups ? { finishOrder: finishOrder(plan) } : {}),
+      ...(plan.legal.length > 0 || joinGroups || plan.cutdownOf ? { finishOrder: finishOrder(plan) } : {}),
       ...(endCard ? { endCard } : {}),
       ...(joinGroups ? { joinGroups, finalJoin: true as const } : {}),
+      ...(retrims.length ? { retrims } : {}),
+      ...(plan.cutdownOf && !plan.brief.jingle ? { musicFadeOutAtSeconds: plan.brief.lengthSeconds } : {}),
     }
   }
   const m = /^shots (\d+)-(\d+)$/.exec(slice.trim())
@@ -721,6 +757,17 @@ export function recordOnPlan(plan: TvcPlan, n: number, files: { stillFileId?: st
 // Stills + clips per shot; a trim per shot plus the finish's five edits
 // (end card, join, voiceover mix, text, music mix); one narration per block.
 export function tvcCreditSteps(plan: TvcPlan): Array<{ kind: 'image' | 'video' | 'narration' | 'music' | 'edit'; count: number }> {
+  // C6: a cutdown reuses the original's clips: no stills, no video. Narration,
+  // the bed and the jingle are charged only when not inherited. Edits are one
+  // trim per re-trimmed shot plus end card, join, voiceover mix, text and music mix.
+  if (plan.cutdownOf) {
+    const steps: Array<{ kind: 'image' | 'video' | 'narration' | 'music' | 'edit'; count: number }> = []
+    if (plan.voiceover.length > 0 && !plan.narrationFileIds) steps.push({ kind: 'narration', count: plan.voiceover.length })
+    if (!plan.songFileId) steps.push({ kind: 'music', count: 1 })
+    if (plan.brief.jingle && plan.signoffSeconds === undefined) steps.push({ kind: 'music', count: 1 })
+    steps.push({ kind: 'edit', count: retrimsFor(plan).length + 5 })
+    return steps
+  }
   const n = plan.shots.length
   const steps: Array<{ kind: 'image' | 'video' | 'narration' | 'music' | 'edit'; count: number }> = [
     { kind: 'image', count: n }, { kind: 'video', count: n },
