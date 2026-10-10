@@ -94,6 +94,20 @@ describe('render_animatic charges, renders, uploads', () => {
     expect(log).toContain('refund')
     expect(log).not.toContain('heard')
   })
+  it('M6: an upload that throws refunds and refuses STORAGE_FAILED, same as a null upload', async () => {
+    const { d, log } = deps(plan(), { upload: async () => { throw new Error('S3 exploded') } })
+    const out = await runRenderAnimatic('p1', d)
+    expect(out.refusalReason).toBe('STORAGE_FAILED')
+    expect(log).toContain('refund')
+    expect(log).not.toContain('heard')
+  })
+  it('M1: a render timeout is its own refusal, not folded into ANIMATIC_FAILED, and still refunds', async () => {
+    const { d, log } = deps(plan(), { render: async () => { throw new Error('ANIMATIC_TIMEOUT: the render ran past its time budget') } })
+    const out = await runRenderAnimatic('p1', d)
+    expect(out.refusalReason).toBe('ANIMATIC_TIMEOUT: the render ran past its time budget')
+    expect(log).toContain('refund')
+    expect(log).not.toContain('heard')
+  })
   it('insufficient credits stops before the render', async () => {
     const { d, log } = deps(plan(), { charge: async () => 'insufficient' })
     expect((await runRenderAnimatic('p1', d)).insufficientCredits).toBe(true)

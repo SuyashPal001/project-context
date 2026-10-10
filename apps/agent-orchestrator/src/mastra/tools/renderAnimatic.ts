@@ -155,11 +155,26 @@ export async function runRenderAnimatic(planFileId: string, deps: AnimaticDeps):
       const message = (err as Error).message
       console.error('[renderAnimatic] render failed:', message)
       await deps.refund()
-      return refuse(message.startsWith('ANIMATIC_LENGTH_MISMATCH') ? 'ANIMATIC_LENGTH_MISMATCH' : 'ANIMATIC_FAILED')
+      // M1 (final review): ANIMATIC_TIMEOUT (the render's own time budget) is
+      // its own refusal too, not folded into the generic ANIMATIC_FAILED —
+      // passed through in full, since it already names its own reason.
+      if (message.startsWith('ANIMATIC_LENGTH_MISMATCH')) return refuse('ANIMATIC_LENGTH_MISMATCH')
+      if (message.startsWith('ANIMATIC_TIMEOUT')) return refuse(message)
+      return refuse('ANIMATIC_FAILED')
     }
     const carriesLegal = plan.legal.length > 0
     const title = fileTitle(`Animatic ${plan.brief.brandName ?? ''}`.trim(), 'Animatic')
-    const attachment = await deps.upload(outputPath, carriesLegal, title)
+    // M6 (final review): a thrown upload (not just a null return) must still
+    // refund and refuse the same way — otherwise an upload that throws
+    // leaves the charge stuck with nothing uploaded.
+    let attachment: Awaited<ReturnType<AnimaticDeps['upload']>>
+    try {
+      attachment = await deps.upload(outputPath, carriesLegal, title)
+    } catch (err) {
+      console.error('[renderAnimatic] upload failed:', (err as Error).message)
+      await deps.refund()
+      return refuse('STORAGE_FAILED')
+    }
     if (!attachment) {
       await deps.refund()
       return refuse('STORAGE_FAILED')
@@ -248,7 +263,7 @@ const outputSchema = z.object({
 
 export const renderAnimatic = createTool({
   id: 'render-animatic',
-  description: 'TVC ad, Ask mode, after the stills: turns the plan\'s approved stills into a timed rough cut (a slow push-in on each still) with the recorded narration, music bed, sung sign-off, end card and on-screen text, and a ROUGH CUT mark. Takes only planFileId. Record the narration, music and any jingle with plan_tvc first (plan_tvc get "animatic" lists what is missing). Refuses, uncharged: ANIMATIC_CUTDOWN, ANIMATIC_STILLS_MISSING, ANIMATIC_AUDIO_MISSING, LEGAL_TIMING_ERRORS, VOICEOVER_TOO_LONG, VOICEOVER_INAUDIBLE, MUSIC_BED_INAUDIBLE. Returns one fileId.',
+  description: 'TVC ad, Ask mode, after the stills: turns the plan\'s approved stills into a timed rough cut (a slow push-in on each still) with the recorded narration, music bed, sung sign-off, end card and on-screen text, and a ROUGH CUT mark. Takes only planFileId. Record the narration, music and any jingle with plan_tvc first (plan_tvc get "animatic" lists what is missing). Refuses, uncharged: ANIMATIC_CUTDOWN, ANIMATIC_STILLS_MISSING, ANIMATIC_AUDIO_MISSING, LEGAL_TIMING_ERRORS, VOICEOVER_TOO_LONG, VOICEOVER_INAUDIBLE, MUSIC_BED_INAUDIBLE, ANIMATIC_TOO_MUCH_TEXT, PLAN_UNAVAILABLE, LOGO_NOT_RASTER, LOGO_NOT_IMAGE, JINGLE_OVERLAPS_SPEECH. Refuses and refunds (charged, uncharged on refund): ANIMATIC_TIMEOUT, ANIMATIC_LENGTH_MISMATCH, ANIMATIC_FAILED, STORAGE_FAILED. Returns one fileId.',
   inputSchema,
   outputSchema,
   requireApproval: async (_input, ctx) => shouldRequireApproval({ resourceType: 'clip_assembly', subject: SUBJECT }, ctx),
