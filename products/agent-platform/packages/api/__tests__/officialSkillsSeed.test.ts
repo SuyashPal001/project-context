@@ -240,6 +240,9 @@ describe('OFFICIAL_SKILLS', () => {
     expect(card).toMatch(/step: claims summary/);
     expect(card).toMatch(/Product name: /);
     expect(card).not.toMatch(/claimsToReview|plan_tvc|claimsPending/);
+    // F6 (final fix wave): item 25, appended after item 24.
+    expect(card).toMatch(/never write proof: none/);
+    expect(card).toMatch(/exception to item 6/);
   });
 
   it('tvc-ad: step: animatic change reads the plan slice and narrates one block per call (final review C1, append only)', () => {

@@ -31,12 +31,14 @@ describe('claims summary markdown', () => {
     expect(headings(md(plan6({ category: 'fashion' })))).not.toContain('SDC checklist')
     expect(headings(md(plan6({ category: 'health' })))).toContain('SDC checklist')
   })
-  it('lists no-proof, unreviewed and likely-banned claims under Needs proof', () => {
+  it('lists no-proof, unreviewed and likely-banned claims under Needs proof, one row per phrase (F5)', () => {
     const p = plan6({ vo: ['India’s No.1 fizz', 'Controls diabetes'], claims: [{ text: 'India’s No.1 fizz', status: 'no_proof' }] })
     const section = md(p).split('## Needs proof before airing')[1].split('\n## ')[0]
     expect(section).toContain('India’s No.1 fizz — kept without proof')
-    expect(section).toContain('Controls diabetes — not reviewed')
-    expect(section).toContain('Controls diabetes — may not be allowed (Drugs and Magic Remedies Act 1954)')
+    // F5: a claim that is both unreviewed AND likely-banned gets ONE row
+    // with both reasons joined, not two separate rows for the same phrase.
+    expect(section).toContain('Controls diabetes — not reviewed; may not be allowed (Drugs and Magic Remedies Act 1954); check with a lawyer')
+    expect(section.match(/Controls diabetes/g)).toHaveLength(1)
     expect(summaryCounts(p, findClaims(p))).toEqual({ needsProof: 2, unreviewed: 1 })
   })
   it('says Nothing flagged and No claims found when there are none (E12)', () => {
@@ -63,6 +65,24 @@ describe('claims summary markdown', () => {
     const times = script.map((l) => Number(/\[(\d+):(\d+\.\d)\]/.exec(l)!.slice(1).reduce((m, x, i) => (i === 0 ? Number(x) * 60 : m + Number(x)), 0)))
     expect(times).toEqual([...times].sort((a, b) => a - b))
     expect(script[0]).toContain('[0:00.0]')
+  })
+})
+
+describe('F5: summary polish', () => {
+  it('sdcDescription never says a claim "has not been reviewed yet" or lacks "substantiation"; it says what to do', () => {
+    const p = plan6({ vo: ['India’s No.1 fizz'] })
+    const d = sdcDescription(p, findClaims(p))
+    expect(d).not.toContain('has not been reviewed yet')
+    expect(d).not.toContain('no substantiation has been provided yet')
+    expect(d).toContain('[add the proof before filing]')
+  })
+  it('the Claims table and the Full script agree on the jingle\'s timecode', () => {
+    const p = tvcPlanSchema.parse({ ...plan6({ vo: ['Cold fizz'] }), brief: { ...plan6().brief, jingle: { line: 'Bubbli, sabse best', style: 'pop' } } })
+    const s = md(p)
+    const tableRow = s.split('\n').find((l) => l.includes('jingle'))!
+    const scriptRow = s.split('## Full script')[1].split('\n').find((l) => l.includes('Sung:'))!
+    const tc = (l: string) => /\[(\d+):(\d+\.\d)\]/.exec(l)![0]
+    expect(tc(tableRow)).toBe(tc(scriptRow))
   })
 })
 

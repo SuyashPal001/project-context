@@ -1,4 +1,4 @@
-import { countWords, legalTimings, shotStarts, type TvcPlan } from './tvcPlan.js'
+import { countWords, estimateSignoffSeconds, legalTimings, shotStarts, signoffTiming, type TvcPlan } from './tvcPlan.js'
 import { claimKey, type ClaimEntry, type Finding, type Where } from './claims.js'
 
 // Part 2.6: the claims summary (spec §The summary). A checklist made from the
@@ -25,16 +25,21 @@ const placeLabel = (w: Where) => ({
 const entriesByKey = (p: TvcPlan) => new Map((p.claims ?? []).map((e) => [claimKey(e.text), e] as const))
 
 type NeedsProof = { text: string; why: string }
+// F5: one row per phrase — a no_proof claim that is also likelyBanned got
+// two separate list items with the same phrase before this; now its reasons
+// are joined on one line ("kept without proof; may not be allowed (...)").
 function needsProofItems(p: TvcPlan, findings: Finding[]): NeedsProof[] {
   const byKey = entriesByKey(p)
-  const items: NeedsProof[] = []
+  const items = new Map<string, NeedsProof>()
   for (const f of findings.filter((x) => !x.informational)) {
     const e = byKey.get(f.key)
-    if (!e) items.push({ text: f.text, why: 'not reviewed' })
-    else if (e.status === 'no_proof') items.push({ text: f.text, why: 'kept without proof' })
-    if (f.likelyBanned) items.push({ text: f.text, why: 'may not be allowed (Drugs and Magic Remedies Act 1954); check with a lawyer' })
+    const reasons: string[] = []
+    if (!e) reasons.push('not reviewed')
+    else if (e.status === 'no_proof') reasons.push('kept without proof')
+    if (f.likelyBanned) reasons.push('may not be allowed (Drugs and Magic Remedies Act 1954); check with a lawyer')
+    if (reasons.length) items.set(f.key, { text: f.text, why: reasons.join('; ') })
   }
-  return items
+  return [...items.values()]
 }
 
 export function summaryCounts(p: TvcPlan, findings: Finding[]): { needsProof: number; unreviewed: number } {
@@ -87,13 +92,16 @@ export function sdcDescription(p: TvcPlan, findings: Finding[]): string {
   const brand = p.brief.brandName
   const required = [
     `The advertisement is for ${productLabel(p)}${brand ? `, sold under the ${brand} brand` : ''}, a ${categoryWord(p.brief.category)} product.`,
-    `Its single message is: "${p.brief.message}".`,
+    `Its single message is: "${line(p.brief.message)}".`,
     `It is a ${p.brief.lengthSeconds}-second film in ${p.brief.aspectRatio === '16:9' ? 'landscape (16:9)' : 'vertical (9:16)'} format, made for ${p.brief.market === 'india' ? 'Indian' : 'general'} audiences.`,
   ]
+  // F5: "this claim has not been reviewed yet" / "no substantiation has been
+  // provided yet" read as settled fact in a legal declaration; both become
+  // the same plain instruction so the advertiser fixes it before filing.
   const claims = findings.filter((f) => !f.informational && byKey.get(f.key)?.status !== 'not_a_claim').map((f) => {
     const e = byKey.get(f.key)
-    const how = !e ? 'this claim has not been reviewed yet' : e.status === 'proof' ? `the advertiser holds: ${e.proof}` : 'no substantiation has been provided yet'
-    return `It claims "${f.text}"; ${how}.`
+    const how = !e || e.status !== 'proof' ? '[add the proof before filing]' : `the advertiser holds: ${line(e.proof ?? '')}`
+    return `It claims "${line(f.text)}"; ${how}.`
   })
   const words = (xs: string[]) => countWords(xs.join(' '))
   const out = [...required]
@@ -103,9 +111,9 @@ export function sdcDescription(p: TvcPlan, findings: Finding[]): string {
     out.push(c)
   }
   const optional = [
-    ...(p.voiceover.length ? [`The voiceover says: "${p.voiceover.map((v) => v.text.trim()).join(' ')}".`] : []),
-    ...(p.packshot.tagline ? [`The closing tagline reads "${p.packshot.tagline}".`] : []),
-    ...(p.brief.jingle ? [`It ends with a sung line: "${p.brief.jingle.line}".`] : []),
+    ...(p.voiceover.length ? [`The voiceover says: "${p.voiceover.map((v) => line(v.text)).join(' ')}".`] : []),
+    ...(p.packshot.tagline ? [`The closing tagline reads "${line(p.packshot.tagline)}".`] : []),
+    ...(p.brief.jingle ? [`It ends with a sung line: "${line(p.brief.jingle.line)}".`] : []),
     ...[...new Set(p.shots.map((s) => GLOSS[s.type]).filter(Boolean))],
     ...PADDING,
   ]
@@ -118,20 +126,30 @@ export function sdcDescription(p: TvcPlan, findings: Finding[]): string {
   return countWords(text) > 200 ? text.split(/\s+/).slice(0, 200).join(' ') : text
 }
 
+const r1 = (n: number) => Math.round(n * 10) / 10
+
 function scriptLines(p: TvcPlan): string[] {
   const starts = shotStarts(p)
   const rows: Array<{ t: number; s: string }> = []
-  p.voiceover.forEach((v) => rows.push({ t: v.startSeconds, s: `Voiceover: ${v.text}` }))
+  p.voiceover.forEach((v) => rows.push({ t: v.startSeconds, s: `Voiceover: ${line(v.text)}` }))
   p.shots.forEach((sh, i) => {
-    if (sh.audio === 'line' && sh.line) rows.push({ t: starts[i], s: `On camera (shot ${sh.n}): ${sh.line}` })
-    if (sh.text) rows.push({ t: starts[i], s: `On screen (shot ${sh.n}): ${sh.text}` })
+    if (sh.audio === 'line' && sh.line) rows.push({ t: starts[i], s: `On camera (shot ${sh.n}): ${line(sh.line)}` })
+    if (sh.text) rows.push({ t: starts[i], s: `On screen (shot ${sh.n}): ${line(sh.text)}` })
     if (sh.price) rows.push({ t: starts[i], s: `Price (shot ${sh.n}): ${sh.price.amount}${sh.price.mrp ? ` (MRP ${sh.price.mrp})` : ''}${sh.price.note ? ` — ${sh.price.note}` : ''}` })
   })
   legalTimings(p).timings.forEach((t) => { if (t) rows.push({ t: t.startSeconds, s: `Disclaimer (until ${tc(t.endSeconds)}): ${t.text}` }) })
   const packIdx = p.shots.findIndex((s) => s.type === 'packshot')
   const packStart = packIdx >= 0 ? starts[packIdx] : p.brief.lengthSeconds
-  if (p.packshot.tagline) rows.push({ t: packStart, s: `Tagline: ${p.packshot.tagline}` })
-  if (p.brief.jingle) for (const l of [...(p.brief.jingle.lyrics ?? []), p.brief.jingle.line]) rows.push({ t: packStart, s: `Sung: ${l}` })
+  if (p.packshot.tagline) rows.push({ t: packStart, s: `Tagline: ${line(p.packshot.tagline)}` })
+  const jingle = p.brief.jingle
+  if (jingle) {
+    // F5: the same timing claims.ts uses to find a jingle claim, so the
+    // Claims table's "jingle" timecode and the Full script's "Sung:" lines
+    // for the same words never disagree.
+    const packDur = packIdx >= 0 ? p.shots[packIdx].durationSeconds : 2
+    const at = signoffTiming(p)?.signoffStartSeconds ?? r1(p.brief.lengthSeconds - estimateSignoffSeconds(jingle.line, packDur))
+    for (const l of [...(jingle.lyrics ?? []), jingle.line]) rows.push({ t: at, s: `Sung: ${line(l)}` })
+  }
   return rows.map((r, i) => ({ ...r, i })).sort((a, b) => a.t - b.t || a.i - b.i).map((r) => `- ${tc(r.t)} ${r.s}`)
 }
 

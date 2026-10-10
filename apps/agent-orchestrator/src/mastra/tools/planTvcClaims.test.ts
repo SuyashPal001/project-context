@@ -55,9 +55,16 @@ describe('Part 2.6: claims review at check (D2, C1)', () => {
     for (const slice of ['shots 1-2', 'animatic', 'finish']) {
       const g = await runPlanTvc({ action: 'get', planFileId: out.planFileId!, slice }, deps)
       expect(g.refusalReason).toMatch(/^CLAIM_UNREVIEWED/)
+      // F3: the gated refusal carries the same list and nextStep as check's,
+      // and names the Auto-mode way out, so Olmo never needs a separate
+      // round-trip just to see what is still unanswered.
+      expect(g.claimsToReview!.map((f) => f.text)).toEqual(['India’s No.1 fizz'])
+      expect(g.nextStep).toMatch(/^CLAIM_UNREVIEWED: return claimsToReview to Olmo/)
+      expect(g.refusalReason).toContain('in Auto mode, get slice "plan", add every claimsToReview item to plan.claims with status "no_proof" and check again')
     }
     const r = await runPlanTvc({ action: 'record', planFileId: out.planFileId!, records: [{ shot: 1, stillFileId: 's1' }] }, deps)
     expect(r.refusalReason).toMatch(/^CLAIM_UNREVIEWED/)
+    expect(r.claimsToReview!.map((f) => f.text)).toEqual(['India’s No.1 fizz'])
     expect((await runPlanTvc({ action: 'get', planFileId: out.planFileId!, slice: 'brief' }, deps)).slice).toBeDefined()
     expect((await runPlanTvc({ action: 'get', planFileId: out.planFileId!, slice: 'plan' }, deps)).slice).not.toContain('claimsPending')
   })
@@ -65,14 +72,14 @@ describe('Part 2.6: claims review at check (D2, C1)', () => {
   it('the user\'s answers on a re-check clear claimsPending and open the slices', async () => {
     const { deps } = fakeDeps({ claimAnswers: [] })
     const first = await runPlanTvc({ action: 'check', plan: base(['India’s No.1 fizz']) }, deps)
-    deps.claimAnswers = ["india's no.1 fizz"]
+    deps.claimAnswers = [{ key: "india's no.1 fizz", answer: 'proof', proof: 'Nielsen MAT Mar 2026' }]
     const again = await runPlanTvc({ action: 'check', planFileId: first.planFileId!, plan: { ...base(['India’s No.1 fizz']), claims: [{ text: 'India’s No.1 fizz', status: 'proof', proof: 'Nielsen MAT Mar 2026' }] } }, deps)
     expect(again.claimsToReview).toBeUndefined()
     expect((await runPlanTvc({ action: 'get', planFileId: first.planFileId!, slice: 'shots 1-2' }, deps)).slice).toBeDefined()
   })
 
   it('a re-check with no claims keeps every earlier answer (Review Focus 3, C2)', async () => {
-    const { deps, store } = fakeDeps({ claimAnswers: ["india's no.1 fizz"] })
+    const { deps, store } = fakeDeps({ claimAnswers: [{ key: "india's no.1 fizz", answer: 'no_proof' }] })
     const first = await runPlanTvc({ action: 'check', plan: { ...base(['India’s No.1 fizz']), claims: [{ text: 'India’s No.1 fizz', status: 'no_proof' }] } }, deps)
     deps.claimAnswers = []
     const again = await runPlanTvc({ action: 'check', planFileId: first.planFileId!, plan: base(['India’s No.1 fizz']) }, deps)
@@ -105,7 +112,7 @@ describe('Part 2.6: claims review at check (D2, C1)', () => {
   })
 
   it('an edited claim is asked again and the old answer dropped with a warning (E4)', async () => {
-    const { deps } = fakeDeps({ claimAnswers: ["india's no.1 fizz"] })
+    const { deps } = fakeDeps({ claimAnswers: [{ key: "india's no.1 fizz", answer: 'no_proof' }] })
     const first = await runPlanTvc({ action: 'check', plan: { ...base(['India’s No.1 fizz']), claims: [{ text: 'India’s No.1 fizz', status: 'no_proof' }] } }, deps)
     deps.claimAnswers = []
     const again = await runPlanTvc({ action: 'check', planFileId: first.planFileId!, plan: base(['India’s most loved fizz']) }, deps)

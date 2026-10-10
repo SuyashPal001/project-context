@@ -8,7 +8,7 @@ import { detectCutTimes } from './detectCuts.js'
 import { computeCreditPlan, priceFromRates, readBalanceForTenant } from './checkCreditPlan.js'
 import { recordOnPlan, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, jingleErrors, legalTimings, type TvcPlan } from './tvcPlan.js'
 import { draftCutdown, inheritFromMaster, rebuildCutdown } from './tvcCutdown.js'
-import { findClaims, mergeClaims, reviewClaims, TVC_CLAIM_ANSWERS_KEY, type Finding } from './claims.js'
+import { findClaims, mergeClaims, reviewClaims, TVC_CLAIM_ANSWERS_KEY, type ClaimAnswer, type Finding } from './claims.js'
 import { animaticSlice } from './animatic.js'
 import { stillPassedCheck } from './checkStill.js'
 import { LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_IMAGE, LOGO_NOT_RASTER, LOGO_UNCHECKED, isSvgFile } from './packshotMarks.js'
@@ -122,9 +122,10 @@ export interface PlanTvcDeps {
   // undefined when Olmo's delegation prompt carried no "Reference video:" —
   // the ordinary, reference-free ad flow.
   expectedReferenceVideoFileId?: string
-  // D9 (Part 2.6): the keys of the user's answers from Olmo's "Claims:"
-  // lines (hooks.ts). Undefined = a caller outside the tool, with no gate.
-  claimAnswers?: string[]
+  // D9/F1 (Part 2.6): the user's answers from Olmo's "Claims:" lines
+  // (hooks.ts), one per answered claim. Undefined = a caller outside the
+  // tool, with no gate.
+  claimAnswers?: ClaimAnswer[]
   autoMode?: boolean
   // Task 4: the claims summary's upload and clock.
   upload?: (title: string, content: string) => Promise<string | null>
@@ -250,7 +251,7 @@ async function withPlanLock<T>(planFileId: string, fn: () => Promise<T>): Promis
   }
 }
 
-export const CLAIMS_PENDING_REFUSAL = 'CLAIM_UNREVIEWED: the plan\'s claims are not reviewed yet; return claimsToReview to Olmo and wait for the user\'s answers'
+export const CLAIMS_PENDING_REFUSAL = 'CLAIM_UNREVIEWED: the plan\'s claims are not reviewed yet; return claimsToReview to Olmo and wait for the user\'s answers; in Auto mode, get slice "plan", add every claimsToReview item to plan.claims with status "no_proof" and check again'
 const CLAIMS_NEXT_STEP = 'CLAIM_UNREVIEWED: return claimsToReview to Olmo; do not change the wording yourself'
 
 export async function runPlanTvc(input: PlanTvcInput, deps: PlanTvcDeps): Promise<PlanTvcOutput> {
@@ -329,7 +330,7 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
       inherited: master?.claims ?? [],
       previous: previous?.plan.claims ?? [],
       incoming: planInput.claims ?? [],
-      answers: deps.claimAnswers ? new Set(deps.claimAnswers) : undefined,
+      answers: deps.claimAnswers ? new Map(deps.claimAnswers.map((a) => [a.key, a])) : undefined,
       auto: deps.autoMode === true,
     })
     if (mergedClaims.entries.length) planInput.claims = mergedClaims.entries
@@ -427,7 +428,7 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     if (errors.length) return { errors, warnings }
     // D2/I7: claims are reviewed only once the craft is right; a plan whose
     // only open items are claims is SAVED (C1) so Olmo can ask and come back.
-    const review = reviewClaims(plan, plan.claims ?? [], mergedClaims.fromPrevious)
+    const review = reviewClaims(plan, plan.claims ?? [], mergedClaims.fromPrevious, mergedClaims.fromIncoming)
     if (review.claims.length) plan.claims = review.claims
     else delete plan.claims
     if (review.toReview.length) plan.claimsPending = true
@@ -496,11 +497,18 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
   const REDO_ON_ORIGINAL = 'CUTDOWN_REDO_ON_ORIGINAL: this is a shorter version cut from the original ad; change the moment on the original ad, then make the shorter version again'
   if (doc.plan.cutdownOf && input.action === 'get' && /^shots /.test((input.slice ?? '').trim())) return { refused: true, refusalReason: REDO_ON_ORIGINAL }
   if (doc.plan.cutdownOf && input.action === 'record' && (input.stillFileId || (input.records ?? []).some((r) => r.stillFileId))) return { refused: true, refusalReason: REDO_ON_ORIGINAL }
-  // C1: while the claims are unanswered, nothing paid can start.
+  // C1: while the claims are unanswered, nothing paid can start. F3: the
+  // refusal also carries claimsToReview and nextStep (same shape as check's),
+  // so Olmo can ask without a separate "get plan" round-trip just to see
+  // what is still unanswered.
   if (doc.plan.claimsPending) {
     const s = (input.slice ?? '').trim()
-    if (input.action === 'get' && (/^shots /.test(s) || s === 'animatic' || s === 'finish')) return { refused: true, refusalReason: CLAIMS_PENDING_REFUSAL }
-    if (input.action === 'record' && (input.stillFileId || input.clipFileId || (input.records ?? []).length > 0)) return { refused: true, refusalReason: CLAIMS_PENDING_REFUSAL }
+    const gated = (input.action === 'get' && (/^shots /.test(s) || s === 'animatic' || s === 'finish'))
+      || (input.action === 'record' && (input.stillFileId || input.clipFileId || (input.records ?? []).length > 0))
+    if (gated) {
+      const toReview = reviewClaims(doc.plan, doc.plan.claims ?? [], new Set()).toReview
+      return { refused: true, refusalReason: CLAIMS_PENDING_REFUSAL, claimsToReview: toReview, nextStep: CLAIMS_NEXT_STEP }
+    }
   }
   if (input.action === 'get') {
     if ((input.slice ?? '').trim() === 'animatic') {
@@ -604,7 +612,7 @@ export const planTvc = createTool({
       detectCutTimes: (videoFileId) => detectCutTimes(videoFileId, idToken, tenantId || conversationId, REFERENCE_CUT_THRESHOLD),
       productPhotoInfo: (fileId) => resolveProductPhotoInfo(fileId, idToken),
       expectedReferenceVideoFileId: execContext?.requestContext?.get('tvcReferenceVideoFileId') as string | undefined,
-      claimAnswers: (execContext?.requestContext?.get(TVC_CLAIM_ANSWERS_KEY) as string[] | undefined) ?? [],
+      claimAnswers: (execContext?.requestContext?.get(TVC_CLAIM_ANSWERS_KEY) as ClaimAnswer[] | undefined) ?? [],
       autoMode: execContext?.requestContext?.get('allowMode') === 'auto',
       upload: async (title, content) => (await uploadGeneratedFile(idToken, { conversationId, title, content, contentType: 'text/markdown', extension: 'md' }))?.fileId ?? null,
     }

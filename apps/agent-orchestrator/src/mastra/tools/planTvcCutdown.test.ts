@@ -256,7 +256,7 @@ describe('editing and re-cutting a shorter version (review I2, I4, M3)', () => {
 
 describe('Part 2.6: claims in a cutdown (Review Focus 5, C3, E8)', () => {
   it('an original\'s answered claims carry into its cutdown check, and one the script drops is pruned with no warning', async () => {
-    const { deps, store } = fakeDeps({ claimAnswers: ["india's no.1 fizz", 'zero sugar'] })
+    const { deps, store } = fakeDeps({ claimAnswers: [{ key: "india's no.1 fizz", answer: 'no_proof' }, { key: 'zero sugar', answer: 'no_proof' }] })
     const id = await seedOriginal(deps, tvcPlanSchema.parse({
       ...original15(),
       voiceover: [
