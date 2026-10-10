@@ -681,6 +681,26 @@ export function sliceTvcPlan(plan: TvcPlan, slice: string): unknown {
   const starts = shotStarts(plan)
   const withStart = (s: TvcShot) => ({ ...s, startSeconds: starts[plan.shots.indexOf(s)] })
   if (slice === 'brief') return { brief: plan.brief, look: plan.look, locations: plan.locations, packshot: plan.packshot }
+  // C1 (final review): a fresh Director thread handling "step: animatic
+  // change: <what>" has no way to read the saved plan — the other slices
+  // only ever return pieces, so Director was forced to re-write the whole
+  // plan from fragments, and a paraphrased picture field silently dropped an
+  // approved still (carryOver matches a still by its exact picture key).
+  // This slice returns the whole saved plan with every field `record` writes
+  // stripped (stills/clips per shot, narration, song, jingle/signoff), so
+  // Director can change only what was asked and send the rest back
+  // unchanged through `check` with the same planFileId — carryOver then
+  // re-attaches every still, clip and audio file exactly as before.
+  if (slice === 'plan') {
+    const stripped: TvcPlan = structuredClone(plan)
+    stripped.shots.forEach((s) => { delete s.stillFileId; delete s.clipFileId })
+    delete stripped.narrationFileIds
+    delete stripped.songFileId
+    delete stripped.jingleFileId
+    delete stripped.signoffFileId
+    delete stripped.signoffSeconds
+    return stripped
+  }
   if (slice === 'finish') {
     const endCard = endCardInputs(plan)
     const joinGroups = joinGroupsFor(plan)

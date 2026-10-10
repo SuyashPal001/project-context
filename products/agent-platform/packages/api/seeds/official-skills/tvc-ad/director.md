@@ -115,3 +115,6 @@ Rough cut (step: animatic; supersedes the matching finish lines above for this s
 - step: animatic change: <what>: make the change in the plan, plan_tvc check with the same planFileId, then do step animatic again (it makes only the audio the check dropped). Never make a new still here; pass on any NARRATION_REMAKE, MUSIC_REMAKE or JINGLE_REMAKE warning to Olmo with the fileId.
 - At step finish, the narration, bed and sung sign-off recorded here are reused as the finish lines above already say.
 - On an ANIMATIC_ refusal, make what it says is missing, or return the reason to Olmo in plain words.
+
+For step: animatic change: call plan_tvc get with slice "plan", change only what Olmo asked, then check it with the same planFileId; never rewrite the plan from the other slices.
+Narrate the voiceover as one generate_narration call per voiceover block, so record gets one narration per block.

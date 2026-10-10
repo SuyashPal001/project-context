@@ -104,3 +104,13 @@ describe('R7: narration ignores where a block starts; dropped audio is warned ab
     expect((out.warnings ?? []).filter((w) => /_REMAKE:/.test(w))).toEqual([])
   })
 })
+
+describe('M4: carryOver never carries a still onto a shot that now continues the one before it', () => {
+  it('a shot edited to add continuesFrom gets no carried still, so record never hits CONTINUING_SHOT_HAS_NO_STILL', async () => {
+    const { recheck } = await recorded()
+    const q = plan(); q.shots[1].continuesFrom = 1
+    const { out, saved } = await recheck(q)
+    expect(out.errors).toEqual([])
+    expect(saved.shots[1].stillFileId).toBeUndefined()
+  })
+})

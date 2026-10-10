@@ -224,6 +224,13 @@ describe('OFFICIAL_SKILLS', () => {
     expect(card).not.toMatch(/forVoiceoverBlock|overlay_text|plan_tvc|composite_end_card|assemble_clips|trim_clip|render_animatic/);
   });
 
+  it('tvc-ad: step: animatic change reads the plan slice and narrates one block per call (final review C1, append only)', () => {
+    const tvc = OFFICIAL_SKILLS.find((s) => s.slug === 'tvc-ad')!;
+    const director = readFileSync(tvc.director!.file, 'utf8');
+    expect(director).toMatch(/For step: animatic change: call plan_tvc get with slice "plan", change only what Olmo asked, then check it with the same planFileId; never rewrite the plan from the other slices\./);
+    expect(director).toMatch(/Narrate the voiceover as one generate_narration call per voiceover block, so record gets one narration per block\./);
+  });
+
   it('each entry file exists and is non-empty', () => {
     for (const entry of OFFICIAL_SKILLS) {
       expect(existsSync(entry.file)).toBe(true);
