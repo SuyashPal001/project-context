@@ -224,6 +224,24 @@ describe('OFFICIAL_SKILLS', () => {
     expect(card).not.toMatch(/forVoiceoverBlock|overlay_text|plan_tvc|composite_end_card|assemble_clips|trim_clip|render_animatic/);
   });
 
+  it('tvc-ad reviews claims before the stills and writes a claims summary (Part 2.6, append only)', () => {
+    const tvc = OFFICIAL_SKILLS.find((s) => s.slug === 'tvc-ad')!;
+    const card = readFileSync(tvc.file, 'utf8');
+    const director = readFileSync(tvc.director!.file, 'utf8');
+    expect(director).toMatch(/claimsToReview/);
+    expect(director).toMatch(/never change the wording or write plan\.claims yourself/);
+    expect(director).toMatch(/Claims: "<phrase>" = /);
+    expect(director).toMatch(/status "no_proof"/);
+    expect(director).toMatch(/plan_tvc action "summary"/);
+    expect(director).toMatch(/health: clean bright clinical-fresh light/);
+    expect(card).toMatch(/24\. Claims/);
+    expect(card).toMatch(/I have proof \(say what below\)/);
+    expect(card).toMatch(/Not a claim/);
+    expect(card).toMatch(/step: claims summary/);
+    expect(card).toMatch(/Product name: /);
+    expect(card).not.toMatch(/claimsToReview|plan_tvc|claimsPending/);
+  });
+
   it('tvc-ad: step: animatic change reads the plan slice and narrates one block per call (final review C1, append only)', () => {
     const tvc = OFFICIAL_SKILLS.find((s) => s.slug === 'tvc-ad')!;
     const director = readFileSync(tvc.director!.file, 'utf8');

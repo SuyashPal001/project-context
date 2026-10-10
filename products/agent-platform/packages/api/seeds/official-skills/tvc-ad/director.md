@@ -118,3 +118,9 @@ Rough cut (step: animatic; supersedes the matching finish lines above for this s
 
 For step: animatic change: call plan_tvc get with slice "plan", change only what Olmo asked, then check it with the same planFileId; never rewrite the plan from the other slices.
 Narrate the voiceover as one generate_narration call per voiceover block, so record gets one narration per block.
+
+Claims (Part 2.6; supersedes "fix exactly those and check again" in step: plan for claims only): when plan_tvc check returns claimsToReview, the plan is saved; return claimsToReview to Olmo word for word (each phrase, its kind and where it is) with the TVC plan id, and never change the wording or write plan.claims yourself.
+- When Olmo's brief carries lines of the form Claims: "<phrase>" = <answer>, call plan_tvc get with slice "plan", then for each line: "proof: <text>" is { text: phrase, status "proof", proof: text }; "no_proof" is status "no_proof"; "not_a_claim" is status "not_a_claim"; "soften" means rewrite only that phrase in the plan so it makes no claim of fact, keeping everything else. Add the entries to plan.claims and check with the same planFileId.
+- In Auto mode, add every claimsToReview item to plan.claims with status "no_proof" and check again; never soften or invent proof.
+- When Olmo's brief has "Product name: <name>", write it exactly into brief.productName. A health product (supplements, OTC remedies, ayurveda, wellness) is category "health"; Look line for health: clean bright clinical-fresh light, calm and trustworthy.
+- At the end of step finish, and for step: claims summary, call plan_tvc action "summary" with the TVC plan id and return its fileId with the ad, saying how many claims need proof.
