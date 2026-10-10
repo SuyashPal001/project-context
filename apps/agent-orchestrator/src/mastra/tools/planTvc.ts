@@ -8,6 +8,7 @@ import { detectCutTimes } from './detectCuts.js'
 import { computeCreditPlan, priceFromRates, readBalanceForTenant } from './checkCreditPlan.js'
 import { recordOnPlan, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, jingleErrors, legalTimings, type TvcPlan } from './tvcPlan.js'
 import { draftCutdown, inheritFromMaster, rebuildCutdown } from './tvcCutdown.js'
+import { animaticSlice } from './animatic.js'
 import { stillPassedCheck } from './checkStill.js'
 import { LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_IMAGE, LOGO_NOT_RASTER, LOGO_UNCHECKED, isSvgFile } from './packshotMarks.js'
 
@@ -124,7 +125,7 @@ export const planTvcInputSchema = z.object({
   action: z.enum(['check', 'get', 'record', 'cutdown']).describe('check: validate and save the plan; get: read one slice; record: attach finished stills or clips to their shots, or the finish\'s narration, song and jingle to the plan; cutdown: a draft shorter version of a finished ad (planFileId = the original, lengthSeconds), free and not saved'),
   plan: tvcPlanSchema.optional().describe('check only: the full plan'),
   planFileId: z.string().optional().describe('The TVC plan id. Required for get and record; pass it on a re-check so the plan keeps its id'),
-  slice: z.string().optional().describe('get only: "brief", "finish" or "shots a-b", e.g. "shots 4-6"'),
+  slice: z.string().optional().describe('get only: "brief", "finish", "animatic" (the rough cut\'s audio and steps) or "shots a-b", e.g. "shots 4-6"'),
   shot: z.number().int().min(1).optional().describe('record only: the shot number'),
   stillFileId: z.string().optional().describe('record only: the shot\'s approved still'),
   clipFileId: z.string().optional().describe('record only: the shot\'s checked, trimmed clip'),
@@ -443,6 +444,10 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
   if (doc.plan.cutdownOf && input.action === 'get' && /^shots /.test((input.slice ?? '').trim())) return { refused: true, refusalReason: REDO_ON_ORIGINAL }
   if (doc.plan.cutdownOf && input.action === 'record' && (input.stillFileId || (input.records ?? []).some((r) => r.stillFileId))) return { refused: true, refusalReason: REDO_ON_ORIGINAL }
   if (input.action === 'get') {
+    if ((input.slice ?? '').trim() === 'animatic') {
+      if (doc.plan.cutdownOf) return { refused: true, refusalReason: 'ANIMATIC_CUTDOWN: a shorter version is cut from finished clips and needs no rough cut' }
+      return { planFileId: input.planFileId, slice: JSON.stringify(animaticSlice(doc.plan)) }
+    }
     // E7: the finish slice must never ship with a disclaimer silently
     // dropped because its timing couldn't be placed — refuse instead.
     if ((input.slice ?? '') === 'finish') {
@@ -489,9 +494,18 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
   return { planFileId }
 }
 
+/** The saved plan behind a TVC plan id. Tenant scoping comes from the files API: the presigned URL is issued for the user's idToken. */
+export async function loadSavedPlan(planFileId: string, idToken: string): Promise<SavedPlan> {
+  const url = new URL(await fetchPresignedUrl(planFileId, idToken))
+  url.searchParams.delete('x-amz-checksum-mode')
+  const res = await fetch(url.toString())
+  if (!res.ok) throw new Error(`plan ${planFileId}: ${res.status}`)
+  return await res.json() as SavedPlan
+}
+
 export const planTvc = createTool({
   id: 'plan-tvc',
-  description: 'Free. The TVC ad plan: "check" validates the plan against the TVC craft rules and saves it (returns the plan id and cost, or plain errors to fix); "get" returns only the slice one step needs; "record" attaches finished stills or clips to their shots (all of a step\'s files in one call, with records) and the finish narration and song to the plan. The finish can also record the sung sign-off (jingleFileId, signoffFileId, signoffSeconds); record refuses one that overlaps speech or is too long. Use only in the TVC ad flow. check also works out every disclaimer\'s start (from the voiceover block that makes the claim) and its ASCI hold, and refuses LEGAL_TOO_LONG, LEGAL_HOLD_TOO_LONG, LEGAL_OVERLAP or LEGAL_CLAIM_MISSING; the finish slice lists the legal lines with their times and the finish order. check also validates prices (PRICE_INVALID, PRICE_MRP_NOT_HIGHER, PRICE_TOO_SHORT) and the logo (LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_RASTER, LOGO_NOT_IMAGE, LOGO_UNCHECKED, LOGO_FROM_REFERENCE), and sets pop on shot text and fade on the tagline when no motion is given; the finish slice carries each shot\'s motion and price, and an endCard (logoFileId, vegMark, disclaimerLines) for composite_end_card. A 30s plan may have up to 20 shots; when it has more than 12, the finish slice also has joinGroups (two lists of shot numbers) and finalJoin true, and finishOrder lists the three joins (assemble_clips group 1, group 2, final). cutdown (free, saves nothing) returns a draft shorter version of a finished ad from its own clips: the shots plan_tvc picked (each with its source), their new lengths, and the original\'s voiceover; write the shorter voiceover and legal lines into the draft and check it without planFileId. Given a shorter version\'s own id at its own length, cutdown returns its saved plan to edit (re-check with that id). A cutdown\'s finish slice lists retrims (trim_clip from the original clip, then record) and musicFadeOutAtSeconds. A shorter version refuses a shots slice or a still (CUTDOWN_REDO_ON_ORIGINAL): moments are changed on the original.',
+  description: 'Free. The TVC ad plan: "check" validates the plan against the TVC craft rules and saves it (returns the plan id and cost, or plain errors to fix); "get" returns only the slice one step needs; "record" attaches finished stills or clips to their shots (all of a step\'s files in one call, with records) and the finish narration and song to the plan. The finish can also record the sung sign-off (jingleFileId, signoffFileId, signoffSeconds); record refuses one that overlaps speech or is too long. Use only in the TVC ad flow. check also works out every disclaimer\'s start (from the voiceover block that makes the claim) and its ASCI hold, and refuses LEGAL_TOO_LONG, LEGAL_HOLD_TOO_LONG, LEGAL_OVERLAP or LEGAL_CLAIM_MISSING; the finish slice lists the legal lines with their times and the finish order. check also validates prices (PRICE_INVALID, PRICE_MRP_NOT_HIGHER, PRICE_TOO_SHORT) and the logo (LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_RASTER, LOGO_NOT_IMAGE, LOGO_UNCHECKED, LOGO_FROM_REFERENCE), and sets pop on shot text and fade on the tagline when no motion is given; the finish slice carries each shot\'s motion and price, and an endCard (logoFileId, vegMark, disclaimerLines) for composite_end_card. A 30s plan may have up to 20 shots; when it has more than 12, the finish slice also has joinGroups (two lists of shot numbers) and finalJoin true, and finishOrder lists the three joins (assemble_clips group 1, group 2, final). cutdown (free, saves nothing) returns a draft shorter version of a finished ad from its own clips: the shots plan_tvc picked (each with its source), their new lengths, and the original\'s voiceover; write the shorter voiceover and legal lines into the draft and check it without planFileId. Given a shorter version\'s own id at its own length, cutdown returns its saved plan to edit (re-check with that id). A cutdown\'s finish slice lists retrims (trim_clip from the original clip, then record) and musicFadeOutAtSeconds. A shorter version refuses a shots slice or a still (CUTDOWN_REDO_ON_ORIGINAL): moments are changed on the original. get "animatic" (Ask mode, after the stills) lists the audio still to make and the steps ending in render_animatic; a shorter version refuses it (ANIMATIC_CUTDOWN).',
   inputSchema: planTvcInputSchema,
   outputSchema: z.object({
     planFileId: z.string().optional(),
@@ -509,13 +523,7 @@ export const planTvc = createTool({
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     if (!idToken || !conversationId) return { refused: true, refusalReason: 'NO_SESSION_CONTEXT' }
     const deps: PlanTvcDeps = {
-      load: async (planFileId) => {
-        const url = new URL(await fetchPresignedUrl(planFileId, idToken))
-        url.searchParams.delete('x-amz-checksum-mode')
-        const res = await fetch(url.toString())
-        if (!res.ok) throw new Error(`plan ${planFileId}: ${res.status}`)
-        return await res.json() as SavedPlan
-      },
+      load: (planFileId) => loadSavedPlan(planFileId, idToken),
       save: async (doc) => (await uploadFileWithKey(idToken, {
         key: doc.storageKey, name: 'TVC plan.json', content: JSON.stringify(doc), contentType: 'application/json',
       }))?.fileId ?? null,
