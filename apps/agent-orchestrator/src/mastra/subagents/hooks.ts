@@ -6,6 +6,7 @@ import { checkDelegationBudget } from './budget.js'
 import { recordDelegation } from './link.js'
 import { AD_FLOW_KEY, TVC_STEP_KEY, briefIsReviewedAdFlow, noteTvcAd } from '../tools/reviewGate.js'
 import { missingReferenceReason } from './referenceCheck.js'
+import { TVC_CLAIM_ANSWERS_KEY, parseClaimAnswers } from '../tools/claims.js'
 
 export interface HookDeps {
   budget?: typeof checkDelegationBudget
@@ -53,6 +54,9 @@ export function applyDelegationPromptFlags(ctx: { set: (key: never, value: never
   // R1 (animatic): the step this delegation runs, set on every delegation so a
   // later "step: finish" in the same turn never inherits it.
   ctx.set(TVC_STEP_KEY as never, (/step:\s*animatic\b/i.test(prompt) ? 'animatic' : undefined) as never)
+  // D9 (Part 2.6): the user's claim answers, set on every delegation (cleared
+  // when absent) so only what the user answered can enter plan.claims.
+  ctx.set(TVC_CLAIM_ANSWERS_KEY as never, parseClaimAnswers(prompt) as never)
   if (/flow:\s*tvc ad/i.test(prompt)) noteTvcAd(ctx.get?.('conversationId' as never) as string | undefined)
   // F4: plan_tvc's check can't trust Director to keep brief.reference —
   // a live run dropped it on the very first check. Olmo's own delegation

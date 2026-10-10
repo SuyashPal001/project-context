@@ -8,7 +8,7 @@ import { detectCutTimes } from './detectCuts.js'
 import { computeCreditPlan, priceFromRates, readBalanceForTenant } from './checkCreditPlan.js'
 import { recordOnPlan, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, jingleErrors, legalTimings, type TvcPlan } from './tvcPlan.js'
 import { draftCutdown, inheritFromMaster, rebuildCutdown } from './tvcCutdown.js'
-import { findClaims, mergeClaims, reviewClaims, type Finding } from './claims.js'
+import { findClaims, mergeClaims, reviewClaims, TVC_CLAIM_ANSWERS_KEY, type Finding } from './claims.js'
 import { animaticSlice } from './animatic.js'
 import { stillPassedCheck } from './checkStill.js'
 import { LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_IMAGE, LOGO_NOT_RASTER, LOGO_UNCHECKED, isSvgFile } from './packshotMarks.js'
@@ -594,6 +594,8 @@ export const planTvc = createTool({
       detectCutTimes: (videoFileId) => detectCutTimes(videoFileId, idToken, tenantId || conversationId, REFERENCE_CUT_THRESHOLD),
       productPhotoInfo: (fileId) => resolveProductPhotoInfo(fileId, idToken),
       expectedReferenceVideoFileId: execContext?.requestContext?.get('tvcReferenceVideoFileId') as string | undefined,
+      claimAnswers: (execContext?.requestContext?.get(TVC_CLAIM_ANSWERS_KEY) as string[] | undefined) ?? [],
+      autoMode: execContext?.requestContext?.get('allowMode') === 'auto',
     }
     try {
       return await runPlanTvc(inputData as PlanTvcInput, deps)
