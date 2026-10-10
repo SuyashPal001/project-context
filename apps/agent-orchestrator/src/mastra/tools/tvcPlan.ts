@@ -84,7 +84,7 @@ export const legalLineSchema = z.object({
 export const tvcPlanSchema = z.object({
   brief: z.object({
     message: z.string().min(1).describe('The one message: one sentence of 12 words or fewer'),
-    category: z.enum(['beauty', 'personal_care', 'food', 'beverage', 'jewellery', 'fashion', 'home', 'tech', 'other']),
+    category: z.enum(['beauty', 'personal_care', 'food', 'beverage', 'jewellery', 'fashion', 'home', 'tech', 'other', 'health']),
     tier: z.enum(['mass', 'premium', 'luxury']),
     objective: z.enum(['launch', 'brand', 'feature', 'seasonal']),
     market: z.enum(['india', 'generic']),
@@ -103,6 +103,7 @@ export const tvcPlanSchema = z.object({
     product: productTypeSchema.optional().describe('This product\'s type; must match the reference\'s when one is given'),
     actorLook: z.string().optional().describe('The lead\'s look, e.g. "long dark wavy hair, magenta shirt"; extras never share it'),
     brandName: z.string().optional().describe('The brand name as it appears on screen; not counted in a disclaimer\'s hold time'),
+    productName: z.string().optional().describe('The product\'s name as the user calls it (e.g. "Bubbli Lemon Fizz"); used on the claims summary'),
     jingle: jingleSchema.optional().describe('A sung sign-off over the ending; only when the user wants one or the reference ad has one'),
     logoFileId: z.string().optional().describe('The brand logo the user uploaded (PNG, JPG or WebP), laid on the packshot; never the product photo'),
     vegMark: z.enum(['veg', 'non_veg']).optional().describe('Food and drink: the veg or non-veg mark on the packshot'),
@@ -131,6 +132,12 @@ export const tvcPlanSchema = z.object({
     planFileId: z.string().min(1).describe('The original ad\'s TVC plan id'),
     fromReference: z.boolean().optional(),
   }).optional().describe('Set by plan_tvc cutdown: this plan is a shorter version of that original ad, made from its clips. Keep it exactly as given'),
+  claims: z.array(z.object({
+    text: z.string().min(1).describe('The flagged phrase exactly as plan_tvc returned it in claimsToReview'),
+    status: z.enum(['proof', 'no_proof', 'not_a_claim']).describe('"proof": the user has substantiation (say what in proof); "no_proof": keep it without proof; "not_a_claim": the user says it makes no claim'),
+    proof: z.string().optional().describe('Required when status is "proof": what the user holds, e.g. "Nielsen MAT Mar 2026 value share"'),
+  }).refine((e) => e.status !== 'proof' || !!e.proof?.trim(), { message: 'proof is required when status is "proof"' })).optional().describe('The user\'s answer for each claim plan_tvc found. Write only what Olmo\'s "Claims:" lines say (Ask mode) or no_proof (Auto mode)'),
+  claimsPending: z.boolean().optional().describe('Set by plan_tvc check; never write it'),
 })
 
 export type TvcPlan = z.infer<typeof tvcPlanSchema>
