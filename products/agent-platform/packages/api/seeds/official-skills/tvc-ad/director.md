@@ -98,3 +98,14 @@ Logo, veg mark, text motion and prices (supersede the matching lines above):
 - Follow finishOrder exactly: "assemble_clips group 1", "assemble_clips group 2" and "assemble_clips final" in finishOrder are these three joins.
 - If any of the three joins refuses with DURATION_MISMATCH (it was refunded), return the reason to Olmo, saying which join failed and the fileIds of the halves already joined, so a retry repeats only that join.
 - When the finish slice has joinGroups, the finished ad is the result of the "assemble_clips final" step (the join of both halves), never group 1 or group 2 alone; use that video for every later step.
+
+Cutdowns (step: cutdown <length>; supersede the matching lines above for a cutdown):
+- step cutdown: call plan_tvc with action "cutdown", planFileId = the TVC plan in the brief and lengthSeconds = the length asked for. It returns a draft: the shots it picked from the original (each with its source and new length), the packshot, the original's legal lines, and the original's voiceover for reference. Use keepShots (original shot numbers) only when Olmo names the moments to keep.
+- Never change a shot's picture, source or clip; you may change or remove a shot's text.
+- Write a new voiceover for the shorter length, with the same message and within the word cap (6s 8, 15s 22, 20s 30). Narration is reused only when the whole voiceover is kept word for word from the original's blocks; any new or changed block means every block is narrated again.
+- tie every legal line to the new voiceover block that makes its claim (forVoiceoverBlock), or give it wholeAd true; remove a legal line only when its claim is no longer said or shown. A claim shown on screen with no voiceover keeps the startSeconds the draft gives it; when it has none, set startSeconds = the new start of the shot that shows the claim.
+- Then call plan_tvc check with the edited draft, keeping cutdownOf and every shot's source exactly as given, and without planFileId (it is a new plan). Fix errors as in step plan. On JINGLE_WONT_FIT in a cutdown, remove brief.jingle and check again.
+- When the cutdown result has editing (a shorter version changed at its own length), edit only its voiceover, legal lines, texts and tagline, and call plan_tvc check with planFileId = that editing id.
+- Reply to Olmo with the NEW TVC plan id, the cost, any warnings and the shorter script.
+- step finish of a cutdown: when the finish slice has retrims, trim_clip each one (sourceFileId = its sourceClipFileId, startSeconds, endSeconds), plan_tvc record those clips in one call (records, shot = each retrim's n), then get the finish slice again and continue with finishOrder. When the finish slice has musicFadeOutAtSeconds, pass it to mix_music_bed as fadeOutAtSeconds.
+- On a CUTDOWN_ refusal, return the reason to Olmo in plain words. On CUTDOWN_REDO_ON_ORIGINAL, make no new still or video: return it to Olmo.

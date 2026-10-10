@@ -169,6 +169,37 @@ describe('OFFICIAL_SKILLS', () => {
     expect(card).not.toMatch(/forVoiceoverBlock|overlay_text|plan_tvc|composite_end_card|assemble_clips/);
   });
 
+  it('tvc-ad makes cutdowns from the same footage (Part 2.4, append only)', () => {
+    const tvc = OFFICIAL_SKILLS.find((s) => s.slug === 'tvc-ad')!;
+    const card = readFileSync(tvc.file, 'utf8');
+    const director = readFileSync(tvc.director!.file, 'utf8');
+    expect(director).toMatch(/Cutdowns \(step: cutdown <length>; supersede the matching lines above for a cutdown\):/);
+    expect(director).toMatch(/call plan_tvc with action "cutdown", planFileId = the TVC plan in the brief and lengthSeconds = the length asked for/);
+    expect(director).toMatch(/Never change a shot's picture, source or clip/);
+    expect(director).toMatch(/Narration is reused only when the whole voiceover is kept word for word from the original's blocks/);
+    expect(director).toMatch(/when it has none, set startSeconds = the new start of the shot that shows the claim/);
+    expect(director).toMatch(/When the cutdown result has editing \(a shorter version changed at its own length\), edit only its voiceover, legal lines, texts and tagline, and call plan_tvc check with planFileId = that editing id/);
+    expect(director).toMatch(/On CUTDOWN_REDO_ON_ORIGINAL, make no new still or video: return it to Olmo/);
+    expect(director).toMatch(/tie every legal line to the new voiceover block that makes its claim \(forVoiceoverBlock\), or give it wholeAd true; remove a legal line only when its claim is no longer said or shown/);
+    expect(director).toMatch(/call plan_tvc check with the edited draft, keeping cutdownOf and every shot's source exactly as given, and without planFileId/);
+    expect(director).toMatch(/On JINGLE_WONT_FIT in a cutdown, remove brief\.jingle and check again/);
+    expect(director).toMatch(/when the finish slice has retrims, trim_clip each one \(sourceFileId = its sourceClipFileId, startSeconds, endSeconds\), plan_tvc record those clips in one call \(records, shot = each retrim's n\), then get the finish slice again and continue/);
+    expect(director).toMatch(/When the finish slice has musicFadeOutAtSeconds, pass it to mix_music_bed as fadeOutAtSeconds/);
+    expect(director).toMatch(/On a CUTDOWN_ refusal, return the reason to Olmo in plain words/);
+    expect(card).toMatch(/21\. Shorter versions \(supersedes the step list in the line beginning "Every agent-director call" for this case\):/);
+    expect(card).toMatch(/after delivering a finished original ad of 15 seconds or more/);
+    expect(card).toMatch(/with the original ad's "TVC plan: <planFileId>" line/);
+    expect(card).toMatch(/22\. Changing a shorter version \(supersedes item 7 for a shorter version\):/);
+    expect(card).toMatch(/Never send "step: redo shot" or "step: redo still" with a shorter version's id\./);
+    expect(card).toMatch(/made from the same footage, so it costs little/);
+    expect(card).toMatch(/"step: cutdown <length>"/);
+    expect(card).toMatch(/then delegate "step: finish" with the NEW TVC plan id/);
+    // The shipped lines are still there, word for word (append only).
+    expect(director).toMatch(/When the finish slice has joinGroups, the finished ad is the result of the "assemble_clips final" step/);
+    expect(card).toMatch(/20\. 30-second ads \(supersedes the length list in item 1\): 30 seconds is also offered/);
+    expect(card).not.toMatch(/forVoiceoverBlock|overlay_text|plan_tvc|composite_end_card|assemble_clips|trim_clip/);
+  });
+
   it('each entry file exists and is non-empty', () => {
     for (const entry of OFFICIAL_SKILLS) {
       expect(existsSync(entry.file)).toBe(true);
