@@ -386,7 +386,8 @@ describe('runPlanTvc re-check keeps or clears the saved narration and song', () 
     const text = await (await setup())((q) => { q.voiceover[0].text = 'So cold.' })
     expect(text.narrationFileIds).toBeUndefined()
     expect(text.songFileId).toBe('song1')
-    expect((await (await setup())((q) => { q.voiceover[0].startSeconds = 0.8 })).narrationFileIds).toBeUndefined()
+    // R7 (animatic): where a block starts does not change its audio, so a moved block keeps its narration.
+    expect((await (await setup())((q) => { q.voiceover[0].startSeconds = 0.8 })).narrationFileIds).toEqual(['n1'])
     expect((await (await setup())((q) => { q.brief.voiceId = 'other-voice' })).narrationFileIds).toBeUndefined()
   })
   it('clears the song when the tier or the category changes, and keeps the narration', async () => {

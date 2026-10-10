@@ -165,15 +165,26 @@ function jingleFieldsEqual(a: TvcPlan['brief']['jingle'], b: TvcPlan['brief']['j
   return al.length === bl.length && al.every((l, i) => l === bl[i])
 }
 
-// Recorded stills and clips survive a re-check for shots whose content did not
-// change. The narration survives while the voiceover and the voice are the
-// same; the song while the tier and the category are (what it was chosen for).
-function carryOver(previous: TvcPlan, next: TvcPlan): TvcPlan {
+// Recorded files survive a re-check while what they were made for is the same.
+// R2 (animatic): a still survives any edit that does not change the picture
+// (length, order, text, motion, price), matched by what the shot shows, so a
+// timing tweak after the animatic never forces paid new stills. A clip also
+// depends on the shot's place, length and continuation (generateSecondsFor
+// and the trims), so it survives only when those are the same too.
+// R7: the narration survives while every block's words and the voice are the
+// same (where a block starts does not change the audio; the mix places it).
+// Whatever recorded audio is dropped is returned, so check can warn before a
+// paid remake.
+function carryOver(previous: TvcPlan, next: TvcPlan): { plan: TvcPlan; dropped: string[] } {
   const out = structuredClone(next)
-  const sameVoiceover = JSON.stringify(previous.voiceover) === JSON.stringify(next.voiceover) && previous.brief.voiceId === next.brief.voiceId
+  const dropped: string[] = []
+  const texts = (p: TvcPlan) => JSON.stringify(p.voiceover.map((b) => b.text))
+  const sameVoiceover = texts(previous) === texts(next) && previous.brief.voiceId === next.brief.voiceId
   out.narrationFileIds = sameVoiceover ? previous.narrationFileIds : undefined
+  if (previous.narrationFileIds && !out.narrationFileIds) dropped.push('NARRATION_REMAKE: the voiceover changed, so its narration will be made again (paid)')
   const sameMusic = previous.brief.tier === next.brief.tier && previous.brief.category === next.brief.category
   out.songFileId = sameMusic ? previous.songFileId : undefined
+  if (previous.songFileId && !out.songFileId) dropped.push('MUSIC_REMAKE: the tier or category changed, so the music bed will be made again (paid)')
   // The recorded jingle survives while the jingle asked for is the same and
   // still fits the (possibly changed) voiceover; otherwise it must be re-made.
   delete out.jingleFileId; delete out.signoffFileId; delete out.signoffSeconds
@@ -182,26 +193,25 @@ function carryOver(previous: TvcPlan, next: TvcPlan): TvcPlan {
     out.jingleFileId = previous.jingleFileId
     out.signoffFileId = previous.signoffFileId
     out.signoffSeconds = previous.signoffSeconds
+  } else if (sameJingle && previous.signoffSeconds !== undefined) {
+    dropped.push('JINGLE_REMAKE: the sung sign-off no longer fits the new timing and will be made again (paid)')
   }
-  // motion and price only change overlay_text, never the picture: a re-check
-  // that adds them (or writes the default pop into an old plan) keeps the
-  // recorded still and clip.
-  // Review fix (Minor 1): on a cutdown, Director's cutdown text explicitly
-  // allows editing a shot's on-screen text ("edit only its voiceover, legal
-  // lines, texts and tagline") — text, like motion, only feeds overlay_text,
-  // never the picture, so a text edit alone must not drop the re-trimmed
-  // clip. Scoped to cutdowns only (next.cutdownOf) so an original's
-  // carry-over behaviour on a text change stays exactly as it was.
-  const isCutdown = !!next.cutdownOf
-  const strip = (s: TvcPlan['shots'][number]) => JSON.stringify({ ...s, stillFileId: undefined, clipFileId: undefined, motion: undefined, price: undefined, ...(isCutdown ? { text: undefined } : {}) })
-  out.shots.forEach((s) => {
-    const before = previous.shots.find((p) => p.n === s.n)
-    if (before && strip(before) === strip(s) && !s.stillFileId && !s.clipFileId) {
-      if (before.stillFileId) s.stillFileId = before.stillFileId
-      if (before.clipFileId) s.clipFileId = before.clipFileId
-    }
+  const pictureKey = (s: TvcPlan['shots'][number]) => JSON.stringify({
+    ...s, n: undefined, durationSeconds: undefined, text: undefined, motion: undefined, price: undefined,
+    continuesFrom: undefined, stillFileId: undefined, clipFileId: undefined,
   })
-  return out
+  const used = new Set<number>()
+  out.shots.forEach((s) => {
+    if (s.stillFileId || s.clipFileId) return
+    const key = pictureKey(s)
+    const i = previous.shots.findIndex((p, j) => !used.has(j) && pictureKey(p) === key)
+    if (i < 0) return
+    used.add(i)
+    const before = previous.shots[i]
+    if (before.stillFileId) s.stillFileId = before.stillFileId
+    if (before.clipFileId && before.n === s.n && before.durationSeconds === s.durationSeconds && before.continuesFrom === s.continuesFrom) s.clipFileId = before.clipFileId
+  })
+  return { plan: out, dropped }
 }
 
 // Director can record several shots at once (parallel tool calls), and each
@@ -387,15 +397,18 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     delete plan.jingleFileId; delete plan.signoffFileId; delete plan.signoffSeconds
     let storageKey = deps.newKey()
     let toSave = plan
+    let dropped: string[] = []
     if (previous) {
       storageKey = previous.storageKey
-      toSave = carryOver(previous.plan, plan)
+      const carried = carryOver(previous.plan, plan)
+      toSave = carried.plan
+      dropped = carried.dropped
     }
     if (master) toSave = inheritFromMaster(toSave, master)
     const planFileId = await deps.save({ version: 1, storageKey, plan: toSave })
     if (!planFileId) return { refused: true, refusalReason: 'STORAGE_FAILED' }
     const cost = await deps.price(toSave)
-    return { planFileId, errors: [], warnings, costCredits: cost.fullCostCredits, shortfallCredits: cost.shortfallCredits }
+    return { planFileId, errors: [], warnings: [...warnings, ...dropped], costCredits: cost.fullCostCredits, shortfallCredits: cost.shortfallCredits }
   }
   if (!input.planFileId) return { refused: true, refusalReason: 'PLAN_FILE_ID_REQUIRED' }
   const doc = await deps.load(input.planFileId)
