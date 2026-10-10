@@ -7,6 +7,7 @@ import { EXTRACTED_FRAME_KEY_MARKER } from './extractFrame.js'
 import { detectCutTimes } from './detectCuts.js'
 import { computeCreditPlan, priceFromRates, readBalanceForTenant } from './checkCreditPlan.js'
 import { recordOnPlan, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, jingleErrors, legalTimings, type TvcPlan } from './tvcPlan.js'
+import { draftCutdown, inheritFromMaster, rebuildCutdown } from './tvcCutdown.js'
 import { stillPassedCheck } from './checkStill.js'
 import { LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_IMAGE, LOGO_NOT_RASTER, LOGO_UNCHECKED, isSvgFile } from './packshotMarks.js'
 
@@ -120,7 +121,7 @@ export interface PlanTvcDeps {
 }
 
 export const planTvcInputSchema = z.object({
-  action: z.enum(['check', 'get', 'record']).describe('check: validate and save the plan; get: read one slice; record: attach finished stills or clips to their shots, or the finish\'s narration, song and jingle to the plan'),
+  action: z.enum(['check', 'get', 'record', 'cutdown']).describe('check: validate and save the plan; get: read one slice; record: attach finished stills or clips to their shots, or the finish\'s narration, song and jingle to the plan; cutdown: a draft shorter version of a finished ad (planFileId = the original, lengthSeconds), free and not saved'),
   plan: tvcPlanSchema.optional().describe('check only: the full plan'),
   planFileId: z.string().optional().describe('The TVC plan id. Required for get and record; pass it on a re-check so the plan keeps its id'),
   slice: z.string().optional().describe('get only: "brief", "finish" or "shots a-b", e.g. "shots 4-6"'),
@@ -139,6 +140,8 @@ export const planTvcInputSchema = z.object({
   signoffFileId: z.string().optional().describe('record only: generate_jingle\'s signoffFileId'),
   signoffSeconds: z.number().positive().optional().describe('record only: generate_jingle\'s signoffSeconds'),
   keptByUser: z.boolean().optional().describe('record only, single-shot form: the user chose to keep this still although its check failed'),
+  lengthSeconds: z.number().refine((n) => n === 6 || n === 15 || n === 20, { message: 'lengthSeconds must be 6, 15 or 20' }).optional().describe('cutdown only: the shorter length, 6, 15 or 20 seconds, shorter than the original'),
+  keepShots: z.array(z.number().int().min(1)).optional().describe('cutdown only: the original shot numbers to keep instead of the ones plan_tvc picks; the packshot is always kept'),
 })
 export type PlanTvcInput = z.infer<typeof planTvcInputSchema>
 
@@ -220,7 +223,21 @@ export async function runPlanTvc(input: PlanTvcInput, deps: PlanTvcDeps): Promis
 async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promise<PlanTvcOutput> {
   if (input.action === 'check') {
     if (!input.plan) return { refused: true, refusalReason: 'PLAN_REQUIRED' }
-    const planInput = structuredClone(input.plan)
+    let planInput = structuredClone(input.plan)
+    // C4: a cutdown is rebuilt from its original before anything else, so the
+    // picture, the clips and the brief always come from the original's plan.
+    let master: TvcPlan | undefined
+    if (planInput.cutdownOf) {
+      try {
+        master = (await deps.load(planInput.cutdownOf.planFileId)).plan
+      } catch (err) {
+        console.error('[planTvc] cutdown original load failed:', (err as Error).message)
+        return { refused: true, refusalReason: 'CUTDOWN_ORIGINAL_UNAVAILABLE: could not read the original ad\'s plan; try again' }
+      }
+      const rebuilt = rebuildCutdown(planInput, master)
+      if ('errors' in rebuilt) return { errors: rebuilt.errors, warnings: [] }
+      planInput = rebuilt.plan
+    }
     const ref = planInput.brief.reference
     // F4: Olmo's own delegation prompt carries "Reference video: <id>" when
     // this ad recreates a reference (hooks.ts's onDelegationStart parses it
@@ -229,7 +246,7 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     // any previously-saved plan exists for REFERENCE_CHANGED (below) to
     // catch. When the delegation itself said there is a reference, the plan
     // must agree, from the very first check.
-    if (deps.expectedReferenceVideoFileId && ref?.videoFileId !== deps.expectedReferenceVideoFileId) {
+    if (!planInput.cutdownOf && deps.expectedReferenceVideoFileId && ref?.videoFileId !== deps.expectedReferenceVideoFileId) {
       return { refused: true, refusalReason: `REFERENCE_VIDEO_MISSING: this ad recreates a reference; set brief.reference.videoFileId to ${deps.expectedReferenceVideoFileId}` }
     }
     // Task 1: the product photo must be an image, and never the reference
@@ -282,6 +299,19 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     let previous: SavedPlan | undefined
     if (input.planFileId) {
       previous = await deps.load(input.planFileId)
+      const previousCut = previous.plan.cutdownOf?.planFileId
+      if (previousCut !== planInput.cutdownOf?.planFileId) {
+        return {
+          refused: true,
+          refusalReason: previousCut
+            ? `CUTDOWN_CHANGED: this plan is a cutdown of ${previousCut}; keep cutdownOf exactly as given`
+            : 'CUTDOWN_CHANGED: this plan is an original ad, not a cutdown; make a cutdown with plan_tvc cutdown and check it without planFileId',
+        }
+      }
+      // M3 (review): one shorter version's file never becomes another length.
+      if (previousCut && previous.plan.brief.lengthSeconds !== planInput.brief.lengthSeconds) {
+        return { refused: true, refusalReason: `CUTDOWN_CHANGED: this plan is the ${previous.plan.brief.lengthSeconds}s shorter version; a ${planInput.brief.lengthSeconds}s one is a new plan: make it with plan_tvc cutdown and check it without planFileId` }
+      }
       const previousVideoId = previous.plan.brief.reference?.videoFileId
       if (previousVideoId && previousVideoId !== ref?.videoFileId) {
         return { refused: true, refusalReason: `REFERENCE_CHANGED: keep brief.reference.videoFileId ${previousVideoId}; the reference ad can't be dropped or swapped once planned` }
@@ -326,6 +356,7 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
       storageKey = previous.storageKey
       toSave = carryOver(previous.plan, plan)
     }
+    if (master) toSave = inheritFromMaster(toSave, master)
     const planFileId = await deps.save({ version: 1, storageKey, plan: toSave })
     if (!planFileId) return { refused: true, refusalReason: 'STORAGE_FAILED' }
     const cost = await deps.price(toSave)
@@ -333,6 +364,36 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
   }
   if (!input.planFileId) return { refused: true, refusalReason: 'PLAN_FILE_ID_REQUIRED' }
   const doc = await deps.load(input.planFileId)
+  if (input.action === 'cutdown') {
+    if (input.lengthSeconds === undefined) return { refused: true, refusalReason: 'CUTDOWN_LENGTH_REQUIRED: pass lengthSeconds (6, 15 or 20)' }
+    // I2 (review): a shorter version at its own length is being edited — return
+    // its saved plan as the draft, to re-check with its own planFileId.
+    if (doc.plan.cutdownOf && input.lengthSeconds === doc.plan.brief.lengthSeconds) {
+      return { slice: JSON.stringify({ draft: doc.plan, editing: input.planFileId }) }
+    }
+    // I4 (review): a new length asked of a shorter version is cut from its original.
+    let originalId = input.planFileId
+    let original = doc.plan
+    if (doc.plan.cutdownOf) {
+      originalId = doc.plan.cutdownOf.planFileId
+      try {
+        original = (await deps.load(originalId)).plan
+      } catch (err) {
+        console.error('[planTvc] cutdown original load failed:', (err as Error).message)
+        return { refused: true, refusalReason: 'CUTDOWN_ORIGINAL_UNAVAILABLE: could not read the original ad\'s plan; try again' }
+      }
+    }
+    const out = draftCutdown(original, originalId, input.lengthSeconds, input.keepShots)
+    if ('error' in out) return { refused: true, refusalReason: out.error }
+    // M4 (review): no planFileId — nothing was saved, and the original's id
+    // must never be mistaken for the new plan's.
+    return { slice: JSON.stringify(out) }
+  }
+  // I2 (review): a shorter version has no stills and makes no new video; a
+  // moment is changed on the original, then the shorter version is made again.
+  const REDO_ON_ORIGINAL = 'CUTDOWN_REDO_ON_ORIGINAL: this is a shorter version cut from the original ad; change the moment on the original ad, then make the shorter version again'
+  if (doc.plan.cutdownOf && input.action === 'get' && /^shots /.test((input.slice ?? '').trim())) return { refused: true, refusalReason: REDO_ON_ORIGINAL }
+  if (doc.plan.cutdownOf && input.action === 'record' && (input.stillFileId || (input.records ?? []).some((r) => r.stillFileId))) return { refused: true, refusalReason: REDO_ON_ORIGINAL }
   if (input.action === 'get') {
     // E7: the finish slice must never ship with a disclaimer silently
     // dropped because its timing couldn't be placed — refuse instead.
@@ -382,7 +443,7 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
 
 export const planTvc = createTool({
   id: 'plan-tvc',
-  description: 'Free. The TVC ad plan: "check" validates the plan against the TVC craft rules and saves it (returns the plan id and cost, or plain errors to fix); "get" returns only the slice one step needs; "record" attaches finished stills or clips to their shots (all of a step\'s files in one call, with records) and the finish narration and song to the plan. The finish can also record the sung sign-off (jingleFileId, signoffFileId, signoffSeconds); record refuses one that overlaps speech or is too long. Use only in the TVC ad flow. check also works out every disclaimer\'s start (from the voiceover block that makes the claim) and its ASCI hold, and refuses LEGAL_TOO_LONG, LEGAL_HOLD_TOO_LONG, LEGAL_OVERLAP or LEGAL_CLAIM_MISSING; the finish slice lists the legal lines with their times and the finish order. check also validates prices (PRICE_INVALID, PRICE_MRP_NOT_HIGHER, PRICE_TOO_SHORT) and the logo (LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_RASTER, LOGO_NOT_IMAGE, LOGO_UNCHECKED, LOGO_FROM_REFERENCE), and sets pop on shot text and fade on the tagline when no motion is given; the finish slice carries each shot\'s motion and price, and an endCard (logoFileId, vegMark, disclaimerLines) for composite_end_card. A 30s plan may have up to 20 shots; when it has more than 12, the finish slice also has joinGroups (two lists of shot numbers) and finalJoin true, and finishOrder lists the three joins (assemble_clips group 1, group 2, final).',
+  description: 'Free. The TVC ad plan: "check" validates the plan against the TVC craft rules and saves it (returns the plan id and cost, or plain errors to fix); "get" returns only the slice one step needs; "record" attaches finished stills or clips to their shots (all of a step\'s files in one call, with records) and the finish narration and song to the plan. The finish can also record the sung sign-off (jingleFileId, signoffFileId, signoffSeconds); record refuses one that overlaps speech or is too long. Use only in the TVC ad flow. check also works out every disclaimer\'s start (from the voiceover block that makes the claim) and its ASCI hold, and refuses LEGAL_TOO_LONG, LEGAL_HOLD_TOO_LONG, LEGAL_OVERLAP or LEGAL_CLAIM_MISSING; the finish slice lists the legal lines with their times and the finish order. check also validates prices (PRICE_INVALID, PRICE_MRP_NOT_HIGHER, PRICE_TOO_SHORT) and the logo (LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_RASTER, LOGO_NOT_IMAGE, LOGO_UNCHECKED, LOGO_FROM_REFERENCE), and sets pop on shot text and fade on the tagline when no motion is given; the finish slice carries each shot\'s motion and price, and an endCard (logoFileId, vegMark, disclaimerLines) for composite_end_card. A 30s plan may have up to 20 shots; when it has more than 12, the finish slice also has joinGroups (two lists of shot numbers) and finalJoin true, and finishOrder lists the three joins (assemble_clips group 1, group 2, final). cutdown (free, saves nothing) returns a draft shorter version of a finished ad from its own clips: the shots plan_tvc picked (each with its source), their new lengths, and the original\'s voiceover; write the shorter voiceover and legal lines into the draft and check it without planFileId. Given a shorter version\'s own id at its own length, cutdown returns its saved plan to edit (re-check with that id). A cutdown\'s finish slice lists retrims (trim_clip from the original clip, then record) and musicFadeOutAtSeconds. A shorter version refuses a shots slice or a still (CUTDOWN_REDO_ON_ORIGINAL): moments are changed on the original.',
   inputSchema: planTvcInputSchema,
   outputSchema: z.object({
     planFileId: z.string().optional(),
