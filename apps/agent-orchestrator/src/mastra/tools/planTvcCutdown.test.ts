@@ -146,6 +146,46 @@ describe('plan_tvc check of a cutdown', () => {
     // A valid cutdown draft checked onto the ORIGINAL's file id: the saved plan there is an original.
     expect((await runPlanTvc({ action: 'check', plan, planFileId: id }, deps)).refusalReason).toMatch(/^CUTDOWN_CHANGED: this plan is an original ad/)
   })
+  // Review fix (Important #1): a plan whose shots carry `source` but which has
+  // lost `cutdownOf` must be refused before anything is saved or priced.
+  it('refuses CUTDOWN_OF_MISSING on a FIRST check when cutdownOf is dropped but the shots still carry source', async () => {
+    const { deps, store } = fakeDeps()
+    const id = await seedOriginal(deps)
+    const draft = ready(await draftOf(deps, id))
+    expect(draft.shots.some((s) => s.source)).toBe(true)
+    const dropped = structuredClone(draft); delete dropped.cutdownOf
+    const out = await runPlanTvc({ action: 'check', plan: dropped }, deps)
+    expect(out).toEqual({ refused: true, refusalReason: 'CUTDOWN_OF_MISSING: keep cutdownOf exactly as plan_tvc cutdown gave it, and check again' })
+    // Only the seeded original is in the store; nothing new was saved or priced.
+    expect(store.size).toBe(1)
+  })
+  // Review fix (Minor 3): a re-check of an ORIGINAL plan (saved plan has no
+  // cutdownOf) that newly carries a cutdownOf must get CUTDOWN_CHANGED, not a
+  // misleading CUTDOWN_LENGTH from rebuilding the incoming plan against itself.
+  it('a re-check of an original that newly carries a cutdownOf pointing at itself gets CUTDOWN_CHANGED, not CUTDOWN_LENGTH', async () => {
+    const { deps, store } = fakeDeps()
+    const id = await seedOriginal(deps)
+    const saved = (await deps.load(id)).plan
+    const tampered = { ...saved, cutdownOf: { planFileId: id } }
+    const out = await runPlanTvc({ action: 'check', plan: tampered, planFileId: id }, deps)
+    expect(out.refusalReason).toMatch(/^CUTDOWN_CHANGED: this plan is an original ad/)
+    expect(store.get(id)!.plan).toEqual(original15())
+  })
+  // Review fix (Minor 1): editing a shot's on-screen text on a saved cutdown
+  // must not drop its re-trimmed/recorded clip.
+  it('a re-check with only a shot\'s text changed keeps its re-trimmed clip', async () => {
+    const { deps, store } = fakeDeps()
+    const id = await seedOriginal(deps)
+    const plan = ready(await draftOf(deps, id))
+    const first = await runPlanTvc({ action: 'check', plan }, deps)
+    await runPlanTvc({ action: 'record', planFileId: first.planFileId, records: [{ shot: 1, clipFileId: 't1' }] }, deps)
+    const edited = structuredClone(plan)
+    edited.shots[0].text = 'Ice cold now'
+    const again = await runPlanTvc({ action: 'check', plan: edited, planFileId: first.planFileId }, deps)
+    expect(again.planFileId).toBe(first.planFileId)
+    expect(store.get(first.planFileId!)!.plan.shots[0].clipFileId).toBe('t1')
+    expect(store.get(first.planFileId!)!.plan.shots[0].text).toBe('Ice cold now')
+  })
   it('is not refused for a reference named in the delegation (a cutdown has no reference)', async () => {
     const { deps } = fakeDeps({ expectedReferenceVideoFileId: 'ref-video' })
     const id = await seedOriginal(deps)

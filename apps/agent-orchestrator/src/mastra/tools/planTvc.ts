@@ -186,7 +186,14 @@ function carryOver(previous: TvcPlan, next: TvcPlan): TvcPlan {
   // motion and price only change overlay_text, never the picture: a re-check
   // that adds them (or writes the default pop into an old plan) keeps the
   // recorded still and clip.
-  const strip = (s: TvcPlan['shots'][number]) => JSON.stringify({ ...s, stillFileId: undefined, clipFileId: undefined, motion: undefined, price: undefined })
+  // Review fix (Minor 1): on a cutdown, Director's cutdown text explicitly
+  // allows editing a shot's on-screen text ("edit only its voiceover, legal
+  // lines, texts and tagline") — text, like motion, only feeds overlay_text,
+  // never the picture, so a text edit alone must not drop the re-trimmed
+  // clip. Scoped to cutdowns only (next.cutdownOf) so an original's
+  // carry-over behaviour on a text change stays exactly as it was.
+  const isCutdown = !!next.cutdownOf
+  const strip = (s: TvcPlan['shots'][number]) => JSON.stringify({ ...s, stillFileId: undefined, clipFileId: undefined, motion: undefined, price: undefined, ...(isCutdown ? { text: undefined } : {}) })
   out.shots.forEach((s) => {
     const before = previous.shots.find((p) => p.n === s.n)
     if (before && strip(before) === strip(s) && !s.stillFileId && !s.clipFileId) {
@@ -224,6 +231,50 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
   if (input.action === 'check') {
     if (!input.plan) return { refused: true, refusalReason: 'PLAN_REQUIRED' }
     let planInput = structuredClone(input.plan)
+    // Review fix (Important #1): a plan whose shots carry `source` (only
+    // plan_tvc cutdown's draft ever sets it) but which has lost `cutdownOf`
+    // must be refused here, before anything is saved or priced. Without
+    // this, a dropped cutdownOf on the first check saves as an ordinary
+    // original: priced as full generation, with the paid generation steps
+    // open, while the shots it carries have no clip and no retrim path.
+    // No legacy (non-cutdown) plan has `source`, so this never fires for one.
+    // Placed AFTER the CUTDOWN_CHANGED comparison below (not before it): a
+    // re-check whose saved plan was already a cutdown must still get the
+    // more specific CUTDOWN_CHANGED ("this plan is a cutdown of <X>"); this
+    // guard only needs to catch the case CUTDOWN_CHANGED can't see — a FIRST
+    // check (no previous to compare against) or a re-check whose previous
+    // was itself already missing cutdownOf.
+    //
+    // Review fix (Minor 3): load the previously saved plan and compare
+    // cutdownOf now, before any rebuild — so a re-check of an ORIGINAL plan
+    // (saved plan has no cutdownOf) that newly carries a cutdownOf gets the
+    // right CUTDOWN_CHANGED refusal instead of a misleading CUTDOWN_LENGTH
+    // from rebuilding the incoming plan against itself. The rest of
+    // `previous`'s checks (reference/length lock) stay below, unchanged,
+    // since they depend on `ref`, which is only known after the rebuild.
+    let previous: SavedPlan | undefined
+    if (input.planFileId) {
+      previous = await deps.load(input.planFileId)
+      const previousCut = previous.plan.cutdownOf?.planFileId
+      if (previousCut !== planInput.cutdownOf?.planFileId) {
+        return {
+          refused: true,
+          refusalReason: previousCut
+            ? `CUTDOWN_CHANGED: this plan is a cutdown of ${previousCut}; keep cutdownOf exactly as given`
+            : 'CUTDOWN_CHANGED: this plan is an original ad, not a cutdown; make a cutdown with plan_tvc cutdown and check it without planFileId',
+        }
+      }
+      // M3 (review): one shorter version's file never becomes another length.
+      if (previousCut && previous.plan.brief.lengthSeconds !== planInput.brief.lengthSeconds) {
+        return { refused: true, refusalReason: `CUTDOWN_CHANGED: this plan is the ${previous.plan.brief.lengthSeconds}s shorter version; a ${planInput.brief.lengthSeconds}s one is a new plan: make it with plan_tvc cutdown and check it without planFileId` }
+      }
+    }
+    // Review fix (Important #1): see the comment above `previous`. Reached
+    // only when CUTDOWN_CHANGED did not already fire — i.e. no previous
+    // plan exists (first check) or the previous plan also had no cutdownOf.
+    if (!planInput.cutdownOf && planInput.shots.some((s) => s.source)) {
+      return { refused: true, refusalReason: 'CUTDOWN_OF_MISSING: keep cutdownOf exactly as plan_tvc cutdown gave it, and check again' }
+    }
     // C4: a cutdown is rebuilt from its original before anything else, so the
     // picture, the clips and the brief always come from the original's plan.
     let master: TvcPlan | undefined
@@ -292,26 +343,10 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
         return { refused: true, refusalReason: 'LOGO_FROM_REFERENCE: that image was taken from the reference ad, not the brand\'s logo; ask the user to upload the logo' }
       }
     }
-    // A re-check loads the previously saved plan up front (not only later,
-    // for storageKey/carryOver) so the reference-video identity check below
-    // runs before any detection: once a plan is tied to a reference ad, that
-    // tie can't be dropped or swapped by a later check.
-    let previous: SavedPlan | undefined
-    if (input.planFileId) {
-      previous = await deps.load(input.planFileId)
-      const previousCut = previous.plan.cutdownOf?.planFileId
-      if (previousCut !== planInput.cutdownOf?.planFileId) {
-        return {
-          refused: true,
-          refusalReason: previousCut
-            ? `CUTDOWN_CHANGED: this plan is a cutdown of ${previousCut}; keep cutdownOf exactly as given`
-            : 'CUTDOWN_CHANGED: this plan is an original ad, not a cutdown; make a cutdown with plan_tvc cutdown and check it without planFileId',
-        }
-      }
-      // M3 (review): one shorter version's file never becomes another length.
-      if (previousCut && previous.plan.brief.lengthSeconds !== planInput.brief.lengthSeconds) {
-        return { refused: true, refusalReason: `CUTDOWN_CHANGED: this plan is the ${previous.plan.brief.lengthSeconds}s shorter version; a ${planInput.brief.lengthSeconds}s one is a new plan: make it with plan_tvc cutdown and check it without planFileId` }
-      }
+    // `previous` (loaded above, before the rebuild) still carries the
+    // reference-video identity check below: once a plan is tied to a
+    // reference ad, that tie can't be dropped or swapped by a later check.
+    if (previous) {
       const previousVideoId = previous.plan.brief.reference?.videoFileId
       if (previousVideoId && previousVideoId !== ref?.videoFileId) {
         return { refused: true, refusalReason: `REFERENCE_CHANGED: keep brief.reference.videoFileId ${previousVideoId}; the reference ad can't be dropped or swapped once planned` }
