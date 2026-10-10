@@ -4,7 +4,7 @@ import type {
 import { getSpecByAgentId } from './sources.js'
 import { checkDelegationBudget } from './budget.js'
 import { recordDelegation } from './link.js'
-import { AD_FLOW_KEY, briefIsReviewedAdFlow } from '../tools/reviewGate.js'
+import { AD_FLOW_KEY, TVC_STEP_KEY, briefIsReviewedAdFlow, noteTvcAd } from '../tools/reviewGate.js'
 import { missingReferenceReason } from './referenceCheck.js'
 
 export interface HookDeps {
@@ -45,11 +45,15 @@ export interface DelegationHost {
  * off the request context. Also called when a card is answered after its page
  * went away: that turn has a new request context (routes/chatStream.ts).
  */
-export function applyDelegationPromptFlags(ctx: { set: (key: never, value: never) => void }, prompt: unknown): void {
+export function applyDelegationPromptFlags(ctx: { set: (key: never, value: never) => void; get?: (key: never) => unknown }, prompt: unknown): void {
   if (typeof prompt !== 'string') return
   // The delegate's own tools read this before showing an approval card
   // (reviewGate.ts): a batch waits until the user has seen the first one.
   if (briefIsReviewedAdFlow(prompt)) ctx.set(AD_FLOW_KEY as never, true as never)
+  // R1 (animatic): the step this delegation runs, set on every delegation so a
+  // later "step: finish" in the same turn never inherits it.
+  ctx.set(TVC_STEP_KEY as never, (/step:\s*animatic\b/i.test(prompt) ? 'animatic' : undefined) as never)
+  if (/flow:\s*tvc ad/i.test(prompt)) noteTvcAd(ctx.get?.('conversationId' as never) as string | undefined)
   // F4: plan_tvc's check can't trust Director to keep brief.reference —
   // a live run dropped it on the very first check. Olmo's own delegation
   // prompt is the one place that fact can't be edited away: when it

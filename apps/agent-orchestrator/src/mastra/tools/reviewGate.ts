@@ -55,6 +55,22 @@ export function clipCheckFailure(fileId: string): string | undefined {
 /** Set on the turn's request context when Olmo hands an ad flow to the Director. */
 export const AD_FLOW_KEY = 'reviewedAdFlow'
 
+/** Set on the request context while Olmo's delegation is "step: animatic" (hooks.ts). */
+export const TVC_STEP_KEY = 'tvcStep'
+
+// Conversations that are making a TVC ad, so review_shots can point the stills
+// review at the rough cut (spec 2026-10-10 animatic R8).
+const tvcAds = new Map<string, number>()
+export function noteTvcAd(conversationId: string | undefined): void {
+  if (!conversationId) return
+  tvcAds.set(conversationId, Date.now())
+  if (tvcAds.size > 5000) tvcAds.delete(tvcAds.keys().next().value as string)
+}
+export function isTvcAd(conversationId: string | undefined): boolean {
+  const at = conversationId ? tvcAds.get(conversationId) : undefined
+  return at !== undefined && Date.now() - at < REVIEW_TTL_MS * 4
+}
+
 export function briefIsReviewedAdFlow(prompt: unknown): boolean {
   if (typeof prompt !== 'string') return false
   const text = prompt.toLowerCase()
@@ -82,6 +98,8 @@ export function noteNarrationMade(conversationId: string | undefined): void {
 
 /** True when this narration must wait: an ad flow in Ask mode, a line already made, and the voice not heard yet. */
 export function firstVoiceUnreviewed(ctx: ContextLike): boolean {
+  // R1: the animatic is the user's first listen, so every block is made in one go there.
+  if (read(ctx, TVC_STEP_KEY) === 'animatic') return false
   if (read(ctx, 'allowMode') === 'auto') return false
   if (read(ctx, AD_FLOW_KEY) !== true) return false
   const conversationId = read(ctx, 'conversationId') as string | undefined

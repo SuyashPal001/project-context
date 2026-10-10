@@ -1,7 +1,7 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { askClarifyingQuestionsTool } from './askClarifyingQuestions.js'
-import { briefRefsFor, clipCheckFailure, markShotReviewed, notMadeHere, type ShotKind } from './reviewGate.js'
+import { briefRefsFor, clipCheckFailure, isTvcAd, markShotReviewed, notMadeHere, type ShotKind } from './reviewGate.js'
 import { checkClip } from './checkClip.js'
 import { MAX_SHOTS_30 } from './tvcPlan.js'
 
@@ -67,7 +67,7 @@ async function stillFaults(shots: Array<{ fileId: string }>, productFileId: stri
 type Answer = { selectedLabel?: string; selectedLabels?: string[]; freeText?: string; skipped?: boolean }
 
 /** The user's answer to the review question, as a decision. Exported for tests. */
-export function reviewOutcome(kind: ShotKind, shots: Array<{ fileId: string; label: string }>, answer: Answer | undefined): ReviewOutcome {
+export function reviewOutcome(kind: ShotKind, shots: Array<{ fileId: string; label: string }>, answer: Answer | undefined, opts: { tvcAsk?: boolean } = {}): ReviewOutcome {
   const note = answer?.freeText?.trim() || undefined
   const picked = answer?.selectedLabels ?? (answer?.selectedLabel ? [answer.selectedLabel] : [])
   if (!answer || (answer.skipped && !note)) {
@@ -89,7 +89,8 @@ export function reviewOutcome(kind: ShotKind, shots: Array<{ fileId: string; lab
   if (fix.length === 0) {
     return {
       decision: 'continue', fix: [],
-      nextStep: kind === 'still' ? 'Continue: make the remaining stills, or if every still exists, the clips.'
+      nextStep: kind === 'still'
+        ? (opts.tvcAsk ? 'Continue: make the remaining stills, or if every still exists, the rough cut: delegate "step: animatic" to agent-director.' : 'Continue: make the remaining stills, or if every still exists, the clips.')
         : kind === 'voice' ? 'Continue: delegate to agent-director to make the rest of the narration as ONE generate_narration call — every remaining line in one script, same voiceId and direction — then lay the first line and that one take with mix_voiceover and finish the ad.'
         : 'Continue: make the remaining clips, or if every clip exists, finish the ad.',
     }
@@ -166,7 +167,7 @@ export const reviewShotsTool = createTool({
     const asked = await (askClarifyingQuestionsTool as unknown as { execute: (input: unknown, ctx: unknown) => Promise<{ answers?: Answer[]; error?: string }> })
       .execute({ questions: [q] }, execContext)
     if (asked.error) return { decision: 'skipped', fix: [], nextStep: `Could not ask (${asked.error}). Ask the user in one plain sentence whether the ${noun}s look right.` }
-    const outcome = reviewOutcome(kind, shots, asked.answers?.[0])
+    const outcome = reviewOutcome(kind, shots, asked.answers?.[0], { tvcAsk: isTvcAd(conversationId) && execContext?.requestContext?.get('allowMode') !== 'auto' })
     if (outcome.decision === 'continue') {
       markShotReviewed(conversationId, kind)
     }
