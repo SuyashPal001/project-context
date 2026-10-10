@@ -200,6 +200,30 @@ describe('OFFICIAL_SKILLS', () => {
     expect(card).not.toMatch(/forVoiceoverBlock|overlay_text|plan_tvc|composite_end_card|assemble_clips|trim_clip/);
   });
 
+  it('tvc-ad shows a rough cut before the clips (Part 2.5, append only)', () => {
+    const tvc = OFFICIAL_SKILLS.find((s) => s.slug === 'tvc-ad')!;
+    const card = readFileSync(tvc.file, 'utf8');
+    const director = readFileSync(tvc.director!.file, 'utf8');
+    expect(director).toMatch(/Rough cut \(step: animatic; supersedes the matching finish lines above for this step\):/);
+    expect(director).toMatch(/plan_tvc get "animatic", then make only what its animaticOrder lists/);
+    expect(director).toMatch(/narrate every voiceover block in one go: the rough cut is the user's first listen/);
+    expect(director).toMatch(/record all of it in one plan_tvc record call, then call render_animatic with the planFileId and reply with its fileId only/);
+    expect(director).toMatch(/step: animatic change: <what>: make the change in the plan, plan_tvc check with the same planFileId/);
+    expect(director).toMatch(/pass on any NARRATION_REMAKE, MUSIC_REMAKE or JINGLE_REMAKE warning to Olmo/);
+    expect(director).toMatch(/On an ANIMATIC_ refusal, make what it says is missing, or return the reason to Olmo in plain words/);
+    expect(card).toMatch(/23\. Rough cut \(Ask mode; supersedes item 16 and the step list in the line beginning "Every agent-director call" for this case\):/);
+    expect(card).toMatch(/delegate "step: animatic" with the TVC plan id/);
+    expect(card).toMatch(/rough cut: still images with the real voiceover and music; the final has real motion and on-camera speech/);
+    expect(card).toMatch(/Looks right, or what to change\?/);
+    expect(card).toMatch(/"step: animatic change: <the change>"/);
+    expect(card).toMatch(/never show the cost again or ask to approve it/);
+    expect(card).toMatch(/In Auto mode skip the rough cut/);
+    // The shipped lines are still there, word for word (append only).
+    expect(card).toMatch(/22\. Changing a shorter version \(supersedes item 7 for a shorter version\):/);
+    expect(director).toMatch(/On a CUTDOWN_ refusal, return the reason to Olmo in plain words/);
+    expect(card).not.toMatch(/forVoiceoverBlock|overlay_text|plan_tvc|composite_end_card|assemble_clips|trim_clip|render_animatic/);
+  });
+
   it('each entry file exists and is non-empty', () => {
     for (const entry of OFFICIAL_SKILLS) {
       expect(existsSync(entry.file)).toBe(true);

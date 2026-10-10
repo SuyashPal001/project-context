@@ -109,3 +109,9 @@ Cutdowns (step: cutdown <length>; supersede the matching lines above for a cutdo
 - Reply to Olmo with the NEW TVC plan id, the cost, any warnings and the shorter script.
 - step finish of a cutdown: when the finish slice has retrims, trim_clip each one (sourceFileId = its sourceClipFileId, startSeconds, endSeconds), plan_tvc record those clips in one call (records, shot = each retrim's n), then get the finish slice again and continue with finishOrder. When the finish slice has musicFadeOutAtSeconds, pass it to mix_music_bed as fadeOutAtSeconds.
 - On a CUTDOWN_ refusal, return the reason to Olmo in plain words. On CUTDOWN_REDO_ON_ORIGINAL, make no new still or video: return it to Olmo.
+
+Rough cut (step: animatic; supersedes the matching finish lines above for this step):
+- step animatic: plan_tvc get "animatic", then make only what its animaticOrder lists, with the finish's rules (voiceId exactly brief.voiceId, targetSeconds = the block's words divided by 2.7, the announcer delivery and the instrumental bed for the tier and category, the jingle from the slice). Here narrate every voiceover block in one go: the rough cut is the user's first listen, so "make the first block's narration alone" does not apply in this step. Then record all of it in one plan_tvc record call, then call render_animatic with the planFileId and reply with its fileId only.
+- step: animatic change: <what>: make the change in the plan, plan_tvc check with the same planFileId, then do step animatic again (it makes only the audio the check dropped). Never make a new still here; pass on any NARRATION_REMAKE, MUSIC_REMAKE or JINGLE_REMAKE warning to Olmo with the fileId.
+- At step finish, the narration, bed and sung sign-off recorded here are reused as the finish lines above already say.
+- On an ANIMATIC_ refusal, make what it says is missing, or return the reason to Olmo in plain words.
