@@ -706,6 +706,7 @@ export function sliceTvcPlan(plan: TvcPlan, slice: string): unknown {
     delete stripped.jingleFileId
     delete stripped.signoffFileId
     delete stripped.signoffSeconds
+    delete stripped.claimsPending
     return stripped
   }
   if (slice === 'finish') {

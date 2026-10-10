@@ -8,6 +8,7 @@ import { detectCutTimes } from './detectCuts.js'
 import { computeCreditPlan, priceFromRates, readBalanceForTenant } from './checkCreditPlan.js'
 import { recordOnPlan, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, jingleErrors, legalTimings, type TvcPlan } from './tvcPlan.js'
 import { draftCutdown, inheritFromMaster, rebuildCutdown } from './tvcCutdown.js'
+import { findClaims, mergeClaims, reviewClaims, type Finding } from './claims.js'
 import { animaticSlice } from './animatic.js'
 import { stillPassedCheck } from './checkStill.js'
 import { LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_IMAGE, LOGO_NOT_RASTER, LOGO_UNCHECKED, isSvgFile } from './packshotMarks.js'
@@ -119,6 +120,13 @@ export interface PlanTvcDeps {
   // undefined when Olmo's delegation prompt carried no "Reference video:" —
   // the ordinary, reference-free ad flow.
   expectedReferenceVideoFileId?: string
+  // D9 (Part 2.6): the keys of the user's answers from Olmo's "Claims:"
+  // lines (hooks.ts). Undefined = a caller outside the tool, with no gate.
+  claimAnswers?: string[]
+  autoMode?: boolean
+  // Task 4: the claims summary's upload and clock.
+  upload?: (title: string, content: string) => Promise<string | null>
+  now?: () => Date
 }
 
 export const planTvcInputSchema = z.object({
@@ -155,6 +163,11 @@ export interface PlanTvcOutput {
   slice?: string
   refused?: boolean
   refusalReason?: string
+  claimsToReview?: Finding[]
+  nextStep?: string
+  fileId?: string
+  needsProof?: number
+  unreviewed?: number
 }
 
 // F4: compared field by field, not with JSON.stringify — a jingle rebuilt
@@ -235,6 +248,9 @@ async function withPlanLock<T>(planFileId: string, fn: () => Promise<T>): Promis
   }
 }
 
+export const CLAIMS_PENDING_REFUSAL = 'CLAIM_UNREVIEWED: the plan\'s claims are not reviewed yet; return claimsToReview to Olmo and wait for the user\'s answers'
+const CLAIMS_NEXT_STEP = 'CLAIM_UNREVIEWED: return claimsToReview to Olmo; do not change the wording yourself'
+
 export async function runPlanTvc(input: PlanTvcInput, deps: PlanTvcDeps): Promise<PlanTvcOutput> {
   if (input.action === 'check' && !input.planFileId) return runPlanTvcUnlocked(input, deps)
   if (!input.planFileId) return { refused: true, refusalReason: 'PLAN_FILE_ID_REQUIRED' }
@@ -303,6 +319,19 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
       if ('errors' in rebuilt) return { errors: rebuilt.errors, warnings: [] }
       planInput = rebuilt.plan
     }
+    // Part 2.6 (C2): the user's answers are merged BEFORE validation, so a
+    // re-check that left them out (a rebuild from slices, an animatic change)
+    // never asks again. Only check sets claimsPending.
+    delete planInput.claimsPending
+    const mergedClaims = mergeClaims({
+      inherited: master?.claims ?? [],
+      previous: previous?.plan.claims ?? [],
+      incoming: planInput.claims ?? [],
+      answers: deps.claimAnswers ? new Set(deps.claimAnswers) : undefined,
+      auto: deps.autoMode === true,
+    })
+    if (mergedClaims.entries.length) planInput.claims = mergedClaims.entries
+    else delete planInput.claims
     const ref = planInput.brief.reference
     // F4: Olmo's own delegation prompt carries "Reference video: <id>" when
     // this ad recreates a reference (hooks.ts's onDelegationStart parses it
@@ -394,6 +423,13 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     }
     const { errors, warnings, plan } = validateTvcPlan(planInput)
     if (errors.length) return { errors, warnings }
+    // D2/I7: claims are reviewed only once the craft is right; a plan whose
+    // only open items are claims is SAVED (C1) so Olmo can ask and come back.
+    const review = reviewClaims(plan, plan.claims ?? [], mergedClaims.fromPrevious)
+    if (review.claims.length) plan.claims = review.claims
+    else delete plan.claims
+    if (review.toReview.length) plan.claimsPending = true
+    else delete plan.claimsPending
     // Only `record` may set the jingle fields — a fresh plan arriving with
     // them (or a re-check carrying them over from input.plan) never passed
     // jingleErrors, so check always starts clean before carryOver decides
@@ -412,7 +448,11 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     const planFileId = await deps.save({ version: 1, storageKey, plan: toSave })
     if (!planFileId) return { refused: true, refusalReason: 'STORAGE_FAILED' }
     const cost = await deps.price(toSave)
-    return { planFileId, errors: [], warnings: [...warnings, ...dropped], costCredits: cost.fullCostCredits, shortfallCredits: cost.shortfallCredits }
+    const claimWarnings = [...mergedClaims.warnings, ...review.warnings]
+    return {
+      planFileId, errors: [], warnings: [...warnings, ...dropped, ...claimWarnings], costCredits: cost.fullCostCredits, shortfallCredits: cost.shortfallCredits,
+      ...(review.toReview.length ? { claimsToReview: review.toReview, nextStep: CLAIMS_NEXT_STEP } : {}),
+    }
   }
   if (!input.planFileId) return { refused: true, refusalReason: 'PLAN_FILE_ID_REQUIRED' }
   const doc = await deps.load(input.planFileId)
@@ -446,6 +486,12 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
   const REDO_ON_ORIGINAL = 'CUTDOWN_REDO_ON_ORIGINAL: this is a shorter version cut from the original ad; change the moment on the original ad, then make the shorter version again'
   if (doc.plan.cutdownOf && input.action === 'get' && /^shots /.test((input.slice ?? '').trim())) return { refused: true, refusalReason: REDO_ON_ORIGINAL }
   if (doc.plan.cutdownOf && input.action === 'record' && (input.stillFileId || (input.records ?? []).some((r) => r.stillFileId))) return { refused: true, refusalReason: REDO_ON_ORIGINAL }
+  // C1: while the claims are unanswered, nothing paid can start.
+  if (doc.plan.claimsPending) {
+    const s = (input.slice ?? '').trim()
+    if (input.action === 'get' && (/^shots /.test(s) || s === 'animatic' || s === 'finish')) return { refused: true, refusalReason: CLAIMS_PENDING_REFUSAL }
+    if (input.action === 'record' && (input.stillFileId || input.clipFileId || (input.records ?? []).length > 0)) return { refused: true, refusalReason: CLAIMS_PENDING_REFUSAL }
+  }
   if (input.action === 'get') {
     if ((input.slice ?? '').trim() === 'animatic') {
       if (doc.plan.cutdownOf) return { refused: true, refusalReason: 'ANIMATIC_CUTDOWN: a shorter version is cut from finished clips and needs no rough cut' }
@@ -508,7 +554,7 @@ export async function loadSavedPlan(planFileId: string, idToken: string): Promis
 
 export const planTvc = createTool({
   id: 'plan-tvc',
-  description: 'Free. The TVC ad plan: "check" validates the plan against the TVC craft rules and saves it (returns the plan id and cost, or plain errors to fix); "get" returns only the slice one step needs; "record" attaches finished stills or clips to their shots (all of a step\'s files in one call, with records) and the finish narration and song to the plan. The finish can also record the sung sign-off (jingleFileId, signoffFileId, signoffSeconds); record refuses one that overlaps speech or is too long. Use only in the TVC ad flow. check also works out every disclaimer\'s start (from the voiceover block that makes the claim) and its ASCI hold, and refuses LEGAL_TOO_LONG, LEGAL_HOLD_TOO_LONG, LEGAL_OVERLAP or LEGAL_CLAIM_MISSING; the finish slice lists the legal lines with their times and the finish order. check also validates prices (PRICE_INVALID, PRICE_MRP_NOT_HIGHER, PRICE_TOO_SHORT) and the logo (LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_RASTER, LOGO_NOT_IMAGE, LOGO_UNCHECKED, LOGO_FROM_REFERENCE), and sets pop on shot text and fade on the tagline when no motion is given; the finish slice carries each shot\'s motion and price, and an endCard (logoFileId, vegMark, disclaimerLines) for composite_end_card. A 30s plan may have up to 20 shots; when it has more than 12, the finish slice also has joinGroups (two lists of shot numbers) and finalJoin true, and finishOrder lists the three joins (assemble_clips group 1, group 2, final). cutdown (free, saves nothing) returns a draft shorter version of a finished ad from its own clips: the shots plan_tvc picked (each with its source), their new lengths, and the original\'s voiceover; write the shorter voiceover and legal lines into the draft and check it without planFileId. Given a shorter version\'s own id at its own length, cutdown returns its saved plan to edit (re-check with that id). A cutdown\'s finish slice lists retrims (trim_clip from the original clip, then record) and musicFadeOutAtSeconds. A shorter version refuses a shots slice or a still (CUTDOWN_REDO_ON_ORIGINAL): moments are changed on the original. get "animatic" (Ask mode, after the stills) lists the audio still to make and the steps ending in render_animatic; a shorter version refuses it (ANIMATIC_CUTDOWN). get "plan" returns the whole saved plan with every recorded file id stripped, for a fresh thread (e.g. "step: animatic change") that needs to edit the plan with no other slice already open; check it back with the same planFileId to keep every still, clip and audio file.',
+  description: 'Free. The TVC ad plan: "check" validates the plan against the TVC craft rules and saves it (returns the plan id and cost, or plain errors to fix); "get" returns only the slice one step needs; "record" attaches finished stills or clips to their shots (all of a step\'s files in one call, with records) and the finish narration and song to the plan. The finish can also record the sung sign-off (jingleFileId, signoffFileId, signoffSeconds); record refuses one that overlaps speech or is too long. Use only in the TVC ad flow. check also works out every disclaimer\'s start (from the voiceover block that makes the claim) and its ASCI hold, and refuses LEGAL_TOO_LONG, LEGAL_HOLD_TOO_LONG, LEGAL_OVERLAP or LEGAL_CLAIM_MISSING; the finish slice lists the legal lines with their times and the finish order. check also validates prices (PRICE_INVALID, PRICE_MRP_NOT_HIGHER, PRICE_TOO_SHORT) and the logo (LOGO_IS_PRODUCT_PHOTO, LOGO_NOT_RASTER, LOGO_NOT_IMAGE, LOGO_UNCHECKED, LOGO_FROM_REFERENCE), and sets pop on shot text and fade on the tagline when no motion is given; the finish slice carries each shot\'s motion and price, and an endCard (logoFileId, vegMark, disclaimerLines) for composite_end_card. A 30s plan may have up to 20 shots; when it has more than 12, the finish slice also has joinGroups (two lists of shot numbers) and finalJoin true, and finishOrder lists the three joins (assemble_clips group 1, group 2, final). cutdown (free, saves nothing) returns a draft shorter version of a finished ad from its own clips: the shots plan_tvc picked (each with its source), their new lengths, and the original\'s voiceover; write the shorter voiceover and legal lines into the draft and check it without planFileId. Given a shorter version\'s own id at its own length, cutdown returns its saved plan to edit (re-check with that id). A cutdown\'s finish slice lists retrims (trim_clip from the original clip, then record) and musicFadeOutAtSeconds. A shorter version refuses a shots slice or a still (CUTDOWN_REDO_ON_ORIGINAL): moments are changed on the original. get "animatic" (Ask mode, after the stills) lists the audio still to make and the steps ending in render_animatic; a shorter version refuses it (ANIMATIC_CUTDOWN). get "plan" returns the whole saved plan with every recorded file id stripped, for a fresh thread (e.g. "step: animatic change") that needs to edit the plan with no other slice already open; check it back with the same planFileId to keep every still, clip and audio file. check also finds risky claims (superlatives, numbers, "proven", endorsements, absolutes, health claims) in the voiceover, lines, text, price note, tagline and jingle: once the craft is right, a plan with unanswered claims is saved with claimsToReview, and the shots, animatic and finish slices and still or clip records refuse CLAIM_UNREVIEWED until plan.claims holds an answer for each (text, status proof/no_proof/not_a_claim, proof); check keeps earlier answers on a re-check.',
   inputSchema: planTvcInputSchema,
   outputSchema: z.object({
     planFileId: z.string().optional(),
@@ -519,6 +565,15 @@ export const planTvc = createTool({
     slice: z.string().optional(),
     refused: z.boolean().optional(),
     refusalReason: z.string().optional(),
+    claimsToReview: z.array(z.object({
+      text: z.string(), key: z.string(), kind: z.string(),
+      where: z.array(z.object({ place: z.string(), ref: z.number().optional(), startSeconds: z.number() })),
+      likelyBanned: z.boolean().optional(), informational: z.boolean().optional(),
+    })).optional(),
+    nextStep: z.string().optional(),
+    fileId: z.string().optional(),
+    needsProof: z.number().optional(),
+    unreviewed: z.number().optional(),
   }),
   execute: async (inputData, execContext) => {
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined

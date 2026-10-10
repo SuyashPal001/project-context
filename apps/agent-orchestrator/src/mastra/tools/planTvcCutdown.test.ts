@@ -253,3 +253,30 @@ describe('editing and re-cutting a shorter version (review I2, I4, M3)', () => {
     expect(out.refusalReason).toBe('CUTDOWN_CHANGED: this plan is the 15s shorter version; a 6s one is a new plan: make it with plan_tvc cutdown and check it without planFileId')
   })
 })
+
+describe('Part 2.6: claims in a cutdown (Review Focus 5, C3, E8)', () => {
+  it('an original\'s answered claims carry into its cutdown check, and one the script drops is pruned with no warning', async () => {
+    const { deps, store } = fakeDeps({ claimAnswers: ["india's no.1 fizz", 'zero sugar'] })
+    const id = await seedOriginal(deps, tvcPlanSchema.parse({
+      ...original15(),
+      voiceover: [
+        { text: 'India’s No.1 fizz', startSeconds: 0.5 },
+        { text: 'Zero sugar', startSeconds: 5 },
+      ],
+      claims: [
+        { text: 'India’s No.1 fizz', status: 'no_proof' },
+        { text: 'Zero sugar', status: 'no_proof' },
+      ],
+    }))
+    // `seedOriginal` saves the plan directly (its clips are already recorded
+    // on the fixture's shots), so the original is already "finished" for
+    // `cutdown` without a separate record step.
+    const draft = await draftOf(deps, id, 6)
+    deps.claimAnswers = []
+    const cutdownPlan = { ...draft, voiceover: [{ text: 'India’s No.1 fizz', startSeconds: 0.5 }], legal: [{ text: 'Serve chilled', wholeAd: true }] }
+    const out = await runPlanTvc({ action: 'check', plan: cutdownPlan }, deps)
+    expect(out.claimsToReview).toBeUndefined()
+    expect(store.get(out.planFileId!)!.plan.claims).toEqual([{ text: 'India’s No.1 fizz', status: 'no_proof' }])
+    expect((out.warnings ?? []).some((w) => w.startsWith('CLAIM_DROPPED'))).toBe(false)
+  })
+})

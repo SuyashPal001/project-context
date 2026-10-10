@@ -297,6 +297,7 @@ export function rebuildCutdown(input: TvcPlan, master: TvcPlan): { plan: TvcPlan
       voiceover: structuredClone(input.voiceover),
       packshot,
       legal: structuredClone(input.legal),
+      ...(input.claims ? { claims: structuredClone(input.claims) } : {}),
       cutdownOf: cutdownOfFor(master, input.cutdownOf!.planFileId),
     },
   }
