@@ -21,7 +21,7 @@ const MAX_SOURCE_BYTES = 200 * 1024 * 1024
 // Base attenuation before sidechain ducking — matches the spec's "ducked
 // under the voice" requirement; refined from novoads' own measured
 // failure of a flat 0.10 multiplier landing at -33 to -40 dB (inaudible).
-const BED_VOLUME = 0.35
+export const BED_VOLUME = 0.35
 // Below this, treat the bed itself (before any mixing) as effectively
 // silent/broken and refuse rather than ship it — same "measure, don't
 // guess" discipline the spec calls out from novoads' music_mix.py. This
@@ -29,11 +29,17 @@ const BED_VOLUME = 0.35
 // mastered output is dead code, because the final loudnorm pass always
 // normalizes the whole mix to -14 LUFS regardless of how quiet the bed
 // actually was inside it — the gate would never fire.
-const MIN_ACCEPTABLE_BED_LUFS = -40
+export const MIN_ACCEPTABLE_BED_LUFS = -40
 
 export function parseIntegratedLoudness(stderr: string): number | null {
   const match = stderr.match(/Integrated loudness:\s*\n\s*I:\s*(-?\d+(?:\.\d+)?)\s*LUFS/)
   return match ? parseFloat(match[1]) : null
+}
+
+/** The bed's own loudness at the bed level, before any mixing (shared with render_animatic). Throws when the probe fails. */
+export async function bedLoudness(musicPath: string): Promise<number | null> {
+  const { stderr } = await execFile('ffmpeg', ['-i', musicPath, '-af', `volume=${BED_VOLUME},ebur128=framelog=verbose`, '-f', 'null', '-'], { timeout: FFMPEG_TIMEOUT_MS })
+  return parseIntegratedLoudness(stderr)
 }
 
 const outputSchema = z.object({
@@ -150,10 +156,7 @@ export const mixMusicBed = createTool({
       // the final loudnorm pass always normalizes the WHOLE mix to -14
       // LUFS regardless of the bed's own level, so a post-mix check can
       // never observe a quiet bed.
-      const { stderr: bedLoudnessStderr } = await execFile('ffmpeg', [
-        '-i', musicPath, '-af', `volume=${BED_VOLUME},ebur128=framelog=verbose`, '-f', 'null', '-',
-      ], { timeout: FFMPEG_TIMEOUT_MS })
-      const bedLufs = parseIntegratedLoudness(bedLoudnessStderr)
+      const bedLufs = await bedLoudness(musicPath)
       if (bedLufs === null || bedLufs < MIN_ACCEPTABLE_BED_LUFS) {
         console.error(`[session:${sessionId}] mixMusicBed: bed's own loudness ${bedLufs} LUFS is below the ${MIN_ACCEPTABLE_BED_LUFS} LUFS floor — refusing rather than shipping a silent/broken bed`)
         if (charged) await refundMixMusicBedCharge(tenantId, agentId, chargeKey, rateId, rateVersion)

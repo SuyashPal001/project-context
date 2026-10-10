@@ -124,6 +124,25 @@ export function endCardGraph(width: number, height: number, dissolveStart: numbe
 // the photo's own background meets the animated frame behind it. Revisit
 // if a real ad's end card looks bad in testing, not preemptively.
 
+/** The logo and veg mark for an end card, sized from the real frame (shared with render_animatic). */
+export function endCardMarks(
+  real: { width: number; height: number }, logo: { width: number; height: number; transparent: boolean } | undefined,
+  vegMark: 'veg' | 'non_veg' | undefined, disclaimerLines: number | undefined, faces: Box[], dissolveStart: number, totalSeconds: number,
+): Marks | undefined {
+  if (!logo && !vegMark) return undefined
+  const marks: Marks = { dissolveStart, totalSeconds, logoInput: '[2:v]' }
+  let spot: LogoSpot | undefined
+  if (logo) {
+    const layout = logoLayout(real, !logo.transparent)
+    const size = containSize(logo.width, logo.height, layout.boxW - 2 * layout.pad, layout.boxH - 2 * layout.pad)
+    const outer = { w: size.w + 2 * layout.pad, h: size.h + 2 * layout.pad }
+    spot = chooseLogoSpot(faces, real, outer, layout.margin)
+    marks.logo = { size, rect: logoRect(spot, real, outer, layout.margin), plated: !logo.transparent, layout }
+  }
+  if (vegMark) marks.veg = { kind: vegMark, rect: vegRect(vegCorner(spot, faces, real, disclaimerLines), real, disclaimerLines) }
+  return marks
+}
+
 const outputSchema = z.object({
   fileId: z.string().optional(),
   name: z.string().optional(),
@@ -321,19 +340,7 @@ export const compositeEndCard = createTool({
 
       // M3/M4: the logo and the veg mark join the same pass, sized from the real frame.
       const real = { width: videoWidth, height: videoHeight }
-      let marks: Marks | undefined
-      if (logo || vegMark) {
-        marks = { dissolveStart, totalSeconds, logoInput: '[2:v]' }
-        let spot: LogoSpot | undefined
-        if (logo) {
-          const layout = logoLayout(real, !logo.transparent)
-          const size = containSize(logo.width, logo.height, layout.boxW - 2 * layout.pad, layout.boxH - 2 * layout.pad)
-          const outer = { w: size.w + 2 * layout.pad, h: size.h + 2 * layout.pad }
-          spot = chooseLogoSpot(faces, real, outer, layout.margin)
-          marks.logo = { size, rect: logoRect(spot, real, outer, layout.margin), plated: !logo.transparent, layout }
-        }
-        if (vegMark) marks.veg = { kind: vegMark, rect: vegRect(vegCorner(spot, faces, real, disclaimerLines), real, disclaimerLines) }
-      }
+      const marks = endCardMarks(real, logo, vegMark, disclaimerLines, faces, dissolveStart, totalSeconds)
       const filterComplex = endCardGraph(videoWidth, videoHeight, dissolveStart, holdSeconds, cardOverride, marks)
 
       // A plain image input (-i photoPath with no -loop) is a single frame

@@ -188,6 +188,32 @@ async function durationOf(path: string): Promise<number> {
   return d
 }
 
+/** The free checks before a voiceover mix, shared with render_animatic: each
+ *  block's real length, the jingle clamped to the video, every block audible,
+ *  lines spaced so none talk over each other, all of it inside the video, and
+ *  the sung line clear of speech. Throws when a probe fails. */
+export async function timeVoiceoverBlocks(
+  voPaths: string[], blocks: Array<{ startSeconds: number; kind?: 'voice' | 'jingle' }>, videoSeconds: number,
+): Promise<{ timed: MixBlock[]; blockLufs: number[] } | { refusalReason: string }> {
+  let timed: MixBlock[] = await Promise.all(voPaths.map(async (p, i) => ({
+    start: blocks[i].startSeconds, duration: await durationOf(p),
+    ...(blocks[i].kind === 'jingle' ? { kind: 'jingle' as const } : {}),
+  })))
+  timed = clampJingleToVideo(timed, videoSeconds)
+  const blockLufs: number[] = []
+  for (const p of voPaths) {
+    const { stderr } = await execFile('ffmpeg', loudnessProbeArgs(p), { timeout: FFMPEG_TIMEOUT_MS })
+    const lufs = parseIntegratedLoudness(stderr)
+    if (lufs === null || lufs < MIN_ACCEPTABLE_VO_LUFS) return { refusalReason: 'VOICEOVER_INAUDIBLE' }
+    blockLufs.push(lufs)
+  }
+  const spaced = spaceVoiceBlocks(timed, videoSeconds)
+  if (!spaced || !voiceoverFitsVideo(spaced, videoSeconds)) return { refusalReason: 'VOICEOVER_TOO_LONG' }
+  const overlap = jingleOverlapErrors(spaced)
+  if (overlap.length) return { refusalReason: overlap.join(' ') }
+  return { timed: spaced, blockLufs }
+}
+
 export const mixVoiceover = createTool({
   id: 'mix-voiceover',
   description: 'Lays one or more voiceover blocks over a joined video at their planned start times, keeping the video\'s own sound (on-camera lines, sound effects) and dipping it under the voice, then masters the mix. Refuses a voiceover that runs past the end of the video or is too quiet to hear. Used in the TVC ad finish (after assemble_clips, before overlay_text and mix_music_bed) and to place the animated ad\'s narrator lines on their shots (with room true). A block with kind "jingle" (the sung sign-off) is level-matched to the speech before it and never ducks the sound.',
@@ -225,32 +251,18 @@ export const mixVoiceover = createTool({
     let videoSeconds: number
     let timed: MixBlock[]
     let baseHasAudio: boolean
-    const blockLufs: number[] = []
+    let blockLufs: number[]
     try {
       videoSeconds = await durationOf(videoPath)
-      timed = await Promise.all(voPaths.map(async (p, i) => ({
-        start: blocks[i].startSeconds, duration: await durationOf(p),
-        ...(blocks[i].kind === 'jingle' ? { kind: 'jingle' as const } : {}),
-      })))
-      timed = clampJingleToVideo(timed, videoSeconds)
       const { stdout: streams } = await execFile('ffprobe', ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', videoPath], { timeout: FFMPEG_TIMEOUT_MS })
       baseHasAudio = streams.trim().length > 0
-      for (const p of voPaths) {
-        const { stderr } = await execFile('ffmpeg', loudnessProbeArgs(p), { timeout: FFMPEG_TIMEOUT_MS })
-        const lufs = parseIntegratedLoudness(stderr)
-        if (lufs === null || lufs < MIN_ACCEPTABLE_VO_LUFS) return { refused: true, refusalReason: 'VOICEOVER_INAUDIBLE', jobId }
-        blockLufs.push(lufs)
-      }
+      const checked = await timeVoiceoverBlocks(voPaths, blocks, videoSeconds)
+      if ('refusalReason' in checked) return { refused: true, refusalReason: checked.refusalReason, jobId }
+      ;({ timed, blockLufs } = checked)
     } catch (err) {
       console.error(`[session:${sessionId}] mixVoiceover: probe failed:`, (err as Error).message)
       return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE', jobId }
     }
-    const spaced = spaceVoiceBlocks(timed, videoSeconds)
-    if (!spaced) return { refused: true, refusalReason: 'VOICEOVER_TOO_LONG', jobId }
-    timed = spaced
-    if (!voiceoverFitsVideo(timed, videoSeconds)) return { refused: true, refusalReason: 'VOICEOVER_TOO_LONG', jobId }
-    const jingleOverlap = jingleOverlapErrors(timed)
-    if (jingleOverlap.length) return { refused: true, refusalReason: jingleOverlap.join(' '), jobId }
     if (timed.some((b) => b.kind === 'jingle')) timed = await levelMatchJingles([videoPath, ...voPaths], timed, blockLufs, baseHasAudio)
 
     const chargeKey = `mix-voiceover:${jobId}:0`
