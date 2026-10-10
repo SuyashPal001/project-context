@@ -93,6 +93,7 @@ describe('GENERATION_APPROVAL_METADATA', () => {
         'trim-clip', 'trim_clip',
         'overlay-text', 'overlay_text',
         'stretch-clip', 'stretch_clip',
+        'render-animatic', 'render_animatic',
         'save_skill',
       ].sort(),
     )

@@ -40,6 +40,7 @@ const STEPS: Record<string, { key: string; label: string; kind: StepKind }> = {
   stretch_clip: { key: 'join', label: 'Joining the scenes', kind: 'join' },
   composite_end_card: { key: 'end-card', label: 'End card', kind: 'join' },
   overlay_text: { key: 'text', label: 'On-screen text', kind: 'join' },
+  render_animatic: { key: 'animatic', label: 'Rough cut', kind: 'join' },
   transcribe_audio: { key: 'captions', label: 'Captions', kind: 'finish' },
   burn_captions: { key: 'captions', label: 'Captions', kind: 'finish' },
   generate_song: { key: 'music', label: 'Music', kind: 'finish' },

@@ -81,6 +81,7 @@ const MIX_VOICEOVER_SUBJECT = 'ffmpeg-mix-voiceover'
 const TRIM_CLIP_SUBJECT = 'ffmpeg-trim-clip'
 const OVERLAY_TEXT_SUBJECT = 'ffmpeg-overlay-text'
 const STRETCH_CLIP_SUBJECT = 'ffmpeg-stretch-clip'
+const RENDER_ANIMATIC_SUBJECT = 'ffmpeg-render-animatic'
 
 /**
  * Rebuilds the approval card's display fields from a bare
@@ -155,6 +156,7 @@ const mixVoiceoverGen = { resourceType: 'clip_assembly', subject: MIX_VOICEOVER_
 const trimClipGen = { resourceType: 'clip_assembly', subject: TRIM_CLIP_SUBJECT, label: 'Trim clip' }
 const overlayTextGen = { resourceType: 'clip_assembly', subject: OVERLAY_TEXT_SUBJECT, label: 'Overlay text' }
 const stretchClipGen = { resourceType: 'clip_assembly', subject: STRETCH_CLIP_SUBJECT, label: 'Stretch clip' }
+const renderAnimaticGen = { resourceType: 'clip_assembly', subject: RENDER_ANIMATIC_SUBJECT, label: 'Rough cut' }
 
 const itemCount = (args: Record<string, unknown>): number | undefined =>
   Array.isArray(args.items) ? args.items.length : undefined
@@ -196,6 +198,8 @@ export const GENERATION_APPROVAL_METADATA: Record<string, {
   'overlay_text': overlayTextGen,
   'stretch-clip': stretchClipGen,
   'stretch_clip': stretchClipGen,
+  'render-animatic': renderAnimaticGen,
+  'render_animatic': renderAnimaticGen,
   'transcribe-audio': transcribeAudioGen,
   'transcribe_audio': transcribeAudioGen,
   'composite-end-card': compositeEndCardGen,

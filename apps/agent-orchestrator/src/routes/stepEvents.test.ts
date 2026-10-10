@@ -7,6 +7,7 @@ describe('step events', () => {
     expect(stepStart('assemble-clips', 'b')).toMatchObject({ key: 'join', kind: 'join' })
     expect(stepStart('updateWorkingMemory', 'c')).toBeNull()
     expect(stepStart('agent-director', 'd')).toBeNull()
+    expect(stepStart('render_animatic', 'z')).toMatchObject({ key: 'animatic', label: 'Rough cut', kind: 'join' })
   })
   it('names a storyboard and counts a batch', () => {
     expect(stepStart('generate_image', 'e', { title: 'Piko — storyboard sheet' })).toMatchObject({ key: 'storyboard', label: 'Storyboard' })
