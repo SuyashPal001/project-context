@@ -200,6 +200,16 @@ describe('OFFICIAL_SKILLS', () => {
     expect(card).not.toMatch(/forVoiceoverBlock|overlay_text|plan_tvc|composite_end_card|assemble_clips|trim_clip/);
   });
 
+  it('template-video reads retrieve_template before paying for analysis (append only)', () => {
+    const skill = OFFICIAL_SKILLS.find((s) => s.slug === 'template-video')!;
+    const card = readFileSync(skill.file, 'utf8');
+    expect(card).toMatch(/6\. Before step 3's analysis \(adds to step 3\): first read what retrieve_template already returned/);
+    expect(card).toMatch(/classify the profile directly from them and skip delegating analysis/);
+    expect(card).toMatch(/analyze_video mode "quick" first and "deep" only if quick cannot answer it/);
+    // The shipped step 3 is still there, word for word.
+    expect(card).toMatch(/3\. Delegate to agent-director to analyze the template \(analyze_video\/analyze_audio\) and classify its profile before proposing a plan\./);
+  });
+
   it('tvc-ad shows a rough cut before the clips (Part 2.5, append only)', () => {
     const tvc = OFFICIAL_SKILLS.find((s) => s.slug === 'tvc-ad')!;
     const card = readFileSync(tvc.file, 'utf8');
