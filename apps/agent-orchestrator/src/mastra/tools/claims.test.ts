@@ -47,6 +47,10 @@ describe('findClaims: positives', () => {
     ['Results in 7 days', 'number'],
     ['9 out of 10 dentists agree', 'number'],
     ['Clinically proven formula', 'proven'],
+    ['Clinically-proven formula', 'proven'],
+    ['Lab-proven results', 'proven'],
+    ['4 in 5 doctors recommend it', 'number'],
+    ['1 in 3 Indians choose Bubbli', 'number'],
     ['Lab-tested for purity', 'proven'],
     ['Doctor recommended toothpaste', 'endorsement'],
     ['Approved by experts', 'endorsement'],
@@ -83,7 +87,7 @@ describe('findClaims: everyday lines are not claims (Review Focus 1, E13)', () =
   ])('%s', (vo) => {
     expect(kinds(vo)).toEqual([])
   })
-  it('"2 in 1 shampoo" is not a claim (F4; N in N needs a 2+ digit second number)', () => {
+  it('"2 in 1 shampoo" is not a claim (F4; only "N in 1" is excluded)', () => {
     expect(kinds('2 in 1 shampoo', { category: 'beauty' })).toEqual([])
   })
   it('keeps "2x" and "3 times" as claims although a bare space before "x" is not (F4)', () => {
@@ -142,6 +146,10 @@ const ans = (key: string, answer: ClaimAnswer['answer'], extra: Partial<ClaimAns
 const answerMap = (...entries: ClaimAnswer[]) => new Map(entries.map((a) => [a.key, a]))
 
 describe('mergeClaims', () => {
+  it('a new user answer wins over an unchanged re-sent entry (re-review minor 4)', () => {
+    const out = mergeClaims({ inherited: [], previous: [entry('No.1 fizz', 'no_proof')], incoming: [entry('No.1 fizz', 'no_proof')], answers: answerMap(ans('no.1 fizz', 'proof', { proof: 'Nielsen 2026' })), auto: false })
+    expect(out.entries).toEqual([entry('No.1 fizz', 'proof', 'Nielsen 2026')])
+  })
   it('a partial incoming list keeps the earlier answers; the incoming entry wins', () => {
     const out = mergeClaims({ inherited: [], previous: [entry('No.1 fizz', 'no_proof'), entry('Zero sugar', 'proof', 'Lab report')], incoming: [entry('no.1 fizz', 'proof', 'made up text')], answers: answerMap(ans('no.1 fizz', 'proof', { proof: 'Nielsen 2026' })), auto: false })
     expect(out.entries).toEqual([entry('no.1 fizz', 'proof', 'Nielsen 2026'), entry('Zero sugar', 'proof', 'Lab report')])
@@ -226,6 +234,10 @@ describe('reviewClaims', () => {
 })
 
 describe('parseClaimAnswers', () => {
+  it('the first keyword in the answer wins (re-review minor 3)', () => {
+    expect(parseClaimAnswers('Claims: "No.1 fizz" = not a claim, do not soften')).toEqual([{ key: 'no.1 fizz', answer: 'not_a_claim' }])
+    expect(parseClaimAnswers('Claims: "No.1 fizz" = Not a claim (no proof needed)')).toEqual([{ key: 'no.1 fizz', answer: 'not_a_claim' }])
+  })
   it('reads every Claims: line as a ClaimAnswer, straight or curly quotes', () => {
     const prompt = 'flow: tvc ad\nstep: plan\nTVC plan: abc\nClaims: "India’s No.1 fizz" = proof: Nielsen 2026\nClaims: “Zero sugar” = no_proof'
     expect(parseClaimAnswers(prompt)).toEqual([

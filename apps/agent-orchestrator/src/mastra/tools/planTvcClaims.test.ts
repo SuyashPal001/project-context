@@ -126,6 +126,12 @@ describe('Part 2.6: claims review at check (D2, C1)', () => {
     expect((await runPlanTvc({ action: 'get', planFileId: 'old', slice: 'shots 1-2' }, deps)).slice).toBeDefined()
   })
 
+  it('a pending plan with nothing left to ask is not held (re-review out-of-scope)', async () => {
+    const { deps, store } = fakeDeps()
+    store.set('stale', { version: 1, storageKey: 'k-stale', plan: { ...base(['Cold fizz, any time']), claimsPending: true } })
+    expect((await runPlanTvc({ action: 'get', planFileId: 'stale', slice: 'shots 1-2' }, deps)).slice).toBeDefined()
+  })
+
   it('check ignores a claimsPending Director sent', async () => {
     const { deps, store } = fakeDeps({ claimAnswers: [] })
     const out = await runPlanTvc({ action: 'check', plan: { ...base(['Cold fizz']), claimsPending: true } }, deps)

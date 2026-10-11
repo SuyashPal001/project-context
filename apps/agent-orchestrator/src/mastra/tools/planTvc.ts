@@ -506,8 +506,10 @@ async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promi
     const gated = (input.action === 'get' && (/^shots /.test(s) || s === 'animatic' || s === 'finish'))
       || (input.action === 'record' && (input.stillFileId || input.clipFileId || (input.records ?? []).length > 0))
     if (gated) {
+      // The list is worked out again; a plan whose pending claims no longer
+      // match any pattern is not held with nothing to ask.
       const toReview = reviewClaims(doc.plan, doc.plan.claims ?? [], new Set()).toReview
-      return { refused: true, refusalReason: CLAIMS_PENDING_REFUSAL, claimsToReview: toReview, nextStep: CLAIMS_NEXT_STEP }
+      if (toReview.length) return { refused: true, refusalReason: CLAIMS_PENDING_REFUSAL, claimsToReview: toReview, nextStep: CLAIMS_NEXT_STEP }
     }
   }
   if (input.action === 'get') {

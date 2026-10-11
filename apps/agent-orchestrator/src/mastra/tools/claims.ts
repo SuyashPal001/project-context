@@ -84,17 +84,16 @@ const PATTERNS: PatternSet[] = [
     wrap('in\\s+(?:just\\s+)?\\d+\\s+(?:days?|hours?|minutes?|mins?|weeks?|seconds?)'),
     wrap('\\d+\\s?दिनों\\s+में'),
     wrap('\\d+\\s+out\\s+of\\s+\\d+'),
-    // F4: "2 in 1 shampoo" is a product descriptor, not a claim — "N in N"
-    // is a claim only when the second number has 2+ digits (e.g. "9 in 10").
-    wrap('\\d+\\s+in\\s+\\d{2,}'),
+    // F4: "2 in 1 shampoo" is a product descriptor, not a claim — "N in 1"
+    // is excluded; "4 in 5 doctors" and "1 in 3 Indians" stay claims.
+    wrap('\\d+\\s+in\\s+(?!1(?!\\d))\\d+'),
   ] },
   { kind: 'proven', res: [
-    wrap('(?:clinically|dermatologically|scientifically|medically)\\s+(?:proven|tested|approved)'),
+    wrap('(?:clinically|dermatologically|scientifically|medically)[\\s-]+(?:proven|tested|approved)'),
     wrap('lab[-\\s]tested'),
-    // F4: "Time-proven recipe" is an everyday line, not a claim — a hyphen
-    // right before "proven" (never matched for "clinically proven" etc.,
-    // which has a space) is excluded by name.
-    wrap('(?<!-)proven'),
+    // F4: "Time-proven recipe" is an everyday line, not a claim; only
+    // "time-proven" is excluded, so "Lab-proven results" stays a claim.
+    wrap('(?<!time-)proven'),
     wrap('certified\\s+by'),
   ] },
   { kind: 'endorsement', res: [
@@ -240,7 +239,10 @@ export function mergeClaims(args: { inherited: ClaimEntry[]; previous: ClaimEntr
     const k = claimKey(e.text)
     const before = known.get(k)
     const changed = !before || before.status !== e.status || (before.proof ?? '') !== (e.proof ?? '')
-    if (!changed) { known.set(k, e); fromIncoming.add(k); continue }
+    // An unchanged entry passes without an answer, unless the user just gave
+    // a new answer for it (Ask mode): then the answer below wins.
+    const freshAnswer = args.answers !== undefined && !args.auto && args.answers.has(k)
+    if (!changed && !freshAnswer) { known.set(k, e); fromIncoming.add(k); continue }
     if (args.answers === undefined) { known.set(k, e); fromIncoming.add(k); continue }
     if (args.auto) {
       if (e.status === 'no_proof') { known.set(k, e); fromIncoming.add(k) }
@@ -344,9 +346,13 @@ export function parseClaimAnswers(prompt: string): ClaimAnswer[] | undefined {
       continue
     }
     const rhsLower = rhs.toLowerCase()
-    if (/soften/.test(rhsLower)) out.push({ key, answer: 'soften' })
-    else if (/no[\s_-]?proof/.test(rhsLower)) out.push({ key, answer: 'no_proof' })
-    else if (/not[\s_-]+a[\s_-]+claim/.test(rhsLower)) out.push({ key, answer: 'not_a_claim' })
+    // The keyword that comes first wins: "not a claim, do not soften" is
+    // not_a_claim, "Not a claim (no proof needed)" is not_a_claim.
+    const hits = ([['soften', /soften/], ['no_proof', /no[\s_-]?proof/], ['not_a_claim', /not[\s_-]+a[\s_-]+claim/]] as const)
+      .map(([answer, re]) => ({ answer, at: re.exec(rhsLower)?.index ?? -1 }))
+      .filter((h) => h.at >= 0)
+      .sort((a, b) => a.at - b.at)
+    if (hits.length) out.push({ key, answer: hits[0].answer })
   }
   return out.length ? out : undefined
 }
