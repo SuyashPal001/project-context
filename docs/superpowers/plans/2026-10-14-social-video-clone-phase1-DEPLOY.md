@@ -21,3 +21,10 @@ Confirm with the user before restarting any PM2 process.
 7. Seed the skill text (template-video.md, new item 7) the same way as other Official skill updates.
 8. Live test in chat: paste https://www.instagram.com/p/DdzH5VVgmYT/ and ask "break this down". Expect hidden cuts near 5.4 / 9.2 / 12.7s, the remote moment, and leg sides per look.
 9. Test from the VM that YouTube and Instagram downloads are not blocked from the datacenter IP; if they are, note it — users then upload. TikTok is refused by design.
+
+# Phase 2 additions
+
+1. Orchestrator env (optional): VIDEO_WATCH_MODEL, VIDEO_CHECK_MODEL (default gemini-3.8-flash; set gemini-3.6-flash to switch back without code).
+2. ai-service: restart PM2 `ai-service` (new /media/motion-peaks, /media/brightness-jumps, /media/coverage).
+3. Studio: the six video scorers and the `video-breakdown-local` workflow appear after the orchestrator restart.
+4. Golden set before any prompt/model change: GOLDEN_DIR=<folder with fan_reel.mp4, sony.mp4> pnpm tsx scripts/video-golden-set.ts → must print "passed". Needs a reachable gateway and ai-service (INFERENCE_GATEWAY_URL, AI_SERVICE_URL, INTERNAL_SERVICE_KEY) and MEDIA_DIR covering GOLDEN_DIR. As of 2026-10-15 it prints "failed" (fan-reel hidden cuts flaky, leg sides low) — known, not a deploy blocker for the breakdown itself.
