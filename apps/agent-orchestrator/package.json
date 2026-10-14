@@ -12,6 +12,7 @@
     "benchmark:ugc-avatar": "tsx scripts/ugc-avatar-benchmark.ts"
   },
   "dependencies": {
+    "puppeteer": "^23.11.1",
     "@ai-sdk/google": "^3.0.121",
     "@ai-sdk/google-vertex": "^4.0.197",
     "@ai-sdk/openai-compatible": "^2.0.74",

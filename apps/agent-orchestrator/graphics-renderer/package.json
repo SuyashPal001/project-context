@@ -1,0 +1,20 @@
+{
+  "name": "presenter-video-graphics-renderer",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Standalone Remotion project rendering presenter-video's graphics overlays (title cards, info cards, captions, screen walkthroughs). NOT part of the pnpm workspace, same reasoning as root mcp-server/ — Remotion's own dependency tree and renderer binary are kept out of the main orchestrator install. Install with npm, not pnpm.",
+  "type": "module",
+  "scripts": {
+    "render": "remotion render src/index.ts GraphicsOverlay"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.300",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.300"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "typescript": "5.6.3"
+  }
+}

@@ -139,6 +139,21 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     },
   },
   {
+    slug: 'presenter-video',
+    name: 'Presenter video',
+    description: 'Use when the user wants a spokesperson/announcement video with on-screen graphics — a presenter announcing a program, product or policy with title cards, info cards, captions, a screen walkthrough or a follow card over the footage, in both 16:9 and 9:16. Not for a plain talking-head ad with no graphics overlay (use Talking head) and not a multi-shot storyboard ad (use UGC character ad).',
+    file: officialSkillFile('presenter-video.md'),
+    director: { file: officialSkillFile('presenter-video/director.md'), markers: ['flow: presenter video'] },
+    showcase: {
+      // Placeholder — no presenter-video example has been rendered yet.
+      // Swap for a real example once one exists (same convention talking-head's
+      // own showcase entry used before it had a real render).
+      imageUrl: '/creative/skills/talking-head-example.jpg',
+      bestFor: ['Announcements', 'Program launches', 'Explainers with graphics'],
+      starterPrompt: 'Make a presenter video announcing my program',
+    },
+  },
+  {
     slug: 'ugc-character-ad',
     name: 'UGC character ad',
     description: 'Use when the user wants a photoreal UGC-style ad built from scratch, with several distinct beats or shots in a storyboard — not one presenter reading one script, not an animated look, not a template clone.',

@@ -160,6 +160,14 @@ export const RATES = [
   // be seeded (pnpm db:seed) or the charge logs UNBILLED.
   { resourceType: 'clip_assembly', subject: 'ffmpeg-render-animatic',
     pricingSchema: { per_call_micro: 1_000 } },
+  // presenter-video's render_graphics (Remotion render + ffmpeg overlay) and
+  // capture_webpage (headless Chrome screenshot) — same "pure local compute,
+  // small flat non-zero rate" reasoning as every other clip_assembly row
+  // above; unseeded, either tool runs free AND with no approval card.
+  { resourceType: 'clip_assembly', subject: 'ffmpeg-render-graphics',
+    pricingSchema: { per_call_micro: 1_000 } },
+  { resourceType: 'clip_assembly', subject: 'capture-webpage',
+    pricingSchema: { per_call_micro: 1_000 } },
   // Metering ships before pricing: these are deliberately free on day one so ops can
   // price them later without a deploy (spec section 3).
   { resourceType: 'message',   subject: '*', pricingSchema: { per_message_micro: 0 } },
