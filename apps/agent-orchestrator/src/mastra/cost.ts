@@ -10,6 +10,7 @@ import { resolveRate, costMicro, type PricingSchema } from '@serverless-saas/cre
 // Self-hosted models (ollama/*) cost $0.
 const FALLBACK_PRICING: Record<string, { input: number; output: number }> = {
   'gemini-3.6-flash':      { input: 0.75,  output: 3.75 },
+  'gemini-3.8-flash':      { input: 0.75,  output: 3.75 },
   'gemini-2.5-flash':      { input: 0.30,  output: 2.50 },
   'gemini-2.5-flash-lite': { input: 0.10,  output: 0.40 },
   'gemini-2.5-pro':        { input: 1.25,  output: 10.00 },
