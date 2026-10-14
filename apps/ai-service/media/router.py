@@ -20,3 +20,18 @@ class CutsBody(PathBody):
 @router.post("/cuts")
 def post_cuts(body: CutsBody):
     return cuts.find_cuts(str(safe_media_path(body.path)), body.threshold)
+from typing import Optional
+from . import hidden_cuts
+
+class Look(BaseModel):
+    label: str
+    approx_start_s: float
+    approx_end_s: float
+
+class HiddenBody(PathBody):
+    looks: list[Look]
+    subject_box: Optional[list[float]] = None
+
+@router.post("/hidden-cuts")
+def post_hidden(body: HiddenBody):
+    return hidden_cuts.find_hidden_cuts(str(safe_media_path(body.path)), [l.model_dump() for l in body.looks], body.subject_box)
