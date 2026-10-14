@@ -45,8 +45,8 @@ const DEFAULT_MODEL = process.env.VERTEX_MODEL ?? 'gemini-2.5-flash';
 // / decodeToolCallId below) because OpenAI's schema has no field for it.
 type GeminiPart =
   | { text: string; thoughtSignature?: string }
-  | { inlineData: { mimeType: string; data: string } }
-  | { fileData: { mimeType: string; fileUri: string } }
+  | { inlineData: { mimeType: string; data: string }; videoMetadata?: { fps?: number } }
+  | { fileData: { mimeType: string; fileUri: string }; videoMetadata?: { fps?: number } }
   | { functionCall: { name: string; args: unknown }; thoughtSignature?: string }
   | { functionResponse: { name: string; response: unknown } }
 
@@ -88,6 +88,14 @@ export function toGeminiParts(content: string | OpenAIContentPart[] | null): Gem
     }
     if (block.type === 'input_audio' && block.input_audio) {
       return [{ inlineData: { mimeType: `audio/${block.input_audio.format}`, data: block.input_audio.data } }]
+    }
+    if (block.type === 'input_video' && block.input_video) {
+      const v = block.input_video
+      const mimeType = v.mime ?? 'video/mp4'
+      const meta = v.fps ? { videoMetadata: { fps: v.fps } } : {}
+      if (v.data) return [{ inlineData: { mimeType, data: v.data }, ...meta }]
+      if (v.url) return [{ fileData: { mimeType, fileUri: v.url }, ...meta }]
+      return []
     }
     return []
   })
@@ -297,7 +305,7 @@ function extractToolCalls(parts: GeminiPart[], idPrefix: string): OpenAIToolCall
     })
 }
 
-function buildGeminiRequest(openaiReq: OpenAIRequest): Record<string, unknown> {
+export function buildGeminiRequest(openaiReq: OpenAIRequest): Record<string, unknown> {
   const { systemInstruction, contents } = toGeminiContents(openaiReq.messages)
   const generationConfig: Record<string, unknown> = {}
   if (openaiReq.temperature !== undefined) generationConfig.temperature = openaiReq.temperature
@@ -313,6 +321,8 @@ function buildGeminiRequest(openaiReq: OpenAIRequest): Record<string, unknown> {
     if (thinkingBudget > 0) {
       generationConfig.thinkingConfig = { thinkingBudget, includeThoughts: true }
     }
+  } else if (openaiReq.thinkingLevel) {
+    generationConfig.thinkingConfig = { thinkingLevel: openaiReq.thinkingLevel }
   } else if (openaiReq.includeThoughts) {
     // Summaries only; the amount of thinking stays the model's own default.
     generationConfig.thinkingConfig = { includeThoughts: true }

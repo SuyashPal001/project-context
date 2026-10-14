@@ -22,3 +22,23 @@ describe('toGeminiParts (vertex)', () => {
     ]);
   });
 });
+
+import { buildGeminiRequest } from './vertex';
+
+describe('toGeminiParts input_video (vertex)', () => {
+  it('inline base64 video becomes inlineData with videoMetadata.fps', () => {
+    const parts = toGeminiParts([{ type: 'input_video', input_video: { data: 'AAAA', fps: 4 } }]);
+    expect(parts).toEqual([{ inlineData: { mimeType: 'video/mp4', data: 'AAAA' }, videoMetadata: { fps: 4 } }]);
+  });
+  it('a YouTube URL becomes fileData', () => {
+    const parts = toGeminiParts([{ type: 'input_video', input_video: { url: 'https://www.youtube.com/watch?v=x', fps: 2 } }]);
+    expect(parts).toEqual([{ fileData: { mimeType: 'video/mp4', fileUri: 'https://www.youtube.com/watch?v=x' }, videoMetadata: { fps: 2 } }]);
+  });
+  it('a video part with neither data nor url is dropped', () => {
+    expect(toGeminiParts([{ type: 'input_video', input_video: {} }])).toEqual([]);
+  });
+  it('thinkingLevel maps to generationConfig.thinkingConfig.thinkingLevel', () => {
+    const req = buildGeminiRequest({ messages: [{ role: 'user', content: 'hi' }], thinkingLevel: 'LOW' });
+    expect(req.generationConfig).toMatchObject({ thinkingConfig: { thinkingLevel: 'LOW' } });
+  });
+});

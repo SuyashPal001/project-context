@@ -123,6 +123,14 @@ export function toGeminiParts(content: string | OpenAIContentPart[] | null): Par
     if (block.type === 'input_audio' && block.input_audio) {
       return [{ inlineData: { mimeType: `audio/${block.input_audio.format}`, data: block.input_audio.data } }];
     }
+    if (block.type === 'input_video' && block.input_video) {
+      const v = block.input_video;
+      const mimeType = v.mime ?? 'video/mp4';
+      const meta = v.fps ? { videoMetadata: { fps: v.fps } } : {};
+      if (v.data) return [{ inlineData: { mimeType, data: v.data }, ...meta } as Part];
+      if (v.url) return [{ fileData: { mimeType, fileUri: v.url }, ...meta } as Part];
+      return [];
+    }
     return [];
   });
 }
@@ -410,7 +418,7 @@ function safeParseJSON(s: string | undefined): Record<string, unknown> {
   }
 }
 
-function buildGeminiRequest(openaiReq: OpenAIRequest): GenerateContentRequest {
+export function buildGeminiRequest(openaiReq: OpenAIRequest): GenerateContentRequest {
   const { systemInstruction, contents } = toGeminiContents(openaiReq.messages);
 
   const generationConfig: Record<string, unknown> = {};
@@ -425,6 +433,8 @@ function buildGeminiRequest(openaiReq: OpenAIRequest): GenerateContentRequest {
       thinkingBudget: openaiReq.thinkingBudget,
       includeThoughts: openaiReq.thinkingBudget > 0,
     };
+  } else if (openaiReq.thinkingLevel) {
+    generationConfig.thinkingConfig = { thinkingLevel: openaiReq.thinkingLevel };
   } else if (openaiReq.includeThoughts) {
     // The Director's thoughts shown in chat while it works: summaries only,
     // the amount of thinking stays the model's own default (2026-10-07).

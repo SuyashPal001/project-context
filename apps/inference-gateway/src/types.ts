@@ -29,10 +29,12 @@ export interface OpenAIToolCall {
 }
 
 export interface OpenAIContentPart {
-  type: 'text' | 'image_url' | 'input_audio';
+  type: 'text' | 'image_url' | 'input_audio' | 'input_video';
   text?: string;
   image_url?: { url: string; detail?: string };
   input_audio?: { data: string; format: string };
+  /** Whole video for Gemini: base64 `data` (≤ 15 MB) or a `url` (YouTube watch URL or gs://). */
+  input_video?: { data?: string; url?: string; mime?: string; fps?: number };
 }
 
 export interface OpenAIMessage {
@@ -55,6 +57,8 @@ export interface OpenAIRequest {
   thinkingBudget?: number; // Gemini-specific — mapped to generationConfig.thinkingConfig by VertexAdapter
   /** Return the model's thought summaries without setting a budget (the model keeps its own default amount of thinking). */
   includeThoughts?: boolean;
+  /** Gemini 3.x thinking level. Ignored when thinkingBudget is set. */
+  thinkingLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
 }
 
 export interface OpenAIUsage {
