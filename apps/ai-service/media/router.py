@@ -53,3 +53,24 @@ def post_motion(body: MotionBody):
         if len(it.box) != 4:
             raise HTTPException(status_code=400, detail="box must have 4 numbers")
     return motion.motion_peaks(str(safe_media_path(body.path)), [i.model_dump() for i in body.items], body.exclude, body.window_s)
+from . import frame_stats
+
+class JumpsBody(PathBody):
+    threshold: float = 3.0
+
+class CoverageBody(PathBody):
+    hsv_lo: list[int]
+    hsv_hi: list[int]
+    step_s: float = 0.2
+
+@router.post("/brightness-jumps")
+def post_jumps(body: JumpsBody):
+    return frame_stats.brightness_jumps(str(safe_media_path(body.path)), body.threshold)
+
+@router.post("/coverage")
+def post_coverage(body: CoverageBody):
+    if len(body.hsv_lo) != 3 or len(body.hsv_hi) != 3:
+        raise HTTPException(status_code=400, detail="hsv_lo and hsv_hi need 3 numbers")
+    if body.step_s <= 0:
+        raise HTTPException(status_code=400, detail="step_s must be above 0")
+    return frame_stats.coverage(str(safe_media_path(body.path)), body.hsv_lo, body.hsv_hi, body.step_s)
