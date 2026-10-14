@@ -145,10 +145,11 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     file: officialSkillFile('presenter-video.md'),
     director: { file: officialSkillFile('presenter-video/director.md'), markers: ['flow: presenter video'] },
     showcase: {
-      // Placeholder — no presenter-video example has been rendered yet.
-      // Swap for a real example once one exists (same convention talking-head's
-      // own showcase entry used before it had a real render).
-      imageUrl: '/creative/skills/talking-head-example.jpg',
+      // The consulate "Disha" e-OCI announcement (2026-10-14) — hand-built
+      // before this skill existed, proving the exact flow it now automates.
+      // 16:9 only for now; a 9:16 companion render is still pending.
+      imageUrl: '/creative/skills/presenter-video-example.jpg',
+      videoUrl: '/creative/skills/presenter-video-example.mp4',
       bestFor: ['Announcements', 'Program launches', 'Explainers with graphics'],
       starterPrompt: 'Make a presenter video announcing my program',
     },
