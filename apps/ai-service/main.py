@@ -18,6 +18,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from media.router import router as media_router
+app.include_router(media_router)
+
 @app.get("/health")
 async def health():
     return { "status": "ok", "service": "ai-service" }
