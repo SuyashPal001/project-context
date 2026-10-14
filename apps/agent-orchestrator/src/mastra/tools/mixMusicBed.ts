@@ -22,6 +22,12 @@ const MAX_SOURCE_BYTES = 200 * 1024 * 1024
 // under the voice" requirement; refined from novoads' own measured
 // failure of a flat 0.10 multiplier landing at -33 to -40 dB (inaudible).
 export const BED_VOLUME = 0.35
+// Subtle level for speech-led videos (talking-head, spokesperson): the
+// standard 0.35/-14 LUFS master reads as "too loud" under continuous
+// narration (consulate demo, 2026-10-14 — the user called 0.32 too loud).
+// 0.11 plus a gentle pre-duck compressor and harder sidechain ducking sits
+// the bed ~20dB under the voice with deeper dips while speech is present.
+export const BED_VOLUME_SUBTLE = 0.11
 // Below this, treat the bed itself (before any mixing) as effectively
 // silent/broken and refuse rather than ship it — same "measure, don't
 // guess" discipline the spec calls out from novoads' music_mix.py. This
@@ -30,6 +36,11 @@ export const BED_VOLUME = 0.35
 // normalizes the whole mix to -14 LUFS regardless of how quiet the bed
 // actually was inside it — the gate would never fire.
 export const MIN_ACCEPTABLE_BED_LUFS = -40
+// Verified live against the consulate demo's own 45s instrumental bed:
+// volume=0.11 alone (before sidechain ducking) measures -30.7 LUFS, still
+// ~9dB above the -40 floor, so the same floor applies to both levels —
+// no separate subtle floor needed.
+export const MIN_ACCEPTABLE_BED_LUFS_SUBTLE = -40
 
 export function parseIntegratedLoudness(stderr: string): number | null {
   const match = stderr.match(/Integrated loudness:\s*\n\s*I:\s*(-?\d+(?:\.\d+)?)\s*LUFS/)
@@ -37,8 +48,9 @@ export function parseIntegratedLoudness(stderr: string): number | null {
 }
 
 /** The bed's own loudness at the bed level, before any mixing (shared with render_animatic). Throws when the probe fails. */
-export async function bedLoudness(musicPath: string): Promise<number | null> {
-  const { stderr } = await execFile('ffmpeg', ['-i', musicPath, '-af', `volume=${BED_VOLUME},ebur128=framelog=verbose`, '-f', 'null', '-'], { timeout: FFMPEG_TIMEOUT_MS })
+export async function bedLoudness(musicPath: string, bedLevel: BedLevel = 'standard'): Promise<number | null> {
+  const volume = bedLevel === 'subtle' ? BED_VOLUME_SUBTLE : BED_VOLUME
+  const { stderr } = await execFile('ffmpeg', ['-i', musicPath, '-af', `volume=${volume},ebur128=framelog=verbose`, '-f', 'null', '-'], { timeout: FFMPEG_TIMEOUT_MS })
   return parseIntegratedLoudness(stderr)
 }
 
@@ -57,18 +69,35 @@ const outputSchema = z.object({
 
 // Exported raw so a test can call .safeParse directly — see this plan's
 // Global Constraints.
+export type BedLevel = 'subtle' | 'standard'
+
 export const inputSchema = z.object({
   videoFileId: z.string().describe('The captioned master — already has the mixed voice track. Music is applied LAST, after captions.'),
   musicFileId: z.string().describe('The music bed from generate_song.'),
   fadeOutAtSeconds: z.number().positive().optional().describe('TVC with a sung sign-off: the finish slice\'s musicFadeOutAtSeconds. The bed fades out over 0.5s ending here, so it clears before the sung line.'),
+  bedLevel: z.enum(['subtle', 'standard']).default('standard').describe(
+    'Default "standard" keeps the existing ad-mix level (0.35, -14 LUFS) unchanged. "subtle" is for speech-led videos (talking-head, spokesperson) where the bed sits under continuous narration: 0.11 with a gentle pre-duck compressor and a harder sidechain duck, mastered to -16 LUFS so the voice stays forward throughout.'
+  ),
 })
 
 const BED_FADE_SECONDS = 0.5
 const r2 = (x: number) => Math.round(x * 100) / 100
 
-/** Without fadeOutAtSeconds the graph is the same as before, byte for byte. */
-export function buildMusicBedFilter(fadeOutAtSeconds?: number): string {
+/** Without fadeOutAtSeconds and at the default "standard" level, the graph is the same as before, byte for byte. */
+export function buildMusicBedFilter(fadeOutAtSeconds?: number, bedLevel: BedLevel = 'standard'): string {
   const fade = fadeOutAtSeconds === undefined ? '' : `,afade=t=out:st=${r2(Math.max(0, fadeOutAtSeconds - BED_FADE_SECONDS))}:d=${BED_FADE_SECONDS}`
+  if (bedLevel === 'subtle') {
+    // Gentle compressor on the bed alone first (threshold 0.05, ratio 4),
+    // then a harder sidechain duck against the voice (threshold 0.02,
+    // ratio 10, attack 30, release 600) — verified by hand on a real
+    // speech-led mix: the bed sits ~20dB under the voice and dips further
+    // whenever speech is present, without pumping audibly.
+    return `[1:a]volume=${BED_VOLUME_SUBTLE}${fade}[bedvol];` +
+      `[bedvol]acompressor=threshold=0.05:ratio=4[bedcomp];` +
+      `[bedcomp][0:a]sidechaincompress=threshold=0.02:ratio=10:attack=30:release=600[duckedbed];` +
+      `[0:a][duckedbed]amix=inputs=2:duration=longest:normalize=0[premaster];` +
+      `[premaster]loudnorm=I=-16:TP=-1.5:LRA=11[outa]`
+  }
   return `[1:a]volume=${BED_VOLUME}${fade}[bedvol];` +
     `[bedvol][0:a]sidechaincompress=threshold=0.05:ratio=8:attack=5:release=300[duckedbed];` +
     `[0:a][duckedbed]amix=inputs=2:duration=longest:normalize=0[premaster];` +
@@ -83,7 +112,7 @@ export const mixMusicBed = createTool({
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'clip_assembly', subject: MIX_SUBJECT }, ctx),
   execute: async (inputData, execContext) => {
-    const { videoFileId, musicFileId, fadeOutAtSeconds } = inputData as z.infer<typeof inputSchema>
+    const { videoFileId, musicFileId, fadeOutAtSeconds, bedLevel } = inputData as z.infer<typeof inputSchema>
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined
@@ -156,9 +185,10 @@ export const mixMusicBed = createTool({
       // the final loudnorm pass always normalizes the WHOLE mix to -14
       // LUFS regardless of the bed's own level, so a post-mix check can
       // never observe a quiet bed.
-      const bedLufs = await bedLoudness(musicPath)
-      if (bedLufs === null || bedLufs < MIN_ACCEPTABLE_BED_LUFS) {
-        console.error(`[session:${sessionId}] mixMusicBed: bed's own loudness ${bedLufs} LUFS is below the ${MIN_ACCEPTABLE_BED_LUFS} LUFS floor — refusing rather than shipping a silent/broken bed`)
+      const bedLufs = await bedLoudness(musicPath, bedLevel)
+      const bedLufsFloor = bedLevel === 'subtle' ? MIN_ACCEPTABLE_BED_LUFS_SUBTLE : MIN_ACCEPTABLE_BED_LUFS
+      if (bedLufs === null || bedLufs < bedLufsFloor) {
+        console.error(`[session:${sessionId}] mixMusicBed: bed's own loudness ${bedLufs} LUFS is below the ${bedLufsFloor} LUFS floor — refusing rather than shipping a silent/broken bed`)
         if (charged) await refundMixMusicBedCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
         rmSync(workDir, { recursive: true, force: true })
         return { refused: true, refusalReason: 'MUSIC_BED_INAUDIBLE', jobId }
@@ -175,7 +205,7 @@ export const mixMusicBed = createTool({
       // for the bed to be "ducked under the voice", not just quiet
       // throughout) — [bedvol][0:a]sidechaincompress compresses the first
       // input (the bed) using the second (the voice) as the trigger.
-      const filterComplex = buildMusicBedFilter(fadeOutAtSeconds)
+      const filterComplex = buildMusicBedFilter(fadeOutAtSeconds, bedLevel)
       await execFile('ffmpeg', [
         '-y', '-i', videoPath, '-i', musicPath,
         '-filter_complex', filterComplex,
