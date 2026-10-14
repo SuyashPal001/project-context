@@ -1,0 +1,86 @@
+import { createTool } from '@mastra/core/tools'
+import { z } from 'zod'
+import { fetchVideo, type FetchedVideo } from './fetchVideo.js'
+import { watchVideo, type WatchOverview } from './watchVideo.js'
+import { aiService, type CutsResult, type HiddenCutsResult, type SoundResult } from './aiServiceClient.js'
+import { describeShots, type Shot } from './describeShots.js'
+import { checkShortShots } from './checkShortShots.js'
+
+export interface Breakdown {
+  video: Omit<FetchedVideo, 'filePath'>; overview: WatchOverview; measured: boolean
+  cuts: CutsResult | null; hidden_cuts: HiddenCutsResult['hidden_cuts']; sound: Omit<SoundResult, 'curve_db'> | null
+  shots: Shot[]; sound_arc: string; short_shot_check: { checked: number; status: 'ok' | 'unknown' }; warnings: string[]
+}
+
+export function mergeBounds(durationS: number, cuts: number[], hidden: number[], fadeStarts: number[]): number[] {
+  const h = hidden.filter((x) => cuts.every((c) => Math.abs(x - c) > 0.5))
+  const all = [...new Set([...cuts, ...h, ...fadeStarts])].filter((x) => x > 0 && x < durationS).sort((a, b) => a - b)
+  const out = [0]
+  for (const x of all) if (x - out[out.length - 1] >= 0.15) out.push(x)
+  out.push(Math.round(durationS * 100) / 100)
+  return out
+}
+
+export function fillMissingShots(bounds: number[], shots: Shot[]): Shot[] {
+  const byN = new Map(shots.map((s) => [s.n, s]))
+  return bounds.slice(0, -1).map((b, i) => byN.get(i + 1) ?? { n: i + 1, start_s: b, end_s: bounds[i + 1], subject: 'unclear', action: 'unclear' })
+}
+
+export async function breakDownVideo(input: { url?: string; fileId?: string }, ctx: { idToken: string; scopeId: string; conversationId: string }, tenantId?: string): Promise<Breakdown> {
+  const video = await fetchVideo(input, ctx)
+  if (video.tooLong) throw new Error(`The video is ${Math.round(video.durationS)}s long. Ask the user which part (up to 90s) to clone.`)
+  const warnings: string[] = []
+  const [overview, cuts, sound] = await Promise.all([
+    watchVideo(video, tenantId),
+    aiService<CutsResult>('/media/cuts', { path: video.filePath }).catch((e: Error) => { warnings.push(`cuts not measured (${e.message})`); return null }),
+    aiService<SoundResult>('/media/sound', { path: video.filePath }).catch((e: Error) => { warnings.push(`sound not measured (${e.message})`); return null }),
+  ])
+  let hidden: HiddenCutsResult['hidden_cuts'] = []
+  if (overview.change_style.includes('hidden_changes') && overview.looks.length > 1) {
+    try {
+      hidden = (await aiService<HiddenCutsResult>('/media/hidden-cuts', { path: video.filePath, looks: overview.looks.map((l) => ({ label: l.label, approx_start_s: l.approx_start_s, approx_end_s: l.approx_end_s })), subject_box: overview.subject_box ?? undefined })).hidden_cuts
+    } catch (e) { warnings.push(`hidden cuts not measured (${(e as Error).message})`) }
+  }
+  const measured = cuts !== null && sound !== null
+  const bounds = mergeBounds(video.durationS, cuts?.cuts ?? [], hidden.map((h) => h.at_s), (cuts?.fades ?? []).map((f) => f[0]))
+  let shots: Shot[]
+  let soundArc = ''
+  if (overview.change_style.length === 1 && overview.change_style[0] === 'near_still' && bounds.length === 2) {
+    shots = [{ n: 1, start_s: 0, end_s: video.durationS, subject: overview.format, action: 'near-still', story_role: 'endcard' }]
+    soundArc = overview.sound
+  } else {
+    const d = await describeShots(video, bounds, sound, tenantId)
+    shots = fillMissingShots(bounds, d.shots)
+    soundArc = d.sound_arc
+    if (shots.some((s) => s.subject === 'unclear')) warnings.push('some shots were skipped by the watcher and are marked unclear')
+  }
+  const check = await checkShortShots(video, shots, tenantId)
+  for (const f of check.fixes) {
+    const s = shots.find((x) => x.n === f.n)
+    if (s) s.checker_fix = { subject: f.subject }
+  }
+  if (check.status === 'unknown') warnings.push('short-shot picture check unavailable')
+  const { filePath: _fp, ...videoOut } = video
+  const soundOut = sound ? (({ curve_db: _c, ...rest }) => rest)(sound) : null
+  return { video: videoOut, overview, measured, cuts, hidden_cuts: hidden, sound: soundOut, shots, sound_arc: soundArc, short_shot_check: { checked: check.checked, status: check.status }, warnings }
+}
+
+export const breakDownVideoTool = createTool({
+  id: 'break_down_video',
+  description: 'Break down a reference video completely from a link or an attached file: format, story, moments, each look (outfit, expression, poses, moves, leg side), props, setting, the trick, exact cuts and hidden cuts, exact sound timing, and every shot. Use this first when the user wants to clone or recreate a video. Over 90s: ask which part.',
+  inputSchema: z.object({ url: z.string().url().optional(), fileId: z.string().optional() }),
+  outputSchema: z.object({ success: z.boolean(), breakdown: z.any().optional(), error: z.string().optional() }),
+  execute: async (input, execContext) => {
+    const rc = execContext?.requestContext
+    const idToken = rc?.get('idToken') as string | undefined
+    const tenantId = rc?.get('tenantId') as string | undefined
+    const sessionId = rc?.get('sessionId') as string | undefined
+    const conversationId = (rc?.get('conversationId') as string | undefined) ?? sessionId
+    if (!idToken || !sessionId || !conversationId) return { success: false, error: 'no_active_session' }
+    try {
+      return { success: true, breakdown: await breakDownVideo(input, { idToken, scopeId: tenantId ?? sessionId, conversationId }, tenantId) }
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  },
+})
