@@ -1,0 +1,33 @@
+import os, pytest
+from pathlib import Path
+
+REAL = os.environ.get("REAL_VIDEOS_DIR")
+pytestmark = pytest.mark.skipif(not REAL, reason="set REAL_VIDEOS_DIR to the folder holding the spike videos")
+
+def _copy(media_dir, name):
+    src = Path(REAL) / name
+    dst = media_dir / name
+    dst.write_bytes(src.read_bytes())
+    return str(dst)
+
+def test_sony_ad_cuts(client, media_dir):
+    d = client.post("/media/cuts", json={"path": _copy(media_dir, "sony.mp4")}, headers={"x-internal-service-key": "k"}).json()
+    assert 28 <= len(d["cuts"]) <= 36                    # spike: 32 at threshold 0.5
+    assert any(54.8 <= f[0] <= 55.8 for f in d["fades"])   # end-card fade ~55.3s
+
+def test_fan_reel_hidden_cuts(client, media_dir):
+    looks = [{"label": "jacket", "approx_start_s": 0.5, "approx_end_s": 4.0}, {"label": "saree", "approx_start_s": 6.2, "approx_end_s": 8.2},
+             {"label": "sharara", "approx_start_s": 9.9, "approx_end_s": 11.8}, {"label": "cape", "approx_start_s": 13.2, "approx_end_s": 14.6}]
+    d = client.post("/media/hidden-cuts", json={"path": _copy(media_dir, "fan_reel.mp4"), "looks": looks}, headers={"x-internal-service-key": "k"}).json()
+    ats = [h["at_s"] for h in d["hidden_cuts"]]
+    assert len(ats) == 3                                       # no false 4.58s switch
+    for got, want in zip(ats, [5.4, 9.2, 12.7]):
+        assert abs(got - want) < 0.4
+
+def test_fan_reel_has_a_tempo(client, media_dir):
+    d = client.post("/media/sound", json={"path": _copy(media_dir, "fan_reel.mp4")}, headers={"x-internal-service-key": "k"}).json()
+    assert d["bpm"] is not None and 60 <= d["bpm"] <= 200
+
+def test_sony_sound_drop(client, media_dir):
+    d = client.post("/media/sound", json={"path": _copy(media_dir, "sony.mp4")}, headers={"x-internal-service-key": "k"}).json()
+    assert d["silent_from_s"] is not None and 54 <= d["silent_from_s"] <= 58
