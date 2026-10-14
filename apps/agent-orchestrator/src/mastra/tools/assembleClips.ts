@@ -36,6 +36,7 @@ const outputSchema = z.object({
   creditsUsedMicro: z.string().optional(),
   jobId: z.string().optional(),
   fps: z.number().optional(),
+  colourMatchedClips: z.number().optional().describe('Count of clips that got a colour-match gain applied against masterStillFileId.'),
 })
 
 // A zero-width transition is `type: 'cut'`, never an xfade with
@@ -97,6 +98,9 @@ export const inputSchema = z.object({
     'A narration/voiceover file to lay under the joined video, so the assembled result is already one finished video with sound. Set it whenever the clips have a separate narration (talking-head: the locked narration fileId, with targetDurationSeconds set to its length). Lip-sync, if it runs afterwards, only improves the mouth; if it fails, this assembled video is still the deliverable. Not compatible with preserveAudio.'
   ),
   roomTone: z.boolean().optional().describe('With preserveAudio: lay one continuous, very quiet room tone under the joined audio so the sound does not jump at every cut.'),
+  masterStillFileId: z.string().optional().describe(
+    'A talking-head master still to colour-match every clip against before joining them. Omni\'s image_to_video drifts colour on every restart (background green up, red down, measured compounding part over part on a real chain), so a clip whose static background differs from the master\'s by more than ~2 levels (0-255) on any channel gets a per-channel colorchannelmixer gain applied before concat. Safety net for talking-head\'s master-start clip chaining; harmless no-op for callers that don\'t pass it.'
+  ),
 }).refine(
   (v) => !(v.preserveAudio && v.audioFileId),
   { message: 'preserveAudio and audioFileId cannot both be set — the clips either keep their own audio or get one narration track, not both' },
@@ -168,6 +172,54 @@ async function probeClip(path: string): Promise<ClipProbe> {
   }
 }
 
+// Colour-drift safety net (talking-head master-start clips): samples the mean
+// RGB of a corner crop (15% of each dimension, top-left — background in every
+// talking-head frame, since the presenter is centred/lower) of frame 0,
+// downscaled to a single pixel with area-averaging. Works on a still image or
+// a video's first frame identically — ffmpeg treats both as one input.
+const COLOUR_SAMPLE_TIMEOUT_MS = 30_000
+async function sampleCornerRGB(path: string): Promise<[number, number, number] | null> {
+  try {
+    const { stdout } = await execFile('ffmpeg', [
+      '-v', 'error', '-i', path, '-frames:v', '1',
+      '-vf', 'crop=iw*0.15:ih*0.15:0:0,scale=1:1:flags=area',
+      '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-',
+    ], { timeout: COLOUR_SAMPLE_TIMEOUT_MS, encoding: 'buffer' as BufferEncoding, maxBuffer: 1024 * 1024 }) as unknown as { stdout: Buffer }
+    if (!stdout || stdout.length < 3) return null
+    return [stdout[0], stdout[1], stdout[2]]
+  } catch {
+    return null
+  }
+}
+
+// Clamped to +/-30% — a gain outside that range means the sampled corner
+// almost certainly isn't the same background (a different scene, or the
+// presenter moved into the sample region), where "correcting" toward the
+// master would visibly wreck the clip rather than fix a drift.
+const COLOUR_GAIN_MIN = 0.7
+const COLOUR_GAIN_MAX = 1.3
+// Below this per-channel difference (0-255 scale) the drift is within normal
+// encoder/compression noise, same order of magnitude as the ~2-level shift
+// measured per restart on a real chain — matching the brief's "~2 levels".
+const COLOUR_DIFF_THRESHOLD = 2
+
+async function buildColourGainFilters(localPaths: string[], masterRGB: [number, number, number] | null): Promise<(string | null)[]> {
+  if (!masterRGB) return localPaths.map(() => null)
+  const gains: (string | null)[] = []
+  for (const p of localPaths) {
+    const rgb = await sampleCornerRGB(p)
+    if (!rgb) { gains.push(null); continue }
+    const diffs = [0, 1, 2].map((c) => Math.abs(rgb[c] - masterRGB[c]))
+    if (Math.max(...diffs) <= COLOUR_DIFF_THRESHOLD) { gains.push(null); continue }
+    const [gr, gg, gb] = [0, 1, 2].map((c) => {
+      const g = rgb[c] > 0 ? masterRGB[c] / rgb[c] : 1
+      return Math.min(COLOUR_GAIN_MAX, Math.max(COLOUR_GAIN_MIN, g))
+    })
+    gains.push(`colorchannelmixer=rr=${gr.toFixed(3)}:gg=${gg.toFixed(3)}:bb=${gb.toFixed(3)}`)
+  }
+  return gains
+}
+
 function buildTransitionsFilterComplex(
   videoLabels: string[], // ['v0', 'v1', ...] — already-normalized per-input labels
   audioLabels: string[], // ['a0', 'a1', ...]
@@ -226,7 +278,7 @@ export const assembleClips = createTool({
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'clip_assembly', subject: ASSEMBLY_SUBJECT }, ctx),
   execute: async (inputData, execContext) => {
-    const { clipFileIds, targetDurationSeconds, preserveAudio, aspectRatio, transitions, audioFileId, roomTone } = inputData as z.infer<typeof inputSchema>
+    const { clipFileIds, targetDurationSeconds, preserveAudio, aspectRatio, transitions, audioFileId, roomTone, masterStillFileId } = inputData as z.infer<typeof inputSchema>
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined
@@ -264,6 +316,18 @@ export const assembleClips = createTool({
     const probes: ClipProbe[] = []
     for (const p of localPaths) probes.push(await probeClip(p))
     const fps = chooseFrameRate(probes.map((p) => p.fps))
+
+    let masterRGB: [number, number, number] | null = null
+    if (masterStillFileId) {
+      try {
+        const presignedUrl = await fetchPresignedUrl(masterStillFileId, idToken)
+        const { filePath } = await downloadToSessionCache(scopeId, masterStillFileId, presignedUrl, MAX_CLIP_BYTES)
+        masterRGB = await sampleCornerRGB(filePath)
+      } catch (err) {
+        console.error(`[session:${sessionId}] assembleClips: failed to download master still for colour match:`, (err as Error).message)
+      }
+    }
+    const colourGains = await buildColourGainFilters(localPaths, masterRGB)
 
     // Charge BEFORE running ffmpeg — same settled ordering as every other
     // generation tool, even though this is local compute, not a vendor call:
@@ -317,9 +381,10 @@ export const assembleClips = createTool({
       // is false, exactly one video+audio pair when it's true.
       const [w, h] = aspectRatio === '9:16' ? ['1080', '1920'] : ['1920', '1080']
 
-      const videoFilterParts = localPaths.map((_, i) =>
-        `[${i}:v]setpts=PTS-STARTPTS,fps=${fps},scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}]`
-      )
+      const videoFilterParts = localPaths.map((_, i) => {
+        const colour = colourGains[i] ? `,${colourGains[i]}` : ''
+        return `[${i}:v]setpts=PTS-STARTPTS${colour},fps=${fps},scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}]`
+      })
 
       let filterComplex: string
       if (transitions && transitions.length > 0) {
@@ -501,6 +566,7 @@ export const assembleClips = createTool({
       ...(charged ? { creditsUsedMicro: amountMicro.toString() } : {}),
       jobId,
       fps,
+      ...(masterStillFileId ? { colourMatchedClips: colourGains.filter(Boolean).length } : {}),
     }
   },
 })
