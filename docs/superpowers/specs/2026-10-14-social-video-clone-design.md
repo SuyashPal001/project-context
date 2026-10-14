@@ -206,6 +206,20 @@ Checker rules:
 - **Every claim comes with its evidence frames.** Never auto-fix from an unverified claim: the first verifier also invented "the remote is hidden".
 - **One automatic retry** with the check's reason added; on a second failure, report it to the user.
 
+## 8a. Money safety (added 2026-10-15 — the user called this make-or-break)
+
+Every value that feeds a PAID generation is measured or checked, never a model's guess. The spike spent ~Rs 2,500 over 12 versions, mostly on avoidable mistakes.
+
+- **Measured moment times.** `break_down_video` refines every moment/move time Gemini gives (±1.5s window) to the real motion peak in that body area (ai-service motion curve). Gemini says what happens; code says exactly when. Each moment carries `measured: true|false`.
+- **Prompt check before every paid call.** A cheap text check compares the prompt to its plan line and the breakdown and blocks it when it adds things the reference doesn't show (e.g. "smiles"), contradicts it (legs left vs right), drops a key moment, or makes a hand act on something not in the start frame.
+- **Cheap → expensive** (phase 3): stills (checked) → a free animatic preview the user approves → clips.
+- **Retry cap** (phase 3): one automatic retry per failed item, then stop and tell the user.
+- **Cost meter** (phase 3): spent / wasted on retries / what failed, per job.
+- **Golden set.** The spike videos with measured correct answers (cuts, hidden cuts, moment times, leg sides, music facts); every prompt or model change is scored on it before shipping (a developer script, not an agent tool).
+- **Model settings.** The watch and check models are env settings (`VIDEO_WATCH_MODEL`, `VIDEO_CHECK_MODEL`, default `gemini-3.8-flash`) so 3.6/3.8 can be switched without code (3.8's price reportedly doubles 2027-01-01).
+
+Form: the checks and the prompt check are **code functions** the phase-3 pipeline always runs (the agent cannot skip them), not tools the agent chooses to call. Only `compare_to_reference` is also an agent tool, for "how close is it?".
+
 ## 9. Trick library
 
 Most viral videos reuse a small set of mechanics. Each recipe is parameterised code plus its required assets plus its own check:
