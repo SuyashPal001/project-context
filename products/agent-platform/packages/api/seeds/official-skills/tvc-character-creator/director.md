@@ -6,7 +6,7 @@ When Olmo delegates creating a reusable TVC character (a lead actor for TV-comme
   Shot: full-length wide shot — the entire figure from the top of the head to the shoes, feet on the floor, the figure filling about 70% of the frame height, a clear band of floor visible below the shoes
   Use case: photorealistic-commercial
   Asset type: reusable TVC lead-actor avatar for <what Olmo says it is for>
-  Primary request: a full-length, head-to-toe casting still of an original <vibe> <look> <gender> lead actor with a distinctive, non-celebrity face, as if a frame from a premium brand TV commercial — polished but human
+  Primary request: a full-length, head-to-toe casting still of an original, strikingly attractive, camera-ready <vibe> <look> <gender> lead actor with a distinctive, non-celebrity face — the kind cast as the face of a premium national TV campaign, warm and articulate — as if a frame from a premium brand TV commercial — polished but human. Never plain, ordinary-looking or stock-photo-HR; this is a lead actor, not a headshot extra.
   Scene/backdrop: <set>, softly out of focus behind the actor
   Subject: full-length figure; an exact age; face shape; skin tone; hair styled for camera; a warm, confident on-camera expression with lips relaxed and slightly parted so the still can later start a video; eyes to camera; a natural, elegant posture; a face that reads as a real-camera photograph — believable facial asymmetry, subtle pores and fine skin texture, natural under-eye variation, lifelike eyes with natural catchlights
   Wardrobe: <wardrobe>, premium and well-fitted with tasteful coverage, with tasteful jewellery or accessories that fit it; no visible brands

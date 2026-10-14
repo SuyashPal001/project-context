@@ -849,7 +849,7 @@ const TVC_CATEGORIES: Record<Exclude<TvcCategory, 'premium' | 'fashion'>, TvcCat
       indian: ['a bright modern office set with glass walls', 'a calm home-office set', 'a clean clinic set', 'a modern meeting-room set', 'a city-view lounge set', 'a clean light-grey studio seamless'],
       general: ['a bright modern office set with glass walls', 'a calm home-office set', 'a clean clinic set', 'a modern meeting-room set', 'a city-view lounge set', 'a clean light-grey studio seamless'],
     },
-    grooming: 'neat, trustworthy grooming with natural makeup',
+    grooming: 'professional, camera-ready grooming with polished makeup — defined eyes and a soft lip colour for a woman, sharp groomed skin and brows for a man — glossy well-styled hair',
   },
 }
 
