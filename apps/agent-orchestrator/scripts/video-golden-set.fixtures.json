@@ -1,0 +1,4 @@
+[
+  { "input": { "filePath": "${GOLDEN_DIR}/fan_reel.mp4" }, "groundTruth": { "cutCount": 0, "hiddenCuts": [5.4, 9.2, 12.7], "moments": [{ "what": "points remote up", "t_s": 1.25 }, { "what": "legs slide right", "t_s": 3.25 }], "legSides": ["image-right", "image-left", "image-right", "image-left"] } },
+  { "input": { "filePath": "${GOLDEN_DIR}/sony.mp4" }, "groundTruth": { "cutCount": 32, "hiddenCuts": [], "moments": [], "legSides": [] } }
+]

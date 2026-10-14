@@ -1,6 +1,6 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
-import { fetchVideo, type FetchedVideo } from './fetchVideo.js'
+import { fetchVideo, probe, type FetchedVideo } from './fetchVideo.js'
 import { watchVideo, type WatchOverview } from './watchVideo.js'
 import { aiService, type CutsResult, type HiddenCutsResult, type SoundResult } from './aiServiceClient.js'
 import { describeShots, type Shot } from './describeShots.js'
@@ -31,6 +31,16 @@ export function fillMissingShots(bounds: number[], shots: Shot[]): Shot[] {
 export async function breakDownVideo(input: { url?: string; fileId?: string }, ctx: { idToken: string; scopeId: string; conversationId: string }, tenantId?: string): Promise<Breakdown> {
   const video = await fetchVideo(input, ctx)
   if (video.tooLong) throw new Error(`The video is ${Math.round(video.durationS)}s long. Ask the user which part (up to 90s) to clone.`)
+  return breakDownFetched(video, tenantId)
+}
+
+// Golden set (spec §8a): the same pipeline on a local fixture file, no fetch or upload.
+export async function breakDownLocalFile(filePath: string, tenantId?: string): Promise<Breakdown> {
+  const p = await probe(filePath)
+  return breakDownFetched({ fileId: '', filePath, durationS: p.durationS, width: p.width, height: p.height, fps: p.fps, hasAudio: p.hasAudio, caption: null, song: null, youtubeUrl: null, platform: 'local', tooLong: false }, tenantId)
+}
+
+async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise<Breakdown> {
   const warnings: string[] = []
   const [overview, cuts, sound] = await Promise.all([
     watchVideo(video, tenantId),

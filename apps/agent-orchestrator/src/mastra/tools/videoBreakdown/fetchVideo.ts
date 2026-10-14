@@ -29,7 +29,7 @@ export function classifyLink(url: string): 'youtube' | 'instagram' | 'x' | 'face
 
 export interface FetchedVideo { fileId: string; filePath: string; durationS: number; width: number; height: number; fps: number; hasAudio: boolean; caption: string | null; song: { name: string; artist: string | null } | null; youtubeUrl: string | null; platform: string; tooLong: boolean }
 
-async function probe(filePath: string) {
+export async function probe(filePath: string) {
   const { stdout } = await execFile('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type,codec_name,width,height,r_frame_rate', '-of', 'json', filePath], { timeout: 30_000 })
   const p = JSON.parse(stdout) as { format: { duration: string }; streams: Array<{ codec_type: string; codec_name?: string; width?: number; height?: number; r_frame_rate?: string }> }
   const v = p.streams.find((s) => s.codec_type === 'video')

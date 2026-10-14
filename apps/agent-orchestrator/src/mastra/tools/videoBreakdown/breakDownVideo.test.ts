@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mergeBounds, fillMissingShots, breakDownVideo } from './breakDownVideo.js'
+import { mergeBounds, fillMissingShots, breakDownVideo, breakDownLocalFile } from './breakDownVideo.js'
+import { fetchVideo } from './fetchVideo.js'
 
 const watch = vi.fn()
 const ai = vi.fn()
 const describeShots = vi.fn()
 const checkShort = vi.fn()
-vi.mock('./fetchVideo.js', () => ({ fetchVideo: vi.fn(async () => ({ fileId: 'f', filePath: '/m/a.mp4', durationS: 14.9, width: 720, height: 1280, fps: 30, hasAudio: true, caption: null, youtubeUrl: null, platform: 'instagram', tooLong: false })) }))
+vi.mock('./fetchVideo.js', () => ({ probe: vi.fn(async () => ({ durationS: 14.9, width: 720, height: 1280, fps: 30, codec: 'h264', hasAudio: true })), fetchVideo: vi.fn(async () => ({ fileId: 'f', filePath: '/m/a.mp4', durationS: 14.9, width: 720, height: 1280, fps: 30, hasAudio: true, caption: null, youtubeUrl: null, platform: 'instagram', tooLong: false })) }))
 vi.mock('./watchVideo.js', () => ({ watchVideo: (...a: unknown[]) => watch(...a) }))
 vi.mock('./aiServiceClient.js', () => ({ aiService: (...a: unknown[]) => ai(...a) }))
 vi.mock('./describeShots.js', () => ({ describeShots: (...a: unknown[]) => describeShots(...a) }))
@@ -91,5 +92,14 @@ describe('breakDownVideo', () => {
     })
     await breakDownVideo({ url: 'https://www.instagram.com/p/x/' }, ctx)
     expect(refine.mock.calls[0][2]).toEqual([[6.9, 7.1], [4.5, 6.1]])
+  })
+  it('breaks down a local file without fetching or uploading (golden set)', async () => {
+    watch.mockResolvedValue(overview(['hard_cuts']))
+    ai.mockImplementation(async (route: string) => route === '/media/cuts' ? { cuts: [2, 5], fades: [], duration_s: 14.9 } : { curve_db: [], events: [], rhythm: [], silent_from_s: null, bpm: null, beats_s: [], has_audio: true })
+    vi.mocked(fetchVideo).mockClear()
+    const b = await breakDownLocalFile('/golden/fan_reel.mp4')
+    expect(fetchVideo).not.toHaveBeenCalled()
+    expect(b.video).toMatchObject({ durationS: 14.9, platform: 'local', youtubeUrl: null })
+    expect(ai.mock.calls[0][1]).toMatchObject({ path: '/golden/fan_reel.mp4' })
   })
 })
