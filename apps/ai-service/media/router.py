@@ -12,3 +12,11 @@ class PathBody(BaseModel):
 @router.post("/sound")
 def post_sound(body: PathBody):
     return sound.sound_timeline(str(safe_media_path(body.path)))
+from . import cuts
+
+class CutsBody(PathBody):
+    threshold: float = 0.5
+
+@router.post("/cuts")
+def post_cuts(body: CutsBody):
+    return cuts.find_cuts(str(safe_media_path(body.path)), body.threshold)
