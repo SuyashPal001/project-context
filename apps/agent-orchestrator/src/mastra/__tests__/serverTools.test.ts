@@ -66,6 +66,7 @@ describe('SERVER_TOOLS', () => {
       'ask_clarifying_questions',
       'break_down_video',
       'check_credit_plan',
+      'compare_to_reference',
       'crop_image',
       'draft_skill',
       'fetch_video',

@@ -49,3 +49,20 @@ describe('vision scorers', () => {
     expect(r.status).toBe('fail')
   })
 })
+
+describe('nothing to look at is never a pass', () => {
+  it('same person with no candidate frames is unknown', async () => {
+    const ask = vi.fn()
+    const r = await runGate(samePersonScorer, 'face', { ask, reference: img, frames: [] }, [])
+    expect(r.status).toBe('unknown')
+    expect(ask).not.toHaveBeenCalled()
+  })
+  it('prop count with no frames is unknown', async () => {
+    const r = await runGate(propCountScorer, 'props', { ask: vi.fn(), frames: [], prop: 'remote', expected: 1 }, [])
+    expect(r.status).toBe('unknown')
+  })
+  it('empty hand with no frames is unknown', async () => {
+    const r = await runGate(emptyHandScorer, 'empty-hand', { ask: vi.fn(), frames: [] }, [])
+    expect(r.status).toBe('unknown')
+  })
+})

@@ -1,3 +1,5 @@
 export { canvasComplianceScorer } from './canvasCompliance.js'
 export { clarificationToolUsageScorer } from './clarificationToolUsage.js'
 export { noProviderDisclosureScorer } from './noProviderDisclosure.js'
+export { propCountScorer, samePersonScorer, expressionScorer, poseLegsScorer, emptyHandScorer } from './video/visionScorers.js'
+export { promptCheckScorer } from './video/promptCheck.js'

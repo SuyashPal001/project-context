@@ -6,6 +6,7 @@ type Status = 'pass' | 'fail' | 'unknown'
 type Verdict = { status: Status; reason: string } & Record<string, unknown>
 export type VisionInput = { ask?: AskFn; tenantId?: string }
 const askFor = (input: VisionInput): AskFn => input.ask ?? gatewayAsk(input.tenantId ?? '', fetch, checkModel())
+const NO_FRAMES: Verdict = { status: 'unknown', reason: 'no frames to check' }
 const imgs = (label: string, frames: Img[]): AskPart[] => frames.flatMap((f, i) => [{ text: `${label} ${i + 1}:` }, { image: f }])
 
 // Function-based analyze steps: Mastra prompt-object judges are text-only, ours need images.
@@ -22,6 +23,7 @@ function videoScorer<I extends VisionInput>(id: string, description: string, ana
 }
 
 export const propCountScorer = videoScorer('video-prop-count', 'Exactly the expected number of a prop in every frame', async (input: VisionInput & { frames: Img[]; prop: string; expected: number }) => {
+  if (!input.frames.length) return NO_FRAMES
   const v = await askChecked(askFor(input), [...imgs('Frame', input.frames), { text: `For EACH frame in order, count how many ${input.prop} are visible (in hands or anywhere). Reply ONLY JSON {"counts":[n per frame]}` }], [{ key: 'counts', type: 'array' }])
   const counts = (v.counts as unknown[]).map(Number)
   if (counts.length !== input.frames.length || counts.some((c) => !Number.isFinite(c))) return { status: 'unknown', reason: 'checker skipped frames', counts }
@@ -30,6 +32,7 @@ export const propCountScorer = videoScorer('video-prop-count', 'Exactly the expe
 })
 
 export const samePersonScorer = videoScorer('video-same-person', 'Every frame shows the same person as the reference (8/10 or more)', async (input: VisionInput & { reference: Img; frames: Img[] }) => {
+  if (!input.frames.length) return NO_FRAMES
   const v = await askChecked(askFor(input), [{ text: 'IDENTITY REFERENCE:' }, { image: input.reference }, ...imgs('Candidate', input.frames), { text: 'Judge ONLY the face (bone structure, face shape, nose, eyes, brows, lips, jaw; ignore hair, makeup, outfit, pose, angle). For each candidate give a same-person score 1-10. Reply ONLY JSON {"scores":[n per candidate],"differences":"short"}' }], [{ key: 'scores', type: 'array' }])
   const scores = (v.scores as unknown[]).map(Number)
   if (scores.length !== input.frames.length || scores.some((s) => !Number.isFinite(s))) return { status: 'unknown', reason: 'checker skipped candidates', scores }
@@ -49,6 +52,7 @@ export const poseLegsScorer = videoScorer('video-pose-legs', 'Same pose and body
 })
 
 export const emptyHandScorer = videoScorer('video-empty-hand', 'No hand acts on an object that is not there', async (input: VisionInput & { frames: Img[] }) => {
+  if (!input.frames.length) return NO_FRAMES
   const v = await askChecked(askFor(input), [...imgs('Frame (time order)', input.frames), { text: 'Does any hand grab, touch, adjust or hold something that is NOT actually there (pinching air, adjusting a missing dupatta)? Reply ONLY JSON {"empty_hand_action":true|false,"what":"short"}' }], [{ key: 'empty_hand_action', type: 'boolean' }])
   return v.empty_hand_action === false ? { status: 'pass', reason: 'no empty-hand action' } : { status: 'fail', reason: String(v.what ?? 'hand acts on nothing') }
 })
