@@ -54,6 +54,7 @@ export const analyzeVideoTool = createTool({
       // Whole video plus audio, not sampled frames (spec §4: frames were half-blind and cost more).
       const { stdout } = await execFile('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath], { timeout: 30_000, signal: controller.signal })
       const durationSeconds = Math.round(parseFloat(stdout.trim()) * 100) / 100
+      if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return { success: false, error: 'could not read the video length; the file may be damaged' }
       const prompt = mode === 'quick'
         ? 'Watch and listen to this whole video. Give a brief 1-2 sentence summary of what happens.'
         : 'Watch and listen to this whole video. Describe it in detail — subjects, actions, sound, on-screen text and scene changes — with a rough timestamp range for every beat (e.g. "0.0s-3.2s: ...").'

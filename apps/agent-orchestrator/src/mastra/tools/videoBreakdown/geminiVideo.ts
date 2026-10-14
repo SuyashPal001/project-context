@@ -1,11 +1,9 @@
-import { execFile as execFileCb } from 'node:child_process'
-import { promisify } from 'node:util'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
+import { ffmpegToFile } from './atomicFfmpeg.js'
 import { persistCost } from '../../cost.js'
 
 // Whole video plus audio to Gemini, never frames-as-images: about 11x cheaper
 // and it hears the sound (spike 2026-10-11, spec §2).
-const execFile = promisify(execFileCb)
 const INFERENCE_GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 export const WATCH_MODEL = 'gemini-3.8-flash'
 const MAX_INLINE_BYTES = 15 * 1024 * 1024
@@ -48,11 +46,13 @@ export function asObject(v: unknown, listKey: string): Record<string, unknown> {
   throw new Error('unreadable model reply')
 }
 
-export async function prepareAnalysisCopy(filePath: string, signal?: AbortSignal): Promise<string> {
+// The analysis copy keeps only what Gemini samples (its fps) at 480p with mono
+// speech-grade audio, so minutes of video fit the inline limit (review I6), and
+// it is written atomically so an aborted transcode is never reused (review I5).
+export async function prepareAnalysisCopy(filePath: string, durationS: number, signal?: AbortSignal): Promise<string> {
   const out = `${filePath}.analysis.mp4`
-  if (!existsSync(out)) {
-    await execFile('ffmpeg', ['-v', 'error', '-y', '-i', filePath, '-vf', 'scale=480:-2', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '30', '-c:a', 'aac', '-b:a', '64k', out], { timeout: 180_000, signal })
-  }
+  const fps = String(fpsForDuration(durationS))
+  await ffmpegToFile(['-v', 'error', '-y', '-i', filePath, '-vf', 'scale=480:-2', '-r', fps, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '30', '-c:a', 'aac', '-ac', '1', '-b:a', '48k'], out, { timeout: 180_000, signal })
   if (statSync(out).size > MAX_INLINE_BYTES) throw new Error('video too large to analyse inline; pick a shorter segment')
   return out
 }
@@ -71,7 +71,7 @@ export async function askGeminiVideo(opts: {
   if (opts.video.youtubeUrl) {
     videoPart = { type: 'input_video', input_video: { url: opts.video.youtubeUrl, fps } }
   } else if (opts.video.filePath) {
-    const copy = await prepareAnalysisCopy(opts.video.filePath, opts.signal)
+    const copy = await prepareAnalysisCopy(opts.video.filePath, opts.durationS, opts.signal)
     videoPart = { type: 'input_video', input_video: { data: readFileSync(copy).toString('base64'), fps } }
   } else {
     throw new Error('askGeminiVideo needs a filePath or youtubeUrl')

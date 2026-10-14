@@ -23,7 +23,8 @@ export function mergeBounds(durationS: number, cuts: number[], hidden: number[],
 
 export function fillMissingShots(bounds: number[], shots: Shot[]): Shot[] {
   const byN = new Map(shots.map((s) => [s.n, s]))
-  return bounds.slice(0, -1).map((b, i) => byN.get(i + 1) ?? { n: i + 1, start_s: b, end_s: bounds[i + 1], subject: 'unclear', action: 'unclear' })
+  // Measured boundaries always win over the model's own shot times (review I1).
+  return bounds.slice(0, -1).map((b, i) => ({ ...(byN.get(i + 1) ?? { subject: 'unclear', action: 'unclear' }), n: i + 1, start_s: b, end_s: bounds[i + 1] }))
 }
 
 export async function breakDownVideo(input: { url?: string; fileId?: string }, ctx: { idToken: string; scopeId: string; conversationId: string }, tenantId?: string): Promise<Breakdown> {
@@ -49,7 +50,13 @@ export async function breakDownVideo(input: { url?: string; fileId?: string }, c
     shots = [{ n: 1, start_s: 0, end_s: video.durationS, subject: overview.format, action: 'near-still', story_role: 'endcard' }]
     soundArc = overview.sound
   } else {
-    const d = await describeShots(video, bounds, sound, tenantId)
+    let d: { shots: Shot[]; sound_arc: string } = { shots: [], sound_arc: '' }
+    try {
+      d = await describeShots(video, bounds, sound, tenantId)
+    } catch (e) {
+      // Keep the overview and measurements already paid for (review M3).
+      warnings.push(`shot descriptions unavailable (${(e as Error).message})`)
+    }
     shots = fillMissingShots(bounds, d.shots)
     soundArc = d.sound_arc
     if (shots.some((s) => s.subject === 'unclear')) warnings.push('some shots were skipped by the watcher and are marked unclear')

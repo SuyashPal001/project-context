@@ -29,9 +29,12 @@ export async function checkShortShots(video: { filePath: string }, shots: Shot[]
     if (!res.ok) return { checked: short.length, status: 'unknown', fixes: [] }
     const json = await res.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number } }
     if (tenantId && json.usage) persistCost({ tenantId, agentId: 'check-short-shots', workflowId: 'video-breakdown', model, inputTokens: json.usage.prompt_tokens ?? 0, outputTokens: json.usage.completion_tokens ?? 0 })
-    const verdicts = asObject(parseModelJson(json.choices?.[0]?.message?.content ?? ''), 'verdicts').verdicts as Array<{ n: number; ok?: boolean; subject?: string }> | undefined
+    const verdicts = asObject(parseModelJson(json.choices?.[0]?.message?.content ?? ''), 'verdicts').verdicts as Array<{ n: number | string; ok?: boolean; subject?: string }> | undefined
     if (!Array.isArray(verdicts)) return { checked: short.length, status: 'unknown', fixes: [] }
-    const fixes = verdicts.filter((v) => v.ok === false && typeof v.subject === 'string' && v.subject).map((v) => ({ n: v.n, subject: v.subject as string }))
+    const byN = new Map(verdicts.map((v) => [Number(v.n), v]))
+    // Partial answers are not a pass (review M4).
+    if (short.some((s) => !byN.has(s.n))) return { checked: short.length, status: 'unknown', fixes: [] }
+    const fixes = short.map((s) => byN.get(s.n)!).filter((v) => v.ok === false && typeof v.subject === 'string' && v.subject).map((v) => ({ n: Number(v.n), subject: v.subject as string }))
     return { checked: short.length, status: 'ok', fixes }
   } catch {
     return { checked: short.length, status: 'unknown', fixes: [] }

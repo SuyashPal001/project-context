@@ -101,3 +101,13 @@ export function getAdapterChain(model: string | undefined): ProviderAdapter[] {
 export function getPrivateOnlyChain(): ProviderAdapter[] {
   return [ollamaCB];
 }
+
+/**
+ * A request carrying a whole video must never fall back to a text-only local
+ * model: it would answer without seeing the video (review M14). Drops Ollama
+ * from the chain when any message has an input_video part.
+ */
+export function forVideoRequests<T>(chain: T[], messages: Array<{ content: unknown }>): T[] {
+  const hasVideo = messages.some((m) => Array.isArray(m.content) && (m.content as Array<{ type?: string }>).some((p) => p?.type === 'input_video'));
+  return hasVideo ? chain.filter((a) => (a as { adapterName?: string }).adapterName !== 'ollama') : chain;
+}

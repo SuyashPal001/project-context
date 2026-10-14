@@ -1,5 +1,17 @@
 import { describe, it, expect, vi } from 'vitest'
 import { aiService } from './aiServiceClient.js'
+import { findCutsTool } from './measureTools.js'
+
+vi.mock('./fetchVideo.js', () => ({ fetchVideo: vi.fn(async () => ({ filePath: '', durationS: 600, tooLong: true })) }))
+
+describe('measure tools on long videos (review M1)', () => {
+  it('refuse a video over 90s instead of running CPU work on it', async () => {
+    const rc = new Map([['idToken', 't'], ['sessionId', 's']])
+    const r = await (findCutsTool as unknown as { execute: (i: unknown, c: unknown) => Promise<{ success: boolean; error?: string }> }).execute({ url: 'https://x.com/a/status/1' }, { requestContext: { get: (k: string) => rc.get(k) } })
+    expect(r.success).toBe(false)
+    expect(r.error).toMatch(/which part/)
+  })
+})
 
 describe('aiService', () => {
   it('posts JSON with the internal key to AI_SERVICE_URL', async () => {

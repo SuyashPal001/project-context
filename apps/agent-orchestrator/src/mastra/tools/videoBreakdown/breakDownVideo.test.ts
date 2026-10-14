@@ -28,6 +28,11 @@ describe('mergeBounds', () => {
 })
 
 describe('fillMissingShots', () => {
+  it('always uses the measured boundaries, never the model’s own times (review I1)', () => {
+    const shots = fillMissingShots([0, 1.5, 4], [{ n: 1, start_s: 0, end_s: 2.2, subject: 'a', action: 'x' }, { n: 2, start_s: 2.2, end_s: 4, subject: 'b', action: 'y' }])
+    expect(shots.map((s) => [s.start_s, s.end_s])).toEqual([[0, 1.5], [1.5, 4]])
+    expect(shots[0].subject).toBe('a')
+  })
   it('keeps every segment even when the model skipped some', () => {
     const shots = fillMissingShots([0, 1, 2, 3], [{ n: 2, start_s: 1, end_s: 2, subject: 'x', action: 'y' }])
     expect(shots.map((s) => s.n)).toEqual([1, 2, 3])
@@ -59,6 +64,14 @@ describe('breakDownVideo', () => {
     expect(b.measured).toBe(false)
     expect(b.overview.change_style).toEqual(['hard_cuts'])
     expect(b.warnings.join(' ')).toMatch(/ai-service/)
+  })
+  it('keeps the paid overview and measurements when describing shots fails (review M3)', async () => {
+    watch.mockResolvedValue(overview(['hard_cuts']))
+    ai.mockImplementation(async (route: string) => route === '/media/cuts' ? { cuts: [2, 5], fades: [], duration_s: 14.9 } : { curve_db: [], events: [], rhythm: [], silent_from_s: null, bpm: null, beats_s: [], has_audio: true })
+    describeShots.mockRejectedValueOnce(new Error('gateway 502'))
+    const b = await breakDownVideo({ url: 'https://x.com/a/status/1' }, ctx)
+    expect(b.shots.map((s) => s.subject)).toEqual(['unclear', 'unclear', 'unclear'])
+    expect(b.warnings.join(' ')).toMatch(/shot descriptions unavailable/)
   })
   it('a near-still video becomes one shot without calling describe_shots', async () => {
     watch.mockResolvedValue(overview(['near_still'], 1))

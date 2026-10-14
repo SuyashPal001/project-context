@@ -2,7 +2,8 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { execFile as execFileCb } from 'node:child_process'
 import { promisify } from 'node:util'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, writeFileSync } from 'node:fs'
+import { ffmpegToFile } from './atomicFfmpeg.js'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { MEDIA_DIR } from '../../../types.js'
@@ -47,12 +48,34 @@ export async function fetchVideo(input: { url?: string; fileId?: string }, ctx: 
   if (input.url) {
     platform = classifyLink(input.url)
     if (platform === 'tiktok') throw new FetchRefused('TikTok links can’t be opened from our servers in India. Please download the video from TikTok and upload it here.')
+    // Only the platforms we support (spec §5.1); anything else would let a link make the VM fetch any host (review I7).
+    if (platform === 'other') throw new FetchRefused('I can open YouTube, Instagram, X, Facebook and LinkedIn links. For anything else, please download the video and upload it here.')
     if (platform === 'youtube') youtubeUrl = input.url
     filePath = join(MEDIA_DIR, `${ctx.scopeId}-link-${createHash('sha256').update(input.url).digest('hex').slice(0, 16)}.mp4`)
+    const sidecar = `${filePath}.meta.json`
+    const cached = existsSync(sidecar) ? JSON.parse(readFileSync(sidecar, 'utf8')) as { fileId: string; caption: string | null; song: FetchedVideo['song'] } : null
+    if (cached) {
+      ({ fileId, caption, song } = cached)
+    } else {
+      // Metadata first: a long video is refused before any download, convert or Drive upload (review I3).
+      let durationS = 0
+      try {
+        const { stdout } = await execFile('yt-dlp', ['-q', '--no-warnings', '--no-playlist', '--skip-download', '--print', '%(duration)s', '--print', '%(uploader)s | %(title)s', '--print', '%(track)s\t%(artist)s', '--', input.url], { timeout: 60_000 })
+        const [durLine = '', captionLine = '', songLine = ''] = stdout.split('\n')
+        durationS = parseFloat(durLine) || 0
+        caption = captionLine.trim().slice(0, 500) || null
+        const [track, artist] = songLine.split('\t').map((x) => x.trim())
+        // Song facts only from the platform's own metadata — never guessed (spec §9a).
+        song = track && track !== 'NA' ? { name: track, artist: artist && artist !== 'NA' ? artist : null } : null
+      } catch { /* metadata is best-effort; the download below reports real failures */ }
+      if (durationS > MAX_FULL_BREAKDOWN_S) {
+        return { fileId: '', filePath: '', durationS, width: 0, height: 0, fps: 0, hasAudio: false, caption, song, youtubeUrl, platform, tooLong: true }
+      }
+    }
     if (!existsSync(filePath)) {
       try {
         // Logged-out only (spec §11): never add cookies or an account here.
-        await execFile('yt-dlp', ['-q', '--no-warnings', '--no-playlist', '-S', 'vcodec:h264,res:1080,acodec:m4a', '--merge-output-format', 'mp4', '-o', filePath, input.url], { timeout: 240_000 })
+        await execFile('yt-dlp', ['-q', '--no-warnings', '--no-playlist', '--max-filesize', '300M', '-S', 'vcodec:h264,res:1080,acodec:m4a', '--merge-output-format', 'mp4', '-o', filePath, '--', input.url], { timeout: 240_000 })
       } catch (err) {
         const msg = `${(err as { stderr?: string }).stderr ?? ''} ${(err as Error).message}`
         throw new FetchRefused(/not granting access|login|private|cookies/i.test(msg)
@@ -60,14 +83,6 @@ export async function fetchVideo(input: { url?: string; fileId?: string }, ctx: 
           : 'I couldn’t download that link. Please download the video and upload it here.')
       }
     }
-    try {
-      const { stdout } = await execFile('yt-dlp', ['-q', '--no-warnings', '--skip-download', '--print', '%(uploader)s | %(title)s', '--print', '%(track)s\t%(artist)s', input.url], { timeout: 60_000 })
-      const [captionLine = '', songLine = ''] = stdout.split('\n')
-      caption = captionLine.trim().slice(0, 500) || null
-      const [track, artist] = songLine.split('\t').map((x) => x.trim())
-      // Song facts only from the platform's own metadata — never guessed (spec §9a).
-      song = track && track !== 'NA' ? { name: track, artist: artist && artist !== 'NA' ? artist : null } : null
-    } catch { caption = null }
   } else if (input.fileId) {
     const url = await fetchPresignedUrl(input.fileId, ctx.idToken)
     filePath = (await downloadToSessionCache(ctx.scopeId, input.fileId, url, MAX_SOURCE_BYTES)).filePath
@@ -77,14 +92,16 @@ export async function fetchVideo(input: { url?: string; fileId?: string }, ctx: 
   let meta = await probe(filePath)
   if (meta.codec !== 'h264') {
     const conv = filePath.replace(/\.mp4$/, '') + '.h264.mp4'
-    if (!existsSync(conv)) await execFile('ffmpeg', ['-v', 'error', '-y', '-i', filePath, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', conv], { timeout: 300_000 })
+    await ffmpegToFile(['-v', 'error', '-y', '-i', filePath, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac'], conv, { timeout: 300_000 })
     filePath = conv
     meta = await probe(filePath)
   }
-  if (input.url) {
+  if (input.url && !fileId) {
     const saved = await uploadGeneratedFile(ctx.idToken, { conversationId: ctx.conversationId, title: `Reference video (${platform})`, content: readFileSync(filePath), contentType: 'video/mp4', extension: 'mp4' })
     if (!saved) throw new Error('could not save the reference video')
     fileId = saved.fileId
+    // One Drive copy per link: later tool calls reuse it (review I4).
+    writeFileSync(`${filePath.replace(/\.h264\.mp4$/, '.mp4')}.meta.json`, JSON.stringify({ fileId, caption, song }))
   }
   return { fileId, filePath, durationS: meta.durationS, width: meta.width, height: meta.height, fps: meta.fps, hasAudio: meta.hasAudio, caption, song, youtubeUrl, platform, tooLong: meta.durationS > MAX_FULL_BREAKDOWN_S }
 }

@@ -12,7 +12,7 @@ import http from 'http';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { GoogleAuth } from 'google-auth-library';
 import type { OpenAIRequest } from './types';
-import { getAdapterChain, getPrivateOnlyChain, vertexBreaker, anthropicBreaker, ollamaBreaker, openrouterBreaker, vertexImageBreaker, geminiImageBreaker, vertexMusicBreaker, geminiVideoBreaker } from './router';
+import { getAdapterChain, forVideoRequests, getPrivateOnlyChain, vertexBreaker, anthropicBreaker, ollamaBreaker, openrouterBreaker, vertexImageBreaker, geminiImageBreaker, vertexMusicBreaker, geminiVideoBreaker } from './router';
 import { requestsTotal, fallbacksTotal, latency, renderMetrics } from './metrics';
 import { isAuthorizedCaller, extractServiceKey } from './auth';
 import { handleImageGenerations } from './images.js';
@@ -227,7 +227,7 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse):
 
   const model = payload.model ?? DEFAULT_MODEL;
   const restricted = req.headers['x-data-classification'] === 'restricted';
-  const chain = restricted ? getPrivateOnlyChain() : getAdapterChain(model);
+  const chain = forVideoRequests(restricted ? getPrivateOnlyChain() : getAdapterChain(model), payload.messages ?? []);
   const tried: string[] = [];
   let lastError: unknown;
 

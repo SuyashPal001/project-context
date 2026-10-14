@@ -64,7 +64,14 @@ export function normalizeOverview(v: Record<string, unknown>): WatchOverview {
 
 export async function watchVideo(video: Pick<FetchedVideo, 'filePath' | 'youtubeUrl' | 'durationS'>, tenantId?: string, fetchImpl?: typeof fetch): Promise<WatchOverview> {
   const { raw } = await askGeminiVideo({ video: video.youtubeUrl ? { youtubeUrl: video.youtubeUrl } : { filePath: video.filePath }, durationS: video.durationS, prompt: WATCH_PROMPT, tenantId, agentId: 'watch-video', fetchImpl })
-  return normalizeOverview(asObject(parseModelJson(raw), 'looks'))
+  let obj = asObject(parseModelJson(raw), 'looks')
+  // A reply nested under one key ({"overview": {...}}) is unwrapped.
+  const keys = Object.keys(obj)
+  if (keys.length === 1 && obj[keys[0]] && typeof obj[keys[0]] === 'object' && !Array.isArray(obj[keys[0]])) obj = obj[keys[0]] as Record<string, unknown>
+  const o = normalizeOverview(obj)
+  // Never a silently empty overview (review I2): no format, no looks and no change style means the reply was not an overview.
+  if (!o.format && o.looks.length === 0 && o.change_style.length === 0) throw new Error('unreadable model reply')
+  return o
 }
 
 export const watchVideoTool = createTool({

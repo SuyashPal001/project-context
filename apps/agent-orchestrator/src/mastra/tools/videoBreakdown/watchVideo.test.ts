@@ -32,3 +32,19 @@ describe('watchVideo', () => {
     expect(o.looks).toHaveLength(1)
   })
 })
+
+describe('watchVideo never returns a silently empty overview (review I2)', () => {
+  const reply = (content: string) => vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content } }], usage: {} })))
+  const yt = { filePath: undefined as unknown as string, youtubeUrl: 'https://youtu.be/x', durationS: 15 }
+  it('unwraps an overview nested under one key', async () => {
+    const o = await watchVideo(yt, undefined, reply('{"overview":{"format":"fan wipe","change_style":["hidden_changes"],"looks":[{"label":"a","approx_start_s":0,"approx_end_s":5}]}}'))
+    expect(o.format).toBe('fan wipe')
+    expect(o.looks).toHaveLength(1)
+  })
+  it('throws on an empty object', async () => {
+    await expect(watchVideo(yt, undefined, reply('{}'))).rejects.toThrow('unreadable model reply')
+  })
+  it('throws when the reply is a single look instead of an overview', async () => {
+    await expect(watchVideo(yt, undefined, reply('[{"label":"jacket","approx_start_s":0,"approx_end_s":14,"moves":[{"t_s":1,"limb":"arm","direction":"up","how":"raise"}]}]'))).rejects.toThrow('unreadable model reply')
+  })
+})

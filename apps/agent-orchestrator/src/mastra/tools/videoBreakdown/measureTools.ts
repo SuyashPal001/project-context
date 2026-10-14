@@ -18,6 +18,12 @@ function ctxOf(execContext: unknown): Ctx | null {
 const wrap = async <T>(fn: () => Promise<T>) => {
   try { return { success: true, result: await fn() } } catch (err) { return { success: false, error: err instanceof Error ? err.message : String(err) } }
 }
+// Over 90s: ask which part instead of running CPU-heavy work on the shared VM (review M1).
+async function shortVideo(input: { url?: string; fileId?: string }, ctx: Ctx) {
+  const v = await fetchVideo(input, ctx)
+  if (v.tooLong) throw new Error(`The video is ${Math.round(v.durationS)}s long. Ask the user which part (up to 90s) to break down.`)
+  return v
+}
 const out = z.object({ success: z.boolean(), result: z.any().optional(), error: z.string().optional() })
 const src = z.object({ fileId: z.string().optional(), url: z.string().url().optional() })
 
@@ -27,7 +33,7 @@ export const findCutsTool = createTool({
   inputSchema: src, outputSchema: out,
   execute: async (input, ec) => {
     const ctx = ctxOf(ec); if (!ctx) return { success: false, error: 'no_active_session' }
-    return wrap(async () => aiService<CutsResult>('/media/cuts', { path: (await fetchVideo(input, ctx)).filePath }))
+    return wrap(async () => aiService<CutsResult>('/media/cuts', { path: (await shortVideo(input, ctx)).filePath }))
   },
 })
 
@@ -38,7 +44,7 @@ export const findHiddenCutsTool = createTool({
   outputSchema: out,
   execute: async (input, ec) => {
     const ctx = ctxOf(ec); if (!ctx) return { success: false, error: 'no_active_session' }
-    return wrap(async () => aiService<HiddenCutsResult>('/media/hidden-cuts', { path: (await fetchVideo(input, ctx)).filePath, looks: input.looks, subject_box: input.subject_box }))
+    return wrap(async () => aiService<HiddenCutsResult>('/media/hidden-cuts', { path: (await shortVideo(input, ctx)).filePath, looks: input.looks, subject_box: input.subject_box }))
   },
 })
 
@@ -48,6 +54,6 @@ export const soundTimelineTool = createTool({
   inputSchema: src, outputSchema: out,
   execute: async (input, ec) => {
     const ctx = ctxOf(ec); if (!ctx) return { success: false, error: 'no_active_session' }
-    return wrap(async () => aiService<SoundResult>('/media/sound', { path: (await fetchVideo(input, ctx)).filePath }))
+    return wrap(async () => aiService<SoundResult>('/media/sound', { path: (await shortVideo(input, ctx)).filePath }))
   },
 })

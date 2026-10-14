@@ -41,3 +41,18 @@ describe('getPrivateOnlyChain', () => {
     expect(names).toEqual(['ollama']);
   });
 });
+
+import { forVideoRequests } from './router';
+
+describe('forVideoRequests (review M14)', () => {
+  const a = (name: string) => ({ adapterName: name }) as never;
+  const chain = [a('vertex'), a('gemini'), a('ollama')];
+  it('drops the text-only local fallback when a message carries a video', () => {
+    const msgs = [{ role: 'user', content: [{ type: 'input_video', input_video: { data: 'AA' } }] }] as never;
+    expect(forVideoRequests(chain, msgs).map((x: { adapterName: string }) => x.adapterName)).toEqual(['vertex', 'gemini']);
+  });
+  it('leaves non-video requests alone', () => {
+    const msgs = [{ role: 'user', content: 'hi' }] as never;
+    expect(forVideoRequests(chain, msgs)).toHaveLength(3);
+  });
+});

@@ -8,8 +8,9 @@ vi.mock('../mediaCache.js', () => ({
   fetchPresignedUrl: vi.fn().mockResolvedValue('https://example.com/signed'),
   downloadToSessionCache: vi.fn().mockResolvedValue({ filePath: '/tmp/fake.mp4', buf: Buffer.from('fake-video'), mimeType: 'video/mp4' }),
 }))
+let durStdout = '12.5\n'
 vi.mock('node:child_process', () => ({
-  execFile: (_f: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '12.5\n', stderr: '' }),
+  execFile: (_f: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: durStdout, stderr: '' }),
 }))
 vi.mock('../../cost.js', () => ({ persistCost: vi.fn() }))
 
@@ -40,6 +41,14 @@ describe('analyzeVideoTool', () => {
     await analyzeVideoTool.execute!({ fileId: 'f1', mode: 'deep' } as any, ctx())
     expect(ask.mock.calls[0][0].prompt).not.toMatch(/timestamp range/)
     expect(ask.mock.calls[1][0].prompt).toMatch(/timestamp range/)
+  })
+
+  it('returns a clear error instead of NaN when the duration cannot be read (review I6)', async () => {
+    durStdout = '\n'
+    const r = await analyzeVideoTool.execute!({ fileId: 'f1', mode: 'quick' } as any, ctx())
+    durStdout = '12.5\n'
+    expect(r).toMatchObject({ success: false })
+    expect(ask).not.toHaveBeenCalled()
   })
 
   it('returns a structured error when the watch call fails', async () => {

@@ -1,26 +1,38 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { classifyLink, fetchVideo, FetchRefused } from './fetchVideo.js'
+import { uploadGeneratedFile } from '../../../persistence.js'
 
 const execCalls: Array<{ file: string; args: string[] }> = []
 let probeJson = ''
 let ytdlpFails = ''
+let metaDuration = '15'
+const files = new Map<string, Buffer>()
 vi.mock('node:child_process', () => ({
   execFile: (file: string, args: string[], _o: unknown, cb: (e: Error | null, r?: { stdout: string; stderr: string }) => void) => {
     execCalls.push({ file, args })
     if (file === 'yt-dlp' && ytdlpFails) return cb(Object.assign(new Error('yt-dlp failed'), { stderr: ytdlpFails }))
     if (file === 'ffprobe') return cb(null, { stdout: probeJson, stderr: '' })
-    if (file === 'yt-dlp' && args.includes('--print')) return cb(null, { stdout: 'author | caption text\nAs It Was\tHarry Styles\n', stderr: '' })
+    if (file === 'yt-dlp' && args.includes('--skip-download')) return cb(null, { stdout: `${metaDuration}\nauthor | caption text\nAs It Was\tHarry Styles\n`, stderr: '' })
+    if (file === 'yt-dlp') { files.set(args[args.indexOf('-o') + 1], Buffer.from('mp4')) }
+    if (file === 'ffmpeg') { files.set(args[args.length - 1], Buffer.from('mp4')) }
     cb(null, { stdout: '', stderr: '' })
   },
 }))
-vi.mock('node:fs', async (orig) => ({ ...(await orig<typeof import('node:fs')>()), readFileSync: vi.fn(() => Buffer.from('mp4')), existsSync: vi.fn(() => false) }))
+vi.mock('node:fs', async (orig) => ({
+  ...(await orig<typeof import('node:fs')>()),
+  existsSync: vi.fn((p: string) => files.has(p)),
+  readFileSync: vi.fn((p: string) => files.get(p) ?? Buffer.from('mp4')),
+  writeFileSync: vi.fn((p: string, d: string | Buffer) => { files.set(p, Buffer.from(d)) }),
+  renameSync: vi.fn((a: string, b: string) => { files.set(b, files.get(a) ?? Buffer.from('')); files.delete(a) }),
+  unlinkSync: vi.fn((p: string) => { files.delete(p) }),
+}))
 vi.mock('../../../persistence.js', () => ({ uploadGeneratedFile: vi.fn(async () => ({ fileId: 'file-new', name: 'x.mp4', type: 'video/mp4', size: 3 })) }))
 vi.mock('../mediaCache.js', () => ({ fetchPresignedUrl: vi.fn(async () => 'https://s3/x'), downloadToSessionCache: vi.fn(async () => ({ filePath: '/cache/s-f.mp4', buf: Buffer.from(''), mimeType: 'video/mp4' })) }))
 
 const ctx = { idToken: 't', scopeId: 's', conversationId: 'c' }
 const probe = (codec: string, dur: number) => JSON.stringify({ format: { duration: String(dur) }, streams: [{ codec_type: 'video', codec_name: codec, width: 720, height: 1280, r_frame_rate: '30/1' }, { codec_type: 'audio' }] })
 
-beforeEach(() => { execCalls.length = 0; ytdlpFails = ''; probeJson = probe('h264', 15) })
+beforeEach(() => { execCalls.length = 0; ytdlpFails = ''; metaDuration = '15'; probeJson = probe('h264', 15); files.clear(); vi.mocked(uploadGeneratedFile).mockClear() })
 
 describe('classifyLink', () => {
   it('knows the platforms, including short links', () => {
@@ -57,10 +69,38 @@ describe('fetchVideo', () => {
     const v = await fetchVideo({ url: 'https://www.instagram.com/p/x/' }, ctx)
     expect(v.song).toEqual({ name: 'As It Was', artist: 'Harry Styles' })
   })
-  it('flags videos over 90s as tooLong', async () => {
-    probeJson = probe('h264', 178)
+  it('flags videos over 90s as tooLong BEFORE downloading or saving anything (review I3)', async () => {
+    metaDuration = '178'
     const v = await fetchVideo({ url: 'https://x.com/a/status/1' }, ctx)
     expect(v.tooLong).toBe(true)
+    expect(execCalls.some((c) => c.file === 'yt-dlp' && !c.args.includes('--skip-download'))).toBe(false)
+    expect(uploadGeneratedFile).not.toHaveBeenCalled()
+  })
+  it('refuses links outside the supported platforms without fetching them (review I7)', async () => {
+    await expect(fetchVideo({ url: 'http://10.0.0.5/secret.mp4' }, ctx)).rejects.toBeInstanceOf(FetchRefused)
+    expect(execCalls).toEqual([])
+  })
+  it('ends yt-dlp options with -- so a URL can never be read as an option, and skips playlists (review I7)', async () => {
+    await fetchVideo({ url: 'https://www.youtube.com/watch?v=abc&list=PL1' }, ctx)
+    for (const c of execCalls.filter((x) => x.file === 'yt-dlp')) {
+      expect(c.args[c.args.length - 2]).toBe('--')
+      expect(c.args).toContain('--no-playlist')
+    }
+  })
+  it('uploads the reference to Drive only once per link (review I4)', async () => {
+    await fetchVideo({ url: 'https://www.instagram.com/p/x/' }, ctx)
+    const second = await fetchVideo({ url: 'https://www.instagram.com/p/x/' }, ctx)
+    expect(uploadGeneratedFile).toHaveBeenCalledTimes(1)
+    expect(second.fileId).toBe('file-new')
+    expect(second.song).toEqual({ name: 'As It Was', artist: 'Harry Styles' })
+  })
+  it('writes the H.264 conversion to a temp name and renames it, so a killed ffmpeg never leaves a cached partial (review I5)', async () => {
+    probeJson = probe('vp9', 15)
+    await fetchVideo({ url: 'https://www.facebook.com/reel/1' }, ctx)
+    const ff = execCalls.find((c) => c.file === 'ffmpeg')!
+    expect(ff.args[ff.args.length - 1]).toMatch(/\.tmp-/)
+    expect([...files.keys()].some((k) => k.endsWith('.h264.mp4'))).toBe(true)
+    expect([...files.keys()].some((k) => k.includes('.tmp-'))).toBe(false)
   })
   it('turns an Instagram "not granting access" failure into a FetchRefused asking for an upload', async () => {
     ytdlpFails = 'ERROR: [Instagram] x: Instagram API is not granting access'
