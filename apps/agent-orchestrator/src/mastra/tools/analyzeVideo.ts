@@ -1,54 +1,19 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { fetchPresignedUrl, downloadToSessionCache } from './mediaCache.js'
-import { extractVideoFrames } from '../../media.js'
-import { persistCost } from '../cost.js'
+import { execFile as execFileCb } from 'node:child_process'
+import { promisify } from 'node:util'
+import { askGeminiVideo } from './videoBreakdown/geminiVideo.js'
 
-const INFERENCE_GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
+const execFile = promisify(execFileCb)
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024
-const QUICK_FRAMES = 8
-const DEEP_FRAMES = 20
-const QUICK_TIMEOUT_MS = 45_000
+const QUICK_TIMEOUT_MS = 90_000 // whole-video watch + a 480p analysis copy; 45s was sized for 8 frames
 const DEEP_TIMEOUT_MS = 150_000
-
-async function callGatewayForFrames(
-  frames: Array<{ base64: string; mimeType: string; timestampSeconds: number }>,
-  mode: 'quick' | 'deep',
-  signal: AbortSignal,
-): Promise<{ text: string; usage?: { prompt_tokens?: number; completion_tokens?: number } }> {
-  const prompt = mode === 'quick'
-    ? 'Give a brief 1-2 sentence summary of what happens in this video, based on these sampled frames. Each frame is labeled with its real timestamp.'
-    : 'Describe this video in detail — subjects, actions, and any notable scene changes across these sampled frames. Each frame is labeled with its real timestamp; for every notable beat or moment, give a rough timestamp range (e.g. "0.0s-3.2s: ...") rather than only a plain description.'
-  const response = await fetch(`${INFERENCE_GATEWAY_URL}/v1/chat/completions`, {
-    method: 'POST',
-    signal,
-    headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-    body: JSON.stringify({
-      model: 'gemini-3.6-flash',
-      temperature: 0.1,
-      max_tokens: mode === 'quick' ? 512 : 4096,
-      messages: [{
-        role: 'user',
-        content: [
-          ...frames.flatMap(f => [
-            { type: 'text' as const, text: `Frame at t=${f.timestampSeconds.toFixed(1)}s` },
-            { type: 'image_url' as const, image_url: { url: f.base64 } },
-          ]),
-          { type: 'text' as const, text: prompt },
-        ],
-      }],
-    }),
-  })
-  if (!response.ok) throw new Error(`gateway HTTP ${response.status}`)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result = await response.json() as any
-  return { text: result?.choices?.[0]?.message?.content ?? '', usage: result?.usage }
-}
 
 export const analyzeVideoTool = createTool({
   id: 'analyze_video',
   description:
-    'Understand the content of an attached video file by sampling frames, with real timestamps. ' +
+    'Understand the content of an attached video file by watching and listening to the whole video, with rough timestamps. ' +
     'Use mode "quick" for a brief summary, "deep" for a detailed description with rough timestamp ranges per beat. ' +
     'Returns durationSeconds for callers (e.g. short-drama-stitch) that need the source clip\'s real length.',
   inputSchema: z.object({
@@ -86,22 +51,14 @@ export const analyzeVideoTool = createTool({
       // beyond) rather than one turn — see the doc comment on sessionCache in
       // mediaCache.ts. Falls back to sessionId only if tenantId is unavailable.
       const { filePath } = await downloadToSessionCache(tenantId ?? sessionId, inputData.fileId, presignedUrl, MAX_VIDEO_BYTES, controller.signal)
-      const maxFrames = mode === 'deep' ? DEEP_FRAMES : QUICK_FRAMES
-      const { frames, durationSeconds } = await extractVideoFrames(filePath, inputData.fileId, sessionId, maxFrames, controller.signal)
-      if (frames.length === 0) return { success: false, error: 'no frames could be extracted' }
-
-      const { text, usage } = await callGatewayForFrames(frames, mode, controller.signal)
-      if (tenantId && usage) {
-        persistCost({
-          tenantId,
-          agentId: 'analyze-video',
-          workflowId: 'media-understanding',
-          model: 'gemini-3.6-flash',
-          inputTokens: usage.prompt_tokens ?? 0,
-          outputTokens: usage.completion_tokens ?? 0,
-        })
-      }
-      return { success: true, summary: text, frameCount: frames.length, durationSeconds }
+      // Whole video plus audio, not sampled frames (spec §4: frames were half-blind and cost more).
+      const { stdout } = await execFile('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath], { timeout: 30_000, signal: controller.signal })
+      const durationSeconds = Math.round(parseFloat(stdout.trim()) * 100) / 100
+      const prompt = mode === 'quick'
+        ? 'Watch and listen to this whole video. Give a brief 1-2 sentence summary of what happens.'
+        : 'Watch and listen to this whole video. Describe it in detail — subjects, actions, sound, on-screen text and scene changes — with a rough timestamp range for every beat (e.g. "0.0s-3.2s: ...").'
+      const { raw } = await askGeminiVideo({ video: { filePath }, durationS: durationSeconds, prompt, tenantId, agentId: 'analyze-video', signal: controller.signal })
+      return { success: true, summary: raw, durationSeconds }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       if (message.toLowerCase().includes('abort')) {

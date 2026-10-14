@@ -200,6 +200,15 @@ describe('OFFICIAL_SKILLS', () => {
     expect(card).not.toMatch(/forVoiceoverBlock|overlay_text|plan_tvc|composite_end_card|assemble_clips|trim_clip/);
   });
 
+  it('template-video starts a shared video with break_down_video (append only)', () => {
+    const skill = OFFICIAL_SKILLS.find((s) => s.slug === 'template-video')!;
+    const card = readFileSync(skill.file, 'utf8');
+    expect(card).toMatch(/7\. When the user shares a video link or attaches a video to clone .*first call break_down_video/);
+    expect(card).toMatch(/over 90 seconds, ask which part to clone/);
+    // Item 6 is still there, word for word.
+    expect(card).toMatch(/6\. Before step 3's analysis \(adds to step 3\)/);
+  });
+
   it('template-video reads retrieve_template before paying for analysis (append only)', () => {
     const skill = OFFICIAL_SKILLS.find((s) => s.slug === 'template-video')!;
     const card = readFileSync(skill.file, 'utf8');

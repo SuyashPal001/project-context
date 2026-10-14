@@ -38,6 +38,7 @@ import { requestUploadTool } from '../tools/requestUpload.js'
 import { renderCanvas } from '../tools/renderCanvas.js'
 import { analyzeAudioTool } from '../tools/analyzeAudio.js'
 import { analyzeVideoTool } from '../tools/analyzeVideo.js'
+import { fetchVideoTool, watchVideoTool, findCutsTool, findHiddenCutsTool, soundTimelineTool, breakDownVideoTool } from '../tools/videoBreakdown/index.js'
 import { draftSkillTool } from '../tools/draftSkill.js'
 import { saveSkillTool } from '../tools/saveSkill.js'
 import { buildOlmoDelegates } from './olmoDelegates.js'
@@ -195,6 +196,13 @@ export const SERVER_TOOLS = {
   render_canvas: renderCanvas,
   analyze_audio: analyzeAudioTool,
   analyze_video: analyzeVideoTool,
+  // Clone a shared reel: fetch, watch whole video + audio, measured cuts/hidden cuts/sound, full breakdown.
+  fetch_video: fetchVideoTool,
+  watch_video: watchVideoTool,
+  find_cuts: findCutsTool,
+  find_hidden_cuts: findHiddenCutsTool,
+  sound_timeline: soundTimelineTool,
+  break_down_video: breakDownVideoTool,
   // Two-step, user-triggered only — the tool descriptions tell the model
   // never to call either on its own initiative. draft_skill has no approval
   // gate (nothing to show yet); save_skill does. See saveSkill.ts for the

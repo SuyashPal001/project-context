@@ -64,9 +64,13 @@ describe('SERVER_TOOLS', () => {
       'analyze_audio',
       'analyze_video',
       'ask_clarifying_questions',
+      'break_down_video',
       'check_credit_plan',
       'crop_image',
       'draft_skill',
+      'fetch_video',
+      'find_cuts',
+      'find_hidden_cuts',
       'find_in_folder',
       'find_past_tasks',
       // Present while OLMO_DIRECT_IMAGE is not '0' (the default).
@@ -83,7 +87,9 @@ describe('SERVER_TOOLS', () => {
       'review_shots',
       'save_skill',
       'show_files',
+      'sound_timeline',
       'start_task',
+      'watch_video',
       'web_fetch',
     ])
   })

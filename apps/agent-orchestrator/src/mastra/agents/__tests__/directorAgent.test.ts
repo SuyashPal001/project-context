@@ -35,6 +35,12 @@ describe('directorAgent tool registration', () => {
     )
   })
 
+  it('has the video breakdown tools registered, needed for cloning a shared video', async () => {
+    const tools = ['fetch_video', 'watch_video', 'find_cuts', 'find_hidden_cuts', 'sound_timeline', 'break_down_video']
+    expect(Object.keys(await directorAgent.listTools())).toEqual(expect.arrayContaining(tools))
+    expect(Object.keys(await directorAgentDelegate.listTools())).toEqual(expect.arrayContaining(tools))
+  })
+
   it('has generate_narration, lipsync, and assemble_clips registered, needed for talking-head', async () => {
     const directorTools = await directorAgent.listTools()
     const delegateTools = await directorAgentDelegate.listTools()
