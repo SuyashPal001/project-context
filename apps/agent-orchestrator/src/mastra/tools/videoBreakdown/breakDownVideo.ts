@@ -5,6 +5,7 @@ import { watchVideo, type WatchOverview } from './watchVideo.js'
 import { aiService, type CutsResult, type HiddenCutsResult, type SoundResult } from './aiServiceClient.js'
 import { describeShots, type Shot } from './describeShots.js'
 import { checkShortShots } from './checkShortShots.js'
+import { refineMoments } from './refineMoments.js'
 
 export interface Breakdown {
   video: Omit<FetchedVideo, 'filePath'>; overview: WatchOverview; measured: boolean
@@ -43,6 +44,13 @@ export async function breakDownVideo(input: { url?: string; fileId?: string }, c
     } catch (e) { warnings.push(`hidden cuts not measured (${(e as Error).message})`) }
   }
   const measured = cuts !== null && sound !== null
+  const exclude: Array<[number, number]> = [
+    ...(cuts?.cuts ?? []).map((c) => [Math.round((c - 0.1) * 100) / 100, Math.round((c + 0.1) * 100) / 100] as [number, number]),
+    ...hidden.map((h) => h.covered_s),
+  ]
+  const r = await refineMoments(video.filePath, overview, exclude)
+  const refinedOverview = r.overview
+  if (r.unmeasured) warnings.push(`${r.unmeasured} moment time(s) could not be measured and are Gemini's estimate`)
   const bounds = mergeBounds(video.durationS, cuts?.cuts ?? [], hidden.map((h) => h.at_s), (cuts?.fades ?? []).map((f) => f[0]))
   let shots: Shot[]
   let soundArc = ''
@@ -69,7 +77,7 @@ export async function breakDownVideo(input: { url?: string; fileId?: string }, c
   if (check.status === 'unknown') warnings.push('short-shot picture check unavailable')
   const { filePath: _fp, ...videoOut } = video
   const soundOut = sound ? (({ curve_db: _c, ...rest }) => rest)(sound) : null
-  return { video: videoOut, overview, measured, cuts, hidden_cuts: hidden, sound: soundOut, shots, sound_arc: soundArc, short_shot_check: { checked: check.checked, status: check.status }, warnings }
+  return { video: videoOut, overview: refinedOverview, measured, cuts, hidden_cuts: hidden, sound: soundOut, shots, sound_arc: soundArc, short_shot_check: { checked: check.checked, status: check.status }, warnings }
 }
 
 export const breakDownVideoTool = createTool({

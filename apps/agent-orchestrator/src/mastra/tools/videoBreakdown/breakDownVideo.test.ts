@@ -9,13 +9,15 @@ vi.mock('./fetchVideo.js', () => ({ fetchVideo: vi.fn(async () => ({ fileId: 'f'
 vi.mock('./watchVideo.js', () => ({ watchVideo: (...a: unknown[]) => watch(...a) }))
 vi.mock('./aiServiceClient.js', () => ({ aiService: (...a: unknown[]) => ai(...a) }))
 vi.mock('./describeShots.js', () => ({ describeShots: (...a: unknown[]) => describeShots(...a) }))
+const refine = vi.fn(async (...a: unknown[]) => ({ overview: a[1], refined: 0, unmeasured: 0 }))
+vi.mock('./refineMoments.js', () => ({ refineMoments: (...a: unknown[]) => refine(...a) }))
 vi.mock('./checkShortShots.js', () => ({ checkShortShots: (...a: unknown[]) => checkShort(...a) }))
 
 const ctx = { idToken: 't', scopeId: 's', conversationId: 'c' }
 const overview = (styles: string[], looks = 4) => ({ change_style: styles, looks: Array.from({ length: looks }, (_, i) => ({ label: `l${i}`, approx_start_s: i * 3, approx_end_s: i * 3 + 2 })), subject_box: null })
 
 beforeEach(() => {
-  watch.mockReset(); ai.mockReset(); describeShots.mockReset(); checkShort.mockReset()
+  watch.mockReset(); ai.mockReset(); refine.mockClear(); describeShots.mockReset(); checkShort.mockReset()
   describeShots.mockResolvedValue({ shots: [], sound_arc: '' })
   checkShort.mockResolvedValue({ checked: 0, status: 'ok', fixes: [] })
 })
@@ -79,5 +81,15 @@ describe('breakDownVideo', () => {
     const b = await breakDownVideo({ url: 'https://lnkd.in/p/x' }, ctx)
     expect(describeShots).not.toHaveBeenCalled()
     expect(b.shots).toHaveLength(1)
+  })
+  it('refines moment times, excluding hard cuts and covered spans', async () => {
+    watch.mockResolvedValue(overview(['hidden_changes']))
+    ai.mockImplementation(async (route: string) => {
+      if (route === '/media/cuts') return { cuts: [7.0], fades: [], duration_s: 14.9 }
+      if (route === '/media/hidden-cuts') return { hidden_cuts: [{ from: 'l0', to: 'l1', at_s: 5.43, covered_s: [4.5, 6.1] }], cover_threshold: 0.6 }
+      return { curve_db: [], events: [], rhythm: [], silent_from_s: null, bpm: null, beats_s: [], has_audio: true }
+    })
+    await breakDownVideo({ url: 'https://www.instagram.com/p/x/' }, ctx)
+    expect(refine.mock.calls[0][2]).toEqual([[6.9, 7.1], [4.5, 6.1]])
   })
 })
