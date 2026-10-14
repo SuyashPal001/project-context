@@ -40,7 +40,7 @@ export function parseJsonObject(raw: string): Record<string, unknown> | null {
 
 /** The gateway's chat endpoint on the Pro check model. Retries once; then
  *  throws CheckUnavailableError — callers report "unchecked", never a pass. */
-export function gatewayAsk(tenantId: string, fetchImpl: typeof fetch = fetch): AskFn {
+export function gatewayAsk(tenantId: string, fetchImpl: typeof fetch = fetch, model: string = PRO_CHECK_MODEL): AskFn {
   return async (parts) => {
     const content = parts.map((p) => ('text' in p
       ? { type: 'text', text: p.text }
@@ -51,12 +51,12 @@ export function gatewayAsk(tenantId: string, fetchImpl: typeof fetch = fetch): A
         const res = await fetchImpl(`${INFERENCE_GATEWAY_URL}/v1/chat/completions`, {
           method: 'POST', signal: AbortSignal.timeout(ASK_TIMEOUT_MS),
           headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-          body: JSON.stringify({ model: PRO_CHECK_MODEL, temperature: 0, max_tokens: 4000, messages: [{ role: 'user', content }] }),
+          body: JSON.stringify({ model, temperature: 0, max_tokens: 4000, messages: [{ role: 'user', content }] }),
         })
         if (!res.ok) throw new Error(`gateway ${res.status}`)
         const json = await res.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number } }
         if (tenantId && json.usage) {
-          persistCost({ tenantId, agentId: 'check-clip', workflowId: 'media-understanding', model: PRO_CHECK_MODEL, inputTokens: json.usage.prompt_tokens ?? 0, outputTokens: json.usage.completion_tokens ?? 0 })
+          persistCost({ tenantId, agentId: 'check-clip', workflowId: 'media-understanding', model, inputTokens: json.usage.prompt_tokens ?? 0, outputTokens: json.usage.completion_tokens ?? 0 })
         }
         const v = parseJsonObject(json.choices?.[0]?.message?.content ?? '')
         if (!v) throw new Error('unreadable verdict')
@@ -76,10 +76,10 @@ export function gatewayAsk(tenantId: string, fetchImpl: typeof fetch = fetch): A
 // Treated exactly like an unreadable verdict: retry once, then throw —
 // callers (checkClip.ts, checkStill.ts) already report CheckUnavailableError
 // as "unchecked", never a pass.
-export type ExpectKeys = Array<{ key: string; type: 'boolean' | 'array' }>
+export type ExpectKeys = Array<{ key: string; type: 'boolean' | 'array' | 'number' | 'string' }>
 
 function verdictHasExpectedKeys(v: Record<string, unknown>, expectKeys: ExpectKeys): boolean {
-  return expectKeys.every(({ key, type }) => (type === 'array' ? Array.isArray(v[key]) : typeof v[key] === 'boolean'))
+  return expectKeys.every(({ key, type }) => (type === 'array' ? Array.isArray(v[key]) : typeof v[key] === type))
 }
 
 export async function askChecked(ask: AskFn, parts: AskPart[], expectKeys: ExpectKeys): Promise<Record<string, unknown>> {

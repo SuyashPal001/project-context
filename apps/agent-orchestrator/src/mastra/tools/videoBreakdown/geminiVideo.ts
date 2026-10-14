@@ -1,11 +1,11 @@
 import { readFileSync, statSync } from 'node:fs'
 import { ffmpegToFile } from './atomicFfmpeg.js'
 import { persistCost } from '../../cost.js'
+import { watchModel } from './models.js'
 
 // Whole video plus audio to Gemini, never frames-as-images: about 11x cheaper
 // and it hears the sound (spike 2026-10-11, spec §2).
 const INFERENCE_GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
-export const WATCH_MODEL = 'gemini-3.8-flash'
 const MAX_INLINE_BYTES = 15 * 1024 * 1024
 const ASK_TIMEOUT_MS = 240_000
 
@@ -77,16 +77,17 @@ export async function askGeminiVideo(opts: {
     throw new Error('askGeminiVideo needs a filePath or youtubeUrl')
   }
   const fetchImpl = opts.fetchImpl ?? fetch
+  const model = watchModel()
   const res = await fetchImpl(`${INFERENCE_GATEWAY_URL}/v1/chat/completions`, {
     method: 'POST',
     signal: opts.signal ?? AbortSignal.timeout(ASK_TIMEOUT_MS),
     headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-    body: JSON.stringify({ model: WATCH_MODEL, temperature: 0.1, max_tokens: 16000, thinkingLevel: 'LOW', messages: [{ role: 'user', content: [videoPart, { type: 'text', text: opts.prompt }] }] }),
+    body: JSON.stringify({ model, temperature: 0.1, max_tokens: 16000, thinkingLevel: 'LOW', messages: [{ role: 'user', content: [videoPart, { type: 'text', text: opts.prompt }] }] }),
   })
   if (!res.ok) throw new Error(`gateway ${res.status}`)
   const json = await res.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number } }
   const usage = { prompt_tokens: json.usage?.prompt_tokens ?? 0, completion_tokens: json.usage?.completion_tokens ?? 0 }
-  if (opts.tenantId) persistCost({ tenantId: opts.tenantId, agentId: opts.agentId, workflowId: 'video-breakdown', model: WATCH_MODEL, inputTokens: usage.prompt_tokens, outputTokens: usage.completion_tokens })
+  if (opts.tenantId) persistCost({ tenantId: opts.tenantId, agentId: opts.agentId, workflowId: 'video-breakdown', model, inputTokens: usage.prompt_tokens, outputTokens: usage.completion_tokens })
   const raw = json.choices?.[0]?.message?.content ?? ''
   if (!raw) throw new Error('empty model reply')
   return { raw, usage }
