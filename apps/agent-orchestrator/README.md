@@ -51,3 +51,99 @@ npm run build && pm2 restart agent-orchestrator
 | `MASTRA_MODEL` | Gemini model name (default `gemini-2.5-flash`) |
 | `MASTRA_LITE_MODEL` | Lite model for budget=0 turns (default `gemini-2.5-flash-lite`) |
 | `EXA_API_KEY` | Exa search API key for `internet_search` tool |
+
+## Internal test MCP
+
+`src/testMcp/` runs a second MCP server, inside the same orchestrator process, so
+Claude Code can drive the live product — real tools, real credits, real Gemini calls —
+on one capped test tenant. It is wired into `src/index.ts` and starts automatically
+whenever its env is present; it never blocks orchestrator startup and never crashes it
+(`startTestMcp` catches everything and logs one `[test-mcp] disabled: <reason>` line).
+It is internal only: localhost-bound, one shared service key, no public exposure.
+
+### Env vars (`TEST_MCP_*`, see `.env.example`)
+
+Off unless `TEST_MCP_ENABLED=1`. Once on, config loading is all-or-nothing — if any
+required var is missing it throws at startup (logged as a disabled-line, not a crash):
+
+| Var | Required | Purpose |
+|---|---|---|
+| `TEST_MCP_ENABLED` | — | Must be `1` to turn the server on at all |
+| `TEST_MCP_PORT` | no (default `3007`) | Port the test MCP HTTP listener binds on `127.0.0.1` |
+| `TEST_MCP_TENANT_ID` | yes | The capped test tenant. Start-up refuses an unlimited-plan tenant. |
+| `TEST_MCP_AGENT_ID` | yes | Olmo agent id on that tenant, used for route-1 context and route-2 chat |
+| `TEST_MCP_EMAIL` | yes | Test user's Cognito username |
+| `TEST_MCP_PASSWORD` | yes | Test user's permanent Cognito password |
+| `TEST_MCP_COGNITO_CLIENT_ID` | yes | Cognito app client id (must allow `USER_PASSWORD_AUTH`) |
+| `API_BASE_URL` | yes | Already an existing orchestrator var — reused as-is, not `TEST_MCP_`-prefixed |
+| `COGNITO_REGION` | no (default `ap-south-1`) | Reused from the orchestrator's existing var |
+| `PORT` | no (default `3001`) | Reused to build the self-call base URL for route 2's `/api/chat` |
+
+Also required regardless of the `TEST_MCP_*` block: `INTERNAL_SERVICE_KEY`, which every
+request to the test MCP must present as the `x-internal-service-key` header — same key
+the orchestrator, the Lambdas, and `mcp-server` already share.
+
+Never put real values in the committed `.env.example` — only the commented-out shape.
+Real values go in the local, gitignored `apps/agent-orchestrator/.env`.
+
+### What it exposes
+
+Two routes, both tenant/user/conversation-scoped to the test identity — tool arguments
+can never choose the tenant:
+
+- **Route 1 — direct product tools.** Every tool in `DIRECTOR_TOOLS`
+  (`src/mastra/agents/directorAgent.ts`) is re-wrapped (`wrapTool.ts`) so Claude can call
+  it directly: `generate_image`, `generate_video`, `analyze_video`, `capture_webpage`,
+  etc. The wrapper supplies `tenantId`, `userId`, `agentId`, `conversationId`, `idToken`
+  and a fresh `sessionId` via `RequestContext`, and `allowMode: 'auto'`. It deliberately
+  drops `requireApproval` and every other `createTool` option from the original tool —
+  on route 1 Claude is the approver, and the test tenant's capped balance is the actual
+  limit, so there is no card to show and nothing to wait on. Call `test_new_conversation`
+  first so a run's outputs land in one chat. The "current" route-1 conversation lives
+  only in orchestrator memory — an orchestrator restart loses it, so call
+  `test_new_conversation` again after a restart.
+- **Route 2 — chat as the test user.** `olmo_send` / `olmo_read` / `olmo_answer` drive
+  `ChatDriver` (`chatDriver.ts`), a headless copy of the web chat client: it posts to the
+  orchestrator's own `/api/chat` with the test user's real id token, reads the SSE stream
+  in the background, and answers cards (question/confirm/approval/upload) through the
+  same routes the web UI calls. This is the same code path a real user hits.
+
+Shared tools: `test_status` (tenant/user/agent/balance/current conversation),
+`test_new_conversation`, `get_file` (short-lived download URL), and `olmo_trace`
+(tool/agent spans for a conversation, read from the Mastra observability store, not
+from `mastra_messages` or pm2 logs).
+
+`olmo_trace` and `olmo_send`/`olmo_read`/`olmo_answer` (when given a `conversationId`)
+all refuse a conversation the test user doesn't own — a GET on
+`/api/v1/conversations/:id` must return 200 before the call proceeds, since that route
+is already tenant+user scoped server-side.
+
+### Protocol and Claude Code config
+
+The server advertises `protocolVersion: '2026-07-28'` but is built with `@mastra/mcp`'s
+stateless fallback, so an older-protocol client — Claude Code included — still connects
+fine on the same `/mcp` endpoint; there's no separate legacy path to configure.
+
+Local orchestrator:
+
+```bash
+claude mcp add --transport http --scope local platform-test http://127.0.0.1:3007/mcp \
+  --header "x-internal-service-key: $INTERNAL_SERVICE_KEY"
+```
+
+`--scope local` keeps the key out of any committed config. Never paste the key into
+chat.
+
+Against the VM, tunnel first, then run the same `claude mcp add`:
+
+```bash
+ssh -N -L 3007:127.0.0.1:3007 <vm>
+```
+
+Several route-1 tools (video generation, lipsync, assembly) run for minutes. Start
+Claude Code with a longer client-side tool timeout so a long call doesn't time out
+before the tool itself returns:
+
+```bash
+MCP_TOOL_TIMEOUT=600000 claude
+```
