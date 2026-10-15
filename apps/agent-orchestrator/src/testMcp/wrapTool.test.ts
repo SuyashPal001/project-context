@@ -16,6 +16,17 @@ describe('wrapForTest', () => {
     expect(seen[0]).toMatchObject({ t: 't1', conv: 'c1', mode: 'auto' })
     expect(seen[0].call).not.toBe(seen[1].call)
   })
+  it('sets a fresh sessionId per call so session-gated tools (analyze_video etc.) never see no_active_session', async () => {
+    const seen: any[] = []
+    const inner = createTool({ id: 'probe', description: 'd', inputSchema: z.object({}),
+      execute: async (_i, c: any) => { seen.push(c.requestContext.get('sessionId')); return { ok: true } } })
+    const w = wrapForTest('probe', inner, ctx)
+    await w.execute({}, {} as any)
+    await w.execute({}, {} as any)
+    expect(seen[0]).toMatch(/^mcp-/)
+    expect(seen[1]).toMatch(/^mcp-/)
+    expect(seen[0]).not.toBe(seen[1])
+  })
   it('keeps the original schema and description', () => {
     const inner = createTool({ id: 'x', description: 'desc', inputSchema: z.object({ a: z.string() }), execute: async () => ({}) })
     const w = wrapForTest('x', inner, ctx)
