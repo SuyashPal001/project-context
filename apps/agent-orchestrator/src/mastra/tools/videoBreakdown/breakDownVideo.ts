@@ -7,6 +7,7 @@ import { aiService, type CutsResult, type HiddenCutsResult, type SoundResult, ty
 import { describeShots, type Shot } from './describeShots.js'
 import { checkShortShots } from './checkShortShots.js'
 import { refineMoments } from './refineMoments.js'
+import { measuredLine } from './measuredLine.js'
 
 export interface Breakdown {
   video: Omit<FetchedVideo, 'filePath'>; overview: WatchOverview; measured: boolean
@@ -178,7 +179,7 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
     ...refinedOverview,
     looks: refinedOverview.looks.map((l) => {
       const m = measuredLooks.get(l.label)
-      const body = m ? { body: { people: m.people, no_person: m.no_person, start: m.main_start, end: m.main_end } } : {}
+      const body = m ? { measured: measuredLine(m, pose?.moves ?? []), body: { people: m.people, no_person: m.no_person, start: m.main_start, end: m.main_end } } : {}
       return m && m.leg_side_end !== 'unknown'
         ? { ...l, ...body, leg_side: m.leg_side_end, leg_side_start: m.leg_side_start, leg_side_source: 'measured' as const, body_angle: m.body_angle_end }
         : { ...l, ...body, leg_side_source: 'gemini' as const }
@@ -189,7 +190,7 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
 
 export const breakDownVideoTool = createTool({
   id: 'break_down_video',
-  description: 'Break down a reference video completely from a link or an attached file: format, story, moments, each look (outfit, expression, poses, moves, leg side), props, setting, the trick, exact cuts and hidden cuts, exact sound timing, and every shot. Use this first when the user wants to clone or recreate a video. Over 90s: ask which part.',
+  description: 'When you describe the looks to the user, give each look\'s `measured` line (people, framing, orientation, knees, arms, leg side, moves with times) — it is measured from the frames and overrides any pose wording elsewhere in the breakdown. Break down a reference video completely from a link or an attached file: format, story, moments, each look (outfit, expression, poses, moves, leg side), props, setting, the trick, exact cuts and hidden cuts, exact sound timing, and every shot. Use this first when the user wants to clone or recreate a video. Over 90s: ask which part.',
   inputSchema: z.object({ url: linkSchema.optional(), fileId: z.string().optional() }),
   outputSchema: z.object({ success: z.boolean(), breakdown: z.any().optional(), error: z.string().optional() }),
   execute: async (input, execContext) => {

@@ -149,6 +149,8 @@ describe('breakDownVideo', () => {
     expect(poseCall[1]).toEqual({ path: '/m/a.mp4', looks: [{ label: 'l0', start_s: 0, end_s: 5.4 }, { label: 'l1', start_s: 5.4, end_s: 14.9 }], exclude: [[4.6, 6.2]] })
     expect(b.overview.looks[0]).toMatchObject({ leg_side: 'image-right', leg_side_start: 'center', leg_side_source: 'measured', body_angle: 4.1 })
     expect(b.overview.looks[0].body).toMatchObject({ people: 1, no_person: false, end: { knees: 'bent' } })
+    expect(b.overview.looks[0].measured).toMatch(/^Measured: 1 person, full body, upright in frame, knees bent.*legs right at 3\.2s/)
+    expect(b.overview.looks[1].measured).toBe('Measured: no person in shot')
     expect(b.overview.looks[1]).toMatchObject({ leg_side: 'center', leg_side_source: 'gemini', body: { people: 0, no_person: true } })
     expect(b.pose?.moves[0]).toMatchObject({ direction: 'image-right' })
   })
