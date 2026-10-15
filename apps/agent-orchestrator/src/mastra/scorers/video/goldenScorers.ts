@@ -7,7 +7,7 @@ type Out = { cuts?: { cuts: number[] } | null; hidden_cuts: Array<{ at_s: number
 const gt = (run: { groundTruth?: unknown }) => (run.groundTruth ?? {}) as Record<string, any>
 
 export const goldenCutsScorer = createScorer({ id: 'golden-cuts', name: 'golden-cuts', description: 'Hard-cut count within 15% of the measured truth' })
-  .generateScore(({ run }) => { const n = (run.output as Out).cuts?.cuts.length ?? 0; const t = gt(run).cutCount as number; return Math.abs(n - t) <= Math.max(1, 0.15 * t) ? 1 : 0 })
+  .generateScore(({ run }) => { const c = (run.output as Out).cuts; if (!c) return 0; const t = gt(run).cutCount as number; return Math.abs(c.cuts.length - t) <= (t === 0 ? 0 : Math.max(1, 0.15 * t)) ? 1 : 0 })
 export const goldenHiddenCutsScorer = createScorer({ id: 'golden-hidden-cuts', name: 'golden-hidden-cuts', description: 'Hidden cuts: same count, each within 0.4s' })
   .generateScore(({ run }) => { const got = (run.output as Out).hidden_cuts.map((h) => h.at_s).sort((a, b) => a - b); const want = gt(run).hiddenCuts as number[]; return got.length === want.length && want.every((w, i) => Math.abs(got[i] - w) <= 0.4) ? 1 : 0 })
 export const goldenMomentsScorer = createScorer({ id: 'golden-moments', name: 'golden-moments', description: 'Fraction of truth moments matched by a MEASURED moment within 0.5s' })

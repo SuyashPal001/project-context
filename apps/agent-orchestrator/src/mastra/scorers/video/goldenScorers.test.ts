@@ -19,3 +19,9 @@ it('scores a scorer only on videos that have truth for it', () => {
   const data = [{ input: { filePath: 'a' }, groundTruth: { moments: [{ t_s: 1 }] } }, { input: { filePath: 'b' }, groundTruth: { moments: [] } }, { input: { filePath: 'c' } }]
   expect(itemsWithTruth(data, 'moments').map((d) => d.input.filePath)).toEqual(['a'])
 })
+it('unmeasured cuts never pass the cuts gate (review M1)', async () => {
+  expect((await goldenCutsScorer.run({ input: {}, output: { ...out, cuts: null }, groundTruth: { cutCount: 0 } })).score).toBe(0)
+})
+it('a spurious cut on a 0-cut video fails', async () => {
+  expect((await goldenCutsScorer.run({ input: {}, output: { ...out, cuts: { cuts: [3.1] } }, groundTruth: { cutCount: 0 } })).score).toBe(0)
+})
