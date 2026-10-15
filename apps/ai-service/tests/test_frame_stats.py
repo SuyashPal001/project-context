@@ -20,3 +20,11 @@ def test_coverage_rejects_bad_ranges_and_steps(client, media_dir):
     h = {"x-internal-service-key": "k"}
     assert client.post("/media/coverage", json={"path": str(p), "hsv_lo": [0, 80], "hsv_hi": [20, 255, 150]}, headers=h).status_code == 400
     assert client.post("/media/coverage", json={"path": str(p), "hsv_lo": [0, 80, 25], "hsv_hi": [20, 255, 150], "step_s": 0}, headers=h).status_code == 400
+
+def test_coverage_rejects_hsv_values_out_of_range(client, media_dir):
+    # review M3: values outside OpenCV's HSV range would silently wrap in uint8
+    p = media_dir / "cov3.mp4"
+    ff(["-f", "lavfi", "-i", "color=white:s=180x320:d=1:r=25", "-c:v", "libx264", str(p)])
+    h = {"x-internal-service-key": "k"}
+    for lo, hi in (([0, 80, 25], [200, 255, 150]), ([0, -1, 25], [20, 255, 150]), ([0, 80, 25], [20, 256, 150])):
+        assert client.post("/media/coverage", json={"path": str(p), "hsv_lo": lo, "hsv_hi": hi}, headers=h).status_code == 400

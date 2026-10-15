@@ -52,3 +52,12 @@ def test_a_peak_on_the_window_edge_is_not_measured(client, media_dir):
     body = {"path": str(p), "items": [{"id": "x", "t_s": 2.8, "box": [0, 0.5, 1, 1]}], "exclude": [], "window_s": 1.5}
     it = client.post("/media/motion-peaks", json=body, headers={"x-internal-service-key": "k"}).json()["items"][0]
     assert it["measured"] is False
+
+def test_rejects_exclude_entries_that_are_not_ordered_pairs(client, media_dir):
+    # review M3: a bad exclude entry is a 400, not a server error
+    p = media_dir / "still3.mp4"
+    ff(["-f", "lavfi", "-i", "color=gray:s=160x288:d=1:r=25", "-c:v", "libx264", str(p)])
+    h = {"x-internal-service-key": "k"}
+    for bad in ([[1.0]], [[2.0, 1.0]], [[1.0, 2.0, 3.0]]):
+        body = {"path": str(p), "items": [{"id": "x", "t_s": 0.5, "box": [0, 0, 1, 1]}], "exclude": bad}
+        assert client.post("/media/motion-peaks", json=body, headers=h).status_code == 400

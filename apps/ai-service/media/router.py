@@ -52,6 +52,9 @@ def post_motion(body: MotionBody):
     for it in body.items:
         if len(it.box) != 4:
             raise HTTPException(status_code=400, detail="box must have 4 numbers")
+    for span in body.exclude:
+        if len(span) != 2 or span[0] > span[1]:
+            raise HTTPException(status_code=400, detail="each exclude entry must be [from_s, to_s] with from_s <= to_s")
     return motion.motion_peaks(str(safe_media_path(body.path)), [i.model_dump() for i in body.items], body.exclude, body.window_s)
 from . import frame_stats
 
@@ -71,6 +74,9 @@ def post_jumps(body: JumpsBody):
 def post_coverage(body: CoverageBody):
     if len(body.hsv_lo) != 3 or len(body.hsv_hi) != 3:
         raise HTTPException(status_code=400, detail="hsv_lo and hsv_hi need 3 numbers")
+    # OpenCV HSV: hue 0-179, saturation and value 0-255
+    if any(not (0 <= v <= m) for v, m in zip(body.hsv_lo + body.hsv_hi, [179, 255, 255] * 2)):
+        raise HTTPException(status_code=400, detail="HSV values must be hue 0-179, saturation/value 0-255")
     if body.step_s <= 0:
         raise HTTPException(status_code=400, detail="step_s must be above 0")
     return frame_stats.coverage(str(safe_media_path(body.path)), body.hsv_lo, body.hsv_hi, body.step_s)
