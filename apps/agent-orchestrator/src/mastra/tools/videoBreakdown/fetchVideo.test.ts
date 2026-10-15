@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { classifyLink, fetchVideo, FetchRefused } from './fetchVideo.js'
+import { classifyLink, fetchVideo, FetchRefused, DownloadBlocked } from './fetchVideo.js'
 import { uploadGeneratedFile } from '../../../persistence.js'
 
 const execCalls: Array<{ file: string; args: string[] }> = []
@@ -105,5 +105,19 @@ describe('fetchVideo', () => {
   it('turns an Instagram "not granting access" failure into a FetchRefused asking for an upload', async () => {
     ytdlpFails = 'ERROR: [Instagram] x: Instagram API is not granting access'
     await expect(fetchVideo({ url: 'https://www.instagram.com/p/x/' }, ctx)).rejects.toThrow(/upload/)
+  })
+  it('a YouTube link the server cannot download becomes DownloadBlocked carrying the link, for a watch-only breakdown', async () => {
+    ytdlpFails = "ERROR: [youtube] x: Sign in to confirm you're not a bot"
+    const err = await fetchVideo({ url: 'https://www.youtube.com/watch?v=abc' }, ctx).catch((e) => e)
+    expect(err).toBeInstanceOf(DownloadBlocked)
+    expect(err).toBeInstanceOf(FetchRefused)
+    expect(err).toMatchObject({ youtubeUrl: 'https://www.youtube.com/watch?v=abc', durationS: null })
+    expect(err.message).toMatch(/upload/)
+  })
+  it('other platforms that fail still ask for an upload, not watch-only', async () => {
+    ytdlpFails = 'ERROR: something broke'
+    const err = await fetchVideo({ url: 'https://x.com/a/status/1' }, ctx).catch((e) => e)
+    expect(err).toBeInstanceOf(FetchRefused)
+    expect(err).not.toBeInstanceOf(DownloadBlocked)
   })
 })

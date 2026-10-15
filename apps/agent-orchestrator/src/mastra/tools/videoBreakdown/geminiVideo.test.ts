@@ -59,3 +59,8 @@ describe('prepareAnalysisCopy (review I5, I6)', () => {
     vi.doUnmock('node:child_process'); vi.doUnmock('node:fs')
   })
 })
+
+it('an unknown duration watches at the cheapest rate (watch-only YouTube fallback)', async () => {
+  const { fpsForDuration } = await import('./geminiVideo.js')
+  expect(fpsForDuration(NaN)).toBe(1)
+})

@@ -15,6 +15,11 @@ const MAX_SOURCE_BYTES = 300 * 1024 * 1024
 export const MAX_FULL_BREAKDOWN_S = 90
 
 export class FetchRefused extends Error {}
+// The server could not download a YouTube link (YouTube blocks datacenter IPs).
+// Gemini can still watch the link itself, so the breakdown falls back to watch-only.
+export class DownloadBlocked extends FetchRefused {
+  constructor(message: string, readonly youtubeUrl: string, readonly durationS: number | null, readonly caption: string | null, readonly song: FetchedVideo['song']) { super(message) }
+}
 
 export function classifyLink(url: string): 'youtube' | 'instagram' | 'x' | 'facebook' | 'linkedin' | 'tiktok' | 'other' {
   const h = (() => { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return '' } })()
@@ -45,6 +50,7 @@ export async function fetchVideo(input: { url?: string; fileId?: string }, ctx: 
   let platform = 'upload'
   let youtubeUrl: string | null = null
   let fileId = input.fileId ?? ''
+  let metaDurationS: number | null = null
   if (input.url) {
     platform = classifyLink(input.url)
     if (platform === 'tiktok') throw new FetchRefused('TikTok links can’t be opened from our servers in India. Please download the video from TikTok and upload it here.')
@@ -63,6 +69,7 @@ export async function fetchVideo(input: { url?: string; fileId?: string }, ctx: 
         const { stdout } = await execFile('yt-dlp', ['-q', '--no-warnings', '--no-playlist', '--skip-download', '--print', '%(duration)s', '--print', '%(uploader)s | %(title)s', '--print', '%(track)s\t%(artist)s', '--', input.url], { timeout: 60_000 })
         const [durLine = '', captionLine = '', songLine = ''] = stdout.split('\n')
         durationS = parseFloat(durLine) || 0
+        metaDurationS = durationS || null
         caption = captionLine.trim().slice(0, 500) || null
         const [track, artist] = songLine.split('\t').map((x) => x.trim())
         // Song facts only from the platform's own metadata — never guessed (spec §9a).
@@ -78,6 +85,7 @@ export async function fetchVideo(input: { url?: string; fileId?: string }, ctx: 
         await execFile('yt-dlp', ['-q', '--no-warnings', '--no-playlist', '--max-filesize', '300M', '-S', 'vcodec:h264,res:1080,acodec:m4a', '--merge-output-format', 'mp4', '-o', filePath, '--', input.url], { timeout: 240_000 })
       } catch (err) {
         const msg = `${(err as { stderr?: string }).stderr ?? ''} ${(err as Error).message}`
+        if (platform === 'youtube') throw new DownloadBlocked('YouTube didn’t let our server download that video. For exact timing and poses, please download it and upload it here.', input.url, metaDurationS, caption, song)
         throw new FetchRefused(/not granting access|login|private|cookies/i.test(msg)
           ? 'That post can’t be opened without logging in. Please download the video and upload it here.'
           : 'I couldn’t download that link. Please download the video and upload it here.')

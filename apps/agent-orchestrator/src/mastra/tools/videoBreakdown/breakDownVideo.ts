@@ -1,6 +1,6 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
-import { fetchVideo, probe, type FetchedVideo } from './fetchVideo.js'
+import { fetchVideo, probe, DownloadBlocked, type FetchedVideo } from './fetchVideo.js'
 import { watchVideo, type WatchOverview } from './watchVideo.js'
 import { aiService, type CutsResult, type HiddenCutsResult, type SoundResult, type PoseResult } from './aiServiceClient.js'
 import { describeShots, type Shot } from './describeShots.js'
@@ -11,6 +11,8 @@ export interface Breakdown {
   video: Omit<FetchedVideo, 'filePath'>; overview: WatchOverview; measured: boolean
   cuts: CutsResult | null; hidden_cuts: HiddenCutsResult['hidden_cuts']; sound: Omit<SoundResult, 'curve_db'> | null
   pose: PoseResult | null
+  // true when only Gemini watched a link we could not download: nothing is measured
+  watch_only?: boolean
   shots: Shot[]; sound_arc: string; short_shot_check: { checked: number; status: 'ok' | 'unknown' }; warnings: string[]
 }
 
@@ -52,7 +54,13 @@ export function recentBreakdown(input: { url?: string; fileId?: string }, ctx: {
 }
 
 export async function breakDownVideo(input: { url?: string; fileId?: string }, ctx: { idToken: string; scopeId: string; conversationId: string }, tenantId?: string): Promise<Breakdown> {
-  const video = await fetchVideo(input, ctx)
+  let video: FetchedVideo
+  try {
+    video = await fetchVideo(input, ctx)
+  } catch (e) {
+    if (e instanceof DownloadBlocked) return watchOnlyBreakdown(e, tenantId)
+    throw e
+  }
   if (video.tooLong) throw new Error(`The video is ${Math.round(video.durationS)}s long. Ask the user which part (up to 90s) to clone.`)
   const b = await breakDownFetched(video, tenantId)
   const key = recentKey(input, ctx.scopeId)
@@ -60,6 +68,25 @@ export async function breakDownVideo(input: { url?: string; fileId?: string }, c
   recent.set(key, b)
   if (recent.size > RECENT_MAX) recent.delete(recent.keys().next().value!)
   return b
+}
+
+// YouTube blocked our download: Gemini still watches the link, but nothing can be
+// measured, so every time and leg side is marked as Gemini's reading and the user is
+// asked for the file before any paid remake (spec §8a). Not cached for compare.
+async function watchOnlyBreakdown(e: DownloadBlocked, tenantId?: string): Promise<Breakdown> {
+  const durationS = e.durationS ?? NaN  // unknown: the watch runs at its cheapest rate
+  const o = await watchVideo({ filePath: '', youtubeUrl: e.youtubeUrl, durationS }, tenantId)
+  const overview: WatchOverview = {
+    ...o,
+    moments: o.moments.map((m) => ({ ...m, measured: false })),
+    looks: o.looks.map((l) => ({ ...l, leg_side_source: 'gemini' as const, moves: (l.moves ?? []).map((v) => ({ ...v, measured: false })) })),
+  }
+  return {
+    video: { fileId: '', durationS: e.durationS ?? 0, width: 0, height: 0, fps: 0, hasAudio: false, caption: e.caption, song: e.song, youtubeUrl: e.youtubeUrl, platform: 'youtube', tooLong: false },
+    overview, measured: false, watch_only: true, cuts: null, hidden_cuts: [], sound: null, pose: null, shots: [], sound_arc: o.sound,
+    short_shot_check: { checked: 0, status: 'unknown' },
+    warnings: ['watch_only: YouTube blocked our server from downloading this video, so nothing here is measured — times, cuts and leg sides are Gemini\'s estimate. Before planning any paid remake, ask the user to download it and upload the video file.'],
+  }
 }
 
 // Golden set (spec §8a): the same pipeline on a local fixture file, no fetch or upload.

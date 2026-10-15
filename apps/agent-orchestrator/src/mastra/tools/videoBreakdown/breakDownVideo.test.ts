@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mergeBounds, fillMissingShots, breakDownVideo, breakDownLocalFile, recentBreakdown, lookSpans } from './breakDownVideo.js'
-import { fetchVideo } from './fetchVideo.js'
+import { fetchVideo, DownloadBlocked } from './fetchVideo.js'
 
 const watch = vi.fn()
 const ai = vi.fn()
 const describeShots = vi.fn()
 const checkShort = vi.fn()
-vi.mock('./fetchVideo.js', () => ({ probe: vi.fn(async () => ({ durationS: 14.9, width: 720, height: 1280, fps: 30, codec: 'h264', hasAudio: true })), fetchVideo: vi.fn(async () => ({ fileId: 'f', filePath: '/m/a.mp4', durationS: 14.9, width: 720, height: 1280, fps: 30, hasAudio: true, caption: null, youtubeUrl: null, platform: 'instagram', tooLong: false })) }))
+vi.mock('./fetchVideo.js', async (orig) => ({ FetchRefused: (await orig<any>()).FetchRefused, DownloadBlocked: (await orig<any>()).DownloadBlocked, probe: vi.fn(async () => ({ durationS: 14.9, width: 720, height: 1280, fps: 30, codec: 'h264', hasAudio: true })), fetchVideo: vi.fn(async () => ({ fileId: 'f', filePath: '/m/a.mp4', durationS: 14.9, width: 720, height: 1280, fps: 30, hasAudio: true, caption: null, youtubeUrl: null, platform: 'instagram', tooLong: false })) }))
 vi.mock('./watchVideo.js', () => ({ watchVideo: (...a: unknown[]) => watch(...a) }))
 vi.mock('./aiServiceClient.js', () => ({ aiService: (...a: unknown[]) => ai(...a) }))
 vi.mock('./describeShots.js', () => ({ describeShots: (...a: unknown[]) => describeShots(...a) }))
@@ -171,5 +171,20 @@ describe('lookSpans', () => {
   it('falls back to the looks\' own rough bounds, dropping empty ones', () => {
     const o = { looks: [{ label: 'a', approx_start_s: 0, approx_end_s: 4 }, { label: 'b', approx_start_s: 9, approx_end_s: 9 }] } as any
     expect(lookSpans(o, [], 10)).toEqual([{ label: 'a', start_s: 0, end_s: 4 }])
+  })
+})
+
+describe('watch-only fallback (YouTube blocks the server download)', () => {
+  it('still gives Gemini\'s reading of the link, clearly unmeasured, and runs no measurement', async () => {
+    vi.mocked(fetchVideo).mockRejectedValueOnce(new DownloadBlocked('blocked', 'https://www.youtube.com/watch?v=abc', null, null, null))
+    watch.mockResolvedValue({ ...overview(['hard_cuts'], 1), moments: [{ t_s: 2, what: 'x', why_it_matters: '' }], looks: [{ label: 'l0', approx_start_s: 0, approx_end_s: 10, leg_side: 'image-left' }] })
+    const b = await breakDownVideo({ url: 'https://www.youtube.com/watch?v=abc' }, ctx)
+    expect(watch.mock.calls[0][0]).toMatchObject({ youtubeUrl: 'https://www.youtube.com/watch?v=abc' })
+    expect(ai).not.toHaveBeenCalled()
+    expect(b).toMatchObject({ watch_only: true, measured: false, cuts: null, sound: null, pose: null, hidden_cuts: [] })
+    expect(b.overview.moments[0]).toMatchObject({ measured: false })
+    expect(b.overview.looks[0]).toMatchObject({ leg_side_source: 'gemini' })
+    expect(b.warnings.join(' ')).toMatch(/upload the video file/)
+    expect(recentBreakdown({ url: 'https://www.youtube.com/watch?v=abc' }, ctx)).toBeUndefined()
   })
 })
