@@ -22,9 +22,11 @@ export async function checkClip(o: { clipPath: string; seconds: number; look: Re
     const times = evenTimes(o.seconds, 4)
     const [pose, frames] = await Promise.all([d.poseClip(o.clipPath, o.seconds), d.sample(o.clipPath, times)])
     const m = pose.looks[0]
+    // comparePose words its reasons for a still; this is a clip.
+    const forClip = (r: CheckResult): CheckResult => ({ ...r, reason: r.reason.replace(/\bstill\b/g, 'clip') })
     const results: CheckResult[] = [
-      { ...comparePose(o.look.start, o.look.people, asImage(m?.people ?? null, m?.main_start ?? null)), name: 'start pose' },
-      ...(o.checkEnd === false ? [] : [{ ...comparePose(o.look.end, o.look.people, asImage(m?.people ?? null, m?.main_end ?? null)), name: 'end pose' }]),
+      { ...forClip(comparePose(o.look.start, o.look.people, asImage(m?.people ?? null, m?.main_start ?? null))), name: 'start pose' },
+      ...(o.checkEnd === false ? [] : [{ ...forClip(comparePose(o.look.end, o.look.people, asImage(m?.people ?? null, m?.main_end ?? null))), name: 'end pose' }]),
     ]
     if (personIn(o.look) && o.portrait) results.push(await d.gate(samePersonScorer, 'same-person', { tenantId: o.tenantId, reference: o.portrait, frames }, times))
     results.push(await d.gate(emptyHandScorer, 'empty-hand', { tenantId: o.tenantId, frames }, times))

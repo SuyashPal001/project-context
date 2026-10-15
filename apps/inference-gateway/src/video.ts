@@ -425,13 +425,12 @@ export async function generateVideo(req: VideoGenerationRequest): Promise<VideoG
   if (req.model === VEO_31_MODEL) {
     if (![4, 6, 8].includes(req.durationSeconds)) throw new UnsupportedVideoModelError(`Veo 3.1 takes 4, 6 or 8 seconds, got ${req.durationSeconds}`)
     if (!req.imageUri) throw new UnsupportedVideoModelError('Veo 3.1 here needs a start image')
+    // Veo has no breaker of its own and must not touch vertexVideoBreaker: a run of Veo errors
+    // would otherwise open it and block the Omni fallback the caller is about to try.
     try {
-      const r = await callVeoTransition({ prompt: req.prompt, startUri: req.imageUri, lastUri: req.lastFrameUri, seconds: req.durationSeconds, aspectRatio: req.aspectRatio })
-      vertexVideoBreaker.onSuccess()
-      return r
+      return await callVeoTransition({ prompt: req.prompt, startUri: req.imageUri, lastUri: req.lastFrameUri, seconds: req.durationSeconds, aspectRatio: req.aspectRatio })
     } catch (err) {
       if (isContentBlocked((err as Error).message)) return { refused: true, reason: 'CONTENT_BLOCKED' }
-      vertexVideoBreaker.onFailure()
       throw new VideoBackendUnavailableError(`Veo 3.1 failed: ${(err as Error).message}`)
     }
   }

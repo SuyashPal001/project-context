@@ -99,3 +99,18 @@ describe('I6 Veo polling', () => {
     expect(VEO_TOTAL_BUDGET_MS).toBeLessThanOrEqual(230_000)
   })
 })
+
+describe('M2 Veo failures never trip the shared Vertex Omni breaker', () => {
+  beforeEach(() => { process.env.VERTEX_PROJECT = 'p' })
+  afterEach(() => { vi.unstubAllGlobals() })
+  it('a Veo error leaves vertexVideoBreaker untouched (the Omni fallback must stay available)', async () => {
+    const { vertexVideoBreaker } = await import('./router.js')
+    vi.mocked(vertexVideoBreaker.onFailure).mockClear()
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.startsWith('https://s3/')) return new Response(Buffer.from('x'), { headers: { 'content-type': 'image/jpeg' } })
+      return new Response('quota', { status: 429 })
+    }))
+    await expect(generateVideo({ model: VEO_31_MODEL, prompt: 'P', task: 'image_to_video', aspectRatio: '9:16', durationSeconds: 4, imageUri: 'https://s3/a.jpg' })).rejects.toThrow()
+    expect(vertexVideoBreaker.onFailure).not.toHaveBeenCalled()
+  })
+})

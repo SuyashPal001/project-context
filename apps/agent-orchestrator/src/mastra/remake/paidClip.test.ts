@@ -34,18 +34,19 @@ describe('makeClip', () => {
     const { specs, deps, ctx } = await setup()
     const r = await makeClip(specs[1], ctx, deps)
     expect(r.result).toMatchObject({ look: 2, engine: 'veo', fallback: false, status: 'passed', fileId: 'veo-1' })
-    expect(deps.generateVeoClip).toHaveBeenCalledWith(expect.objectContaining({ startImageFileId: 's2', endImageFileId: 'e2', durationSeconds: 6 }), expect.anything(), clipSlot(2, 0, false))
+    expect(deps.generateVeoClip).toHaveBeenCalledWith(expect.objectContaining({ startImageFileId: 's2', endImageFileId: 'e2', durationSeconds: 6 }), expect.anything(), clipSlot(2, 0, 'normal'))
     expect(deps.fitToFrames).toHaveBeenCalledWith('/m/veo-1', specs[1].frames, expect.any(String), { width: 720, height: 1280 })
     expect(r.ledger).toEqual([{ item: 'look 2 clip', attempt: 0, creditsMicro: '160', outcome: 'kept' }])
   })
   it('Veo refused → exactly one Omni attempt from the start still, gated, marked fallback (Review Focus 3)', async () => {
     const { specs, deps, ctx } = await setup({ generateVeoClip: vi.fn(async () => ({ refused: true, refusalReason: 'CONTENT_BLOCKED' })) } as never)
     const r = await makeClip(specs[1], ctx, deps)
-    expect(deps.generateVeoClip).toHaveBeenCalledTimes(1)
-    expect(deps.generateOmniClip).toHaveBeenCalledWith(expect.objectContaining({ startImageFileId: 's2', durationSeconds: 6 }), expect.anything(), clipSlot(2, 0, true))
-    expect(deps.promptGate).toHaveBeenCalledTimes(2)
+    // M12: the plainer-wording Veo retry comes first (also refused here), then one Omni attempt.
+    expect(deps.generateVeoClip).toHaveBeenCalledTimes(2)
+    expect(deps.generateOmniClip).toHaveBeenCalledWith(expect.objectContaining({ startImageFileId: 's2', durationSeconds: 6 }), expect.anything(), clipSlot(2, 0, 'fallback'))
+    expect(deps.promptGate).toHaveBeenCalledTimes(3)
     expect(r.result).toMatchObject({ engine: 'omni', fallback: true, status: 'passed' })
-    expect(r.ledger.map((e) => e.outcome)).toEqual(['retried', 'kept'])
+    expect(r.ledger.map((e) => e.outcome)).toEqual(['retried', 'retried', 'kept'])
   })
   it('retries a failed check once with the reasons, then stops', async () => {
     const { specs, deps, ctx, check } = await setup()
@@ -76,7 +77,7 @@ describe('makeClip', () => {
 })
 
 it('clip slots never collide with each other or with still slots (< 1000)', () => {
-  const all = [1, 2, 3, 40].flatMap((n) => [0, 1].flatMap((a) => [false, true].map((f) => clipSlot(n, a, f))))
+  const all = [1, 2, 3, 40].flatMap((n) => [0, 1].flatMap((a) => (['normal', 'plain', 'fallback'] as const).map((v) => clipSlot(n, a, v))))
   expect(new Set(all).size).toBe(all.length)
   expect(Math.min(...all)).toBeGreaterThanOrEqual(1000)
 })

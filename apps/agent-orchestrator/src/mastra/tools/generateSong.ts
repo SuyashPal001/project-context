@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { stableToolCallId } from '../../credits.js'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { fileTitleSchema, fileTitle } from './fileTitle.js'
@@ -45,7 +46,9 @@ type SongExecContext = { requestContext?: { get: (key: string) => unknown } }
 
 /** The song call itself (charge first, refund on every failure), without the tool's
  *  per-turn guard, so a workflow (the video remake) can make its music. */
-export async function generateSongItem(inputData: { prompt: string; title?: string }, execContext: SongExecContext | undefined) {
+/** `runKey`: a key fixed to the caller's run (the video remake) so one run never pays for its
+ *  music twice; the tool keeps a fresh key per call. */
+export async function generateSongItem(inputData: { prompt: string; title?: string }, execContext: SongExecContext | undefined, runKey?: string) {
     const { prompt, title } = inputData
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     // Left undefined, not '' — '' reaches Postgres as ''::uuid and every charge
@@ -58,7 +61,7 @@ export async function generateSongItem(inputData: { prompt: string; title?: stri
     // Charge BEFORE the vendor call, same as generateImage.ts — a non-balance
     // spendCredits error must fail before the vendor is paid, not discard a
     // finished clip after. Every failure below refunds.
-    const chargeKey = `music:${sessionId}:${randomUUID()}`
+    const chargeKey = runKey ? `music:${sessionId}:${stableToolCallId(runKey)}` : `music:${sessionId}:${randomUUID()}`
     let charged = false
     let rateId: string | null = null
     let rateVersion: number | null = null

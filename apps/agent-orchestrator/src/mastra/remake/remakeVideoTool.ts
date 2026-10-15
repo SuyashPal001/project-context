@@ -5,6 +5,7 @@ import { breakDownVideo, recentBreakdown, type Breakdown } from '../tools/videoB
 import { shouldRequireApproval } from '../tools/generationApproval.js'
 import { imageModelFor } from '../tools/imageEngine.js'
 import { VEO_CLIP_MODEL } from '../tools/veoClip.js'
+import { VIDEO_MODEL } from '../tools/generateVideo.js'
 import { refuseReason } from './looks.js'
 import { credits } from './cost.js'
 import { remakeMastra, REMAKE_WORKFLOW_ID } from './instance.js'
@@ -46,8 +47,8 @@ export function shapeRun(runId: string, r: RunResult): Out {
       return { success: true, runId, stage: 'plan_review', plan: p.plan, warnings: plan.warnings ?? [], estimate: { images: e.images, firstPassCredits: credits(e.firstPassMicro), maxCredits: credits(e.maxMicro) } }
     }
     if (p.stage === 'preview_review') {
-      const e = p.clipsEstimate as { clips: number; firstPassMicro: string | null; maxMicro: string | null }
-      return { success: true, runId, stage: 'preview_review', previewFileId: p.previewFileId, stills: p.stills, summary: plainSummary(p.summary), clipsEstimate: { clips: e.clips, firstPassCredits: credits(e.firstPassMicro), maxCredits: credits(e.maxMicro) }, ...(p.cantAnimate ? { cantAnimate: p.cantAnimate } : {}) }
+      const e = p.clipsEstimate as { clips: number; firstPassMicro: string | null; maxMicro: string | null } | undefined
+      return { success: true, runId, stage: 'preview_review', previewFileId: p.previewFileId, stills: p.stills, summary: plainSummary(p.summary), ...(e ? { clipsEstimate: { clips: e.clips, firstPassCredits: credits(e.firstPassMicro), maxCredits: credits(e.maxMicro) } } : {}), ...(p.cantAnimate ? { cantAnimate: p.cantAnimate } : {}) }
     }
     return { success: true, runId, stage: 'cast_pick', sheetFileId: p.sheetFileId, ...(p.error ? { error: p.error } : {}) }
   }
@@ -63,6 +64,16 @@ export function shapeRun(runId: string, r: RunResult): Out {
   return { success: false, runId, error: errorText(stepErr) }
 }
 
+/** The plain reason a run paused at the preview can't be animated (a square reel), if any. */
+async function cantAnimateOf(runId: string | undefined): Promise<string | null> {
+  if (!runId) return null
+  try {
+    const state = await (await remakeMastra()).getWorkflow(REMAKE_WORKFLOW_ID).getWorkflowRunById(runId) as unknown as RunResult | null
+    const p = state?.status === 'suspended' ? state.steps?.preview?.suspendPayload : undefined
+    return typeof p?.cantAnimate === 'string' ? p.cantAnimate : null
+  } catch { return null }
+}
+
 export const remakeVideoTool = createTool({
   id: 'remake_video',
   description: 'Remake a reference video for the user\'s brand, step by step, with the user approving each paid step. '
@@ -72,7 +83,7 @@ export const remakeVideoTool = createTool({
     + 'Then every look gets checked stills and a free preview video (stage preview_review): share the preview, say which stills failed or were held back, the credits spent, and the cost to animate it (clipsEstimate). If it has cantAnimate, say so and stop there. If the user wants it animated, call approve_preview (runId); if they only wanted the preview, call stop. '
     + 'If stage final_failed comes back, share its note and say the animated parts were made but could not be joined; never start again on your own. '
     + 'When it is done (stage final_ready), share the video and its note exactly as given (what changed on purpose, what stayed a still, anything that did not pass), the credits spent, and remind the user to label it as AI-generated when they post it. '
-    + 'stage working means it is still making the stills: wait and use status; never call start again while a remake for this video exists (that pays twice). '
+    + 'stage working means it is still making the stills or the clips: wait and use status; never call start again while a remake for this video exists (that pays twice). '
     + 'Never describe how it works inside; use plain outcome words. status (runId) re-reads where a remake is.',
   inputSchema: z.object({
     action: z.enum(['start', 'edit_plan', 'approve_plan', 'pick_cast', 'approve_preview', 'stop', 'status']),
@@ -86,7 +97,13 @@ export const remakeVideoTool = createTool({
   outputSchema: z.object({ success: z.boolean() }).passthrough(),
   requireApproval: async (input, ctx) => {
     const action = (input as { action?: string }).action
-    if (action === 'approve_preview') return shouldRequireApproval({ resourceType: 'video_generation', subject: VEO_CLIP_MODEL }, ctx as never)
+    if (action === 'approve_preview') {
+      // No card for a reel that can't be animated: approve_preview then refuses with no spend (M4).
+      if (await cantAnimateOf((input as { runId?: string }).runId)) return false
+      // Either clip model may be used, so ask whenever either is priced (M7).
+      const veo = await shouldRequireApproval({ resourceType: 'video_generation', subject: VEO_CLIP_MODEL }, ctx as never)
+      return veo || shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx as never)
+    }
     if (action !== 'approve_plan' && action !== 'pick_cast') return false
     return shouldRequireApproval({ resourceType: 'image_generation', subject: imageModelFor('gemini').rateSubject }, ctx as never)
   },
@@ -119,6 +136,10 @@ export const remakeVideoTool = createTool({
         : input.action === 'approve_preview' ? ['preview', { decision: 'approve' }]
         : input.action === 'stop' ? ['preview', { decision: 'stop' }]
         : ['cast', input.pick ? { pick: input.pick } : {}]
+      if (input.action === 'approve_preview') {
+        const cant = await cantAnimateOf(input.runId)
+        if (cant) return { success: false, runId: input.runId, stage: 'preview_review', error: cant }
+      }
       const run = await w.createRun({ runId: input.runId })
       const r = await run.resume({ step, resumeData, requestContext: rc as never })
       return shapeRun(input.runId, r as unknown as RunResult)

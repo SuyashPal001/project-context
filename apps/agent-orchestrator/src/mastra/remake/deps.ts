@@ -2,7 +2,7 @@
 // without a gateway, a model, a store or ffmpeg.
 import { execFile as execFileCb } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { costMicro, resolveRate } from '@serverless-saas/credits'
@@ -51,12 +51,15 @@ export interface RemakeDeps {
   fitToFrames: typeof fitToFrames
   clipRateMicro: (engine: 'veo' | 'omni') => Promise<bigint | null>
   musicRateMicro: () => Promise<bigint | null>
-  generateMusic: (prompt: string, exec: MediaExecContext) => Promise<{ fileId?: string; refused?: boolean; refusalReason?: string; insufficientCredits?: boolean; creditsUsedMicro?: string }>
+  generateMusic: (prompt: string, exec: MediaExecContext, runKey: string) => Promise<{ fileId?: string; refused?: boolean; refusalReason?: string; insufficientCredits?: boolean; creditsUsedMicro?: string }>
   compare: (breakdown: Breakdown, remakeFileId: string, ctx: { idToken: string; scopeId: string; conversationId: string }, tenantId: string) => Promise<{ checks: CheckResult[]; summary: string }>
   stillToFrames: typeof stillToFrames
   joinSegments: typeof joinSegments
   fitMusic: typeof fitMusic
   muxMusic: typeof muxMusic
+  // temp working dirs: every one a run makes is removed when the step that needs it is done
+  tempDir: (prefix: string) => string
+  removeDir: (path: string) => void
 }
 
 const real: RemakeDeps = {
@@ -81,7 +84,10 @@ const real: RemakeDeps = {
     return r as { fileId?: string; refused?: boolean; refusalReason?: string; insufficientCredits?: boolean; creditsUsedMicro?: string }
   },
   poseClip: (path, seconds) => aiService<PoseResult>('/media/pose', { path, looks: [{ label: 'clip', start_s: 0, end_s: seconds }] }),
-  sample: (path, times) => sampleFrames(path, times, mkdtempSync(join(tmpdir(), 'remake-sample-'))),
+  sample: async (path, times) => {
+    const dir = mkdtempSync(join(tmpdir(), 'remake-sample-'))
+    try { return await sampleFrames(path, times, dir) } finally { rmSync(dir, { recursive: true, force: true }) }
+  },
   fitToFrames: (i, f, o, s) => fitToFrames(i, f, o, s),
   clipRateMicro: async (engine) => {
     const rate = await resolveRate('video_generation', engine === 'veo' ? VEO_CLIP_MODEL : VIDEO_MODEL)
@@ -91,12 +97,14 @@ const real: RemakeDeps = {
     const rate = await resolveRate('music_generation', 'lyria-002')
     return rate ? costMicro(rate.schema, { count: 1 }) : null
   },
-  generateMusic: (prompt, exec) => generateSongItem({ prompt, title: 'Remake music' }, exec),
+  generateMusic: (prompt, exec, runKey) => generateSongItem({ prompt, title: 'Remake music' }, exec, runKey),
   compare: (breakdown, remakeFileId, ctx, tenantId) => compareToReference({ fileId: breakdown.video.fileId }, remakeFileId, ctx, tenantId, breakdown),
   stillToFrames: (s, f, o, size) => stillToFrames(s, f, o, size),
   joinSegments: (p, o) => joinSegments(p, o),
   fitMusic: (m, s, o) => fitMusic(m, s, o),
   muxMusic: (v, m, o) => muxMusic(v, m, o),
+  tempDir: (prefix) => mkdtempSync(join(tmpdir(), prefix)),
+  removeDir: (path) => { try { rmSync(path, { recursive: true, force: true }) } catch { /* best effort */ } },
 }
 
 let override: Partial<RemakeDeps> | null = null

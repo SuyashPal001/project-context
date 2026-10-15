@@ -16,7 +16,7 @@ export function differenceNote(o: { plan: RemakePlan; stills: StillResult[]; cli
   if (o.musicMade !== false) lines.push('New music in the same mood (the original song is never used).')
   for (const c of o.clips) {
     if (c.status === 'still' || c.status === 'blocked') lines.push(`Part ${c.look} stays a still: ${c.reasons.join('; ')}.`)
-    else if (c.status === 'failed') lines.push(`Part ${c.look} didn’t pass its checks after a second try: ${c.reasons.join('; ')}.`)
+    else if (c.status === 'failed') lines.push(c.failedChecks === false ? `Part ${c.look} couldn’t be animated: ${c.reasons.join('; ')}.` : `Part ${c.look} didn’t pass its checks after a second try: ${c.reasons.join('; ')}.`)
     else if (c.status === 'unchecked') lines.push(`Part ${c.look} couldn’t be fully checked.`)
     if (c.fallback) lines.push(`Part ${c.look} was animated a simpler way after the first try was refused.`)
   }

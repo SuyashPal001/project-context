@@ -53,14 +53,16 @@ const shown = (plan: RemakePlan, ref: string, original: string): string | null =
 const scaleTimes = (lines: string[], factor: number) =>
   lines.map((l) => l.replace(/^at (\d+(?:\.\d+)?)s/, (_m, t) => `at ${(Number(t) * factor).toFixed(1)}s`))
 
-export function clipPrompt(plan: RemakePlan, look: RemakeLook, _brand: Brand, engine: 'veo' | 'omni', clipSeconds?: number): string {
+/** `plain`: the plainer wording tried once after a content block (spec rule 11) — frames, moves
+ *  and camera only; no person, body or expression description. */
+export function clipPrompt(plan: RemakePlan, look: RemakeLook, _brand: Brand, engine: 'veo' | 'omni', clipSeconds?: number, plain = false): string {
   const len = look.endS - look.startS
   const factor = clipSeconds && len > 0 ? clipSeconds / len : 1
   const i = look.n - 1
   const parts: string[] = [engine === 'veo'
     ? 'The first image is the first frame and the second image is the last frame; move naturally from one to the other.'
     : 'The image is the exact first frame; continue from it.']
-  if (personIn(look)) {
+  if (personIn(look) && !plain) {
     parts.push('Keep the same person, face, outfit and setting the whole time.')
     if (look.start) parts.push(`At the start: ${personWords(look.start, null).join(', ')}.`)
     if (look.end && engine === 'veo') parts.push(`At the end: ${personWords(look.end, null).join(', ')}.`)
