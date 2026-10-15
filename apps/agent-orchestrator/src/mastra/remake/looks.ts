@@ -27,6 +27,7 @@ export function remakeLooks(b: Breakdown): RemakeLook[] {
       n: i + 1, label: l.label, startS, endS,
       outfit: l.outfit ?? '', expression: l.expression ?? '', startPose: l.start_pose ?? '', endPose: l.end_pose ?? '',
       measured: l.measured ?? null, people: m?.people ?? null, noPerson: m?.no_person ?? null, start, end, moves,
+      measuredPeople: m?.people != null && !(m.people === 0 && (m.people_max ?? 0) > 0),
       guideStartS: kf[0]?.t_s ?? startS + pad,
       guideEndS: kf.length ? kf[kf.length - 1].t_s : endS - pad,
       needsEndStill: moves > 0 || bodyChanged(start, end),

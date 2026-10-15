@@ -55,28 +55,49 @@ const planStep = createStep({
 const casted = planned.extend({ portraitFileId: z.string().nullable(), ledger: z.array(any) })
 const castStep = createStep({
   id: 'cast', inputSchema: planned, outputSchema: casted,
-  suspendSchema: z.object({ stage: z.literal('cast_pick'), sheetFileId: z.string(), sheetCreditsMicro: z.string() }),
-  resumeSchema: z.object({ pick: z.number().int().min(1).max(3) }),
+  // sheetFileId null = no sheet yet (it was blocked or could not be made); `error` is plain words.
+  suspendSchema: z.object({ stage: z.literal('cast_pick'), sheetFileId: z.string().nullable(), sheetCreditsMicro: z.string(), error: z.string().optional() }),
+  // no pick = make the sheet again (only when there is none); a pick crops that panel
+  resumeSchema: z.object({ pick: z.number().int().min(1).max(3).optional() }),
   execute: async ({ inputData, resumeData, suspendData, suspend, requestContext, runId }) => {
     const a = access(requestContext as Rc, inputData.tenantId)
     const plan = inputData.plan as RemakePlan
     if (!plan.needsCasting) return { ...inputData, portraitFileId: null, ledger: [] }
     if (inputData.castFileId) return { ...inputData, portraitFileId: inputData.castFileId, ledger: [] }
     const deps = remakeDeps()
-    if (!resumeData || !suspendData?.sheetFileId) {
+    const sheetId = (suspendData?.sheetFileId as string | null | undefined) ?? null
+    const spentSoFar = (suspendData?.sheetCreditsMicro as string | undefined) ?? '0'
+    if (!sheetId) {
+      // A failure here never ends the run: the user can fix the plan or add credits and ask again.
       const castTo = plan.lines.find((l) => l.ref === 'cast')?.to ?? 'a new person'
-      const g = await deps.generateStill({ prompt: castSheetPrompt(castTo), aspectRatio: '16:9', engine: 'gemini', skipAvatarExpansion: true, title: 'Remake casting sheet' }, execFor(requestContext as Rc, runId)(0), 0)
-      if (!g.fileId) throw new Error(g.insufficientCredits ? 'not enough credits for the casting sheet' : 'the casting sheet could not be made')
-      return await suspend({ stage: 'cast_pick', sheetFileId: g.fileId, sheetCreditsMicro: g.creditsUsedMicro ?? '0' })
+      const prompt = castSheetPrompt(castTo)
+      const gate = await deps.promptGate({ prompt, planLine: `casting sheet; cast: swap to ${castTo}`, look: {}, startFrameObjects: [], keyMoments: [], tenantId: a.tenantId })
+      if (gate.status !== 'pass') {
+        if (gate.status === 'unknown') console.error('[remake] casting sheet prompt check unavailable:', gate.reason)
+        const error = gate.status === 'unknown' ? 'the casting sheet couldn’t be checked before making it, so it wasn’t made; try again in a minute' : `the casting sheet wasn’t made: ${gate.reason}`
+        return await suspend({ stage: 'cast_pick', sheetFileId: null, sheetCreditsMicro: spentSoFar, error })
+      }
+      const g = await deps.generateStill({ prompt, aspectRatio: '16:9', engine: 'gemini', skipAvatarExpansion: true, title: 'Remake casting sheet' }, execFor(requestContext as Rc, runId)(0), 0)
+      if (!g.fileId) {
+        if (!g.insufficientCredits) console.error('[remake] casting sheet not made:', g.refusalReason ?? 'unknown')
+        return await suspend({ stage: 'cast_pick', sheetFileId: null, sheetCreditsMicro: spentSoFar, error: g.insufficientCredits ? 'not enough credits for the casting sheet' : 'the casting sheet could not be made' })
+      }
+      return await suspend({ stage: 'cast_pick', sheetFileId: g.fileId, sheetCreditsMicro: String(BigInt(spentSoFar) + BigInt(g.creditsUsedMicro ?? '0')) })
     }
-    const dir = mkdtempSync(join(tmpdir(), 'remake-cast-'))
-    const sheetPath = await deps.localFile(suspendData.sheetFileId as string, a.idToken, a.scopeId)
-    const out = join(dir, `cast-${resumeData.pick}.jpg`)
-    await deps.ffmpeg(['-i', sheetPath, '-vf', `crop=iw/3:ih:(${resumeData.pick}-1)*iw/3:0`, '-frames:v', '1', '-q:v', '2', out])
-    const id = await deps.upload(a.idToken, generatedFileKey(a.conversationId, `remake ${runId} cast ${resumeData.pick}`, 'jpg'), `Remake cast ${resumeData.pick}.jpg`, deps.readFile(out), 'image/jpeg')
-    if (!id) throw new Error('the chosen person could not be saved')
-    const sheet: LedgerEntry = { item: 'casting sheet', attempt: 0, creditsMicro: (suspendData.sheetCreditsMicro as string | undefined) ?? '0', outcome: 'kept' }
-    return { ...inputData, portraitFileId: id, ledger: [sheet] }
+    if (!resumeData?.pick) return await suspend({ stage: 'cast_pick', sheetFileId: sheetId, sheetCreditsMicro: spentSoFar })
+    try {
+      const dir = mkdtempSync(join(tmpdir(), 'remake-cast-'))
+      const sheetPath = await deps.localFile(sheetId, a.idToken, a.scopeId)
+      const out = join(dir, `cast-${resumeData.pick}.jpg`)
+      await deps.ffmpeg(['-i', sheetPath, '-vf', `crop=iw/3:ih:(${resumeData.pick}-1)*iw/3:0`, '-frames:v', '1', '-q:v', '2', out])
+      const id = await deps.upload(a.idToken, generatedFileKey(a.conversationId, `remake ${runId} cast ${resumeData.pick}`, 'jpg'), `Remake cast ${resumeData.pick}.jpg`, deps.readFile(out), 'image/jpeg')
+      if (!id) throw new Error('upload returned no file')
+      const sheet: LedgerEntry = { item: 'casting sheet', attempt: 0, creditsMicro: spentSoFar, outcome: 'kept' }
+      return { ...inputData, portraitFileId: id, ledger: [sheet] }
+    } catch (err) {
+      console.error('[remake] saving the chosen person failed:', err instanceof Error ? err.message : String(err))
+      return await suspend({ stage: 'cast_pick', sheetFileId: sheetId, sheetCreditsMicro: spentSoFar, error: 'the chosen person could not be saved; please pick again' })
+    }
   },
 })
 
@@ -103,13 +124,21 @@ const stillsStep = createStep({
     for (const look of plan.looks) {
       for (const kind of (look.needsEndStill ? ['start', 'end'] : ['start']) as Array<'start' | 'end'>) {
         jobs.push(async () => {
-          const g = await guide(look.n, kind, kind === 'start' ? look.guideStartS : look.guideEndS)
-          if (!g) return { result: { look: look.n, kind, fileId: null, status: 'blocked', reasons: ['the pose guide could not be saved'] }, ledger: [] }
-          const person = personIn(look)
-          const references = [...(person && portrait ? [portrait.fileId] : []), g, ...(product ? [product] : [])]
-          const prompt = stillPrompt(plan, look, kind, brand, !!product)
-          const job: StillJob = { look, kind, prompt, references, aspectRatio: plan.aspectRatio, gate: stillGateInput(plan, look, kind, prompt) }
-          return makeStill(job, ctx, deps)
+          // Never paid: a look whose people were not measured (spec §8a).
+          if (!look.measuredPeople) return { result: { look: look.n, kind, fileId: null, status: 'blocked', reasons: ['this part of the video couldn’t be measured, so its still wasn’t made'] }, ledger: [] }
+          // One still failing never ends the run: earlier stills are paid for and must reach the ledger and the preview.
+          try {
+            const g = await guide(look.n, kind, kind === 'start' ? look.guideStartS : look.guideEndS)
+            if (!g) return { result: { look: look.n, kind, fileId: null, status: 'blocked', reasons: ['the pose guide could not be saved'] }, ledger: [] }
+            const person = personIn(look)
+            const references = [...(person && portrait ? [portrait.fileId] : []), g, ...(product ? [product] : [])]
+            const prompt = stillPrompt(plan, look, kind, brand, !!product)
+            const job: StillJob = { look, kind, prompt, references, aspectRatio: plan.aspectRatio, gate: stillGateInput(plan, look, kind, prompt) }
+            return await makeStill(job, ctx, deps)
+          } catch (err) {
+            console.error(`[remake] look ${look.n} ${kind} still failed:`, err instanceof Error ? err.message : String(err))
+            return { result: { look: look.n, kind, fileId: null, status: 'failed', reasons: ['this still could not be made this time'] }, ledger: [] }
+          }
         })
       }
     }

@@ -28,6 +28,7 @@ beforeEach(() => {
   setRemakeDeps({
     ask: () => vi.fn().mockResolvedValue({ lines: [] }),
     imageRateMicro: async () => 1_000_000n,
+    promptGate: async () => ({ name: 'prompt', status: 'pass', reason: '', evidenceTimes: [] }),
     generateStill: vi.fn(async () => ({ fileId: `img-${++n}`, creditsUsedMicro: '0' })),
   })
 })

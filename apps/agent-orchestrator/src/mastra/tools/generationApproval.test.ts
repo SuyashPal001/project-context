@@ -95,6 +95,7 @@ describe('GENERATION_APPROVAL_METADATA', () => {
         'stretch-clip', 'stretch_clip',
         'render-animatic', 'render_animatic',
         'save_skill',
+        'remake_video',
       ].sort(),
     )
   })

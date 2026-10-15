@@ -163,6 +163,16 @@ const itemCount = (args: Record<string, unknown>): number | undefined =>
 const videoBatchGen = { ...videoGen, label: 'Generate videos', buildPreview: batchPromptPreview, buildCount: itemCount }
 const imageBatchGen = { ...imageGen, label: 'Generate images', buildPreview: batchPromptPreview, buildCount: itemCount, subjectFor: (args: Record<string, unknown>, ctx: ContextLike) => imageSubject(firstItem(args), ctx) }
 
+// remake_video: one card per paid stage. The plan review already showed the
+// image count and its cost, so the card names what this approval unlocks.
+const remakePreview = (args: Record<string, unknown>): string | undefined =>
+  args.action === 'approve_plan'
+    ? 'Approves the remake plan and makes the casting sheet (3 new people to choose from). When the video has no person to cast, it makes the stills and the free preview instead, as estimated with the plan.'
+    : args.action === 'pick_cast'
+      ? 'Makes every still for the remake with the chosen person (at most one automatic retry each), then the free preview, as estimated with the plan.'
+      : undefined
+const remakeGen = { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Remake video', buildPreview: remakePreview }
+
 export const GENERATION_APPROVAL_METADATA: Record<string, {
   resourceType: string
   subject: string
@@ -210,6 +220,7 @@ export const GENERATION_APPROVAL_METADATA: Record<string, {
   'mix_music_bed': mixMusicBedGen,
   'mix-voiceover': mixVoiceoverGen,
   'mix_voiceover': mixVoiceoverGen,
+  'remake_video': remakeGen, // single key: the tool id and every agent map key are the same
   'save_skill': {
     resourceType: 'skill_creation',
     subject: 'create',

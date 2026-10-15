@@ -12,6 +12,9 @@ export interface RemakeLook {
   outfit: string; expression: string; startPose: string; endPose: string
   measured: string | null         // the breakdown's plain "Measured:" line
   people: number | null; noPerson: boolean | null
+  // false when the people count was not measured, or a person shows only part of the time:
+  // stills for such a look are never paid for (spec §8a: no paid value from a guess)
+  measuredPeople: boolean
   start: BodyReading | null; end: BodyReading | null
   moves: number
   guideStartS: number; guideEndS: number   // measured frames used as pose-only guides

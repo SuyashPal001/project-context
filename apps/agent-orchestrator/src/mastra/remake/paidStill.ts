@@ -49,13 +49,18 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
     const gate = await deps.promptGate({ ...job.gate, prompt, tenantId: ctx.tenantId })
     if (gate.status !== 'pass') {
       ledger.push({ item, attempt, creditsMicro: '0', outcome: 'blocked' })
+      // An unknown gate is an outage: log the raw reason, tell the user plain words (no internals).
+      if (gate.status === 'unknown') console.error(`[remake] ${item} prompt check unavailable: ${gate.reason}`)
+      const why = gate.status === 'unknown' ? 'the still couldn’t be checked before making it, so it wasn’t made' : gate.reason
       return last
         ? { result: { ...base, fileId: last.fileId, status: 'failed', reasons: last.reasons }, ledger }
-        : { result: { ...base, fileId: null, status: 'blocked', reasons: [gate.reason] }, ledger }
+        : { result: { ...base, fileId: null, status: 'blocked', reasons: [why] }, ledger }
     }
     const slot = slotFor(job.look.n, job.kind, attempt)
+    // skipAvatarExpansion: images are placed by role (portrait, then pose guide); an avatar's
+    // reference sheet would push the guide out of second place and change the gated prompt.
     const g = await deps.generateStill(
-      { prompt, aspectRatio: job.aspectRatio, referenceFileIds: job.references, engine: 'gemini', title: `Remake look ${job.look.n} ${job.kind} still` },
+      { prompt, aspectRatio: job.aspectRatio, referenceFileIds: job.references, engine: 'gemini', skipAvatarExpansion: true, title: `Remake look ${job.look.n} ${job.kind} still` },
       ctx.exec(slot), slot)
     const spent = g.creditsUsedMicro ?? '0'
     if (!g.fileId) {

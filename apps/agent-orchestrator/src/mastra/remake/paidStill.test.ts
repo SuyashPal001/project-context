@@ -33,10 +33,10 @@ describe('makeStill', () => {
     expect(d.generateStill).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'P', referenceFileIds: ['portrait', 'guide'], engine: 'gemini', aspectRatio: '9:16' }), expect.anything(), slotFor(1, 'start', 0))
   })
   it('blocks before paying when the gate fails or is unknown', async () => {
-    for (const status of ['fail', 'unknown'] as const) {
+    for (const [status, why] of [['fail', 'adds a smile'], ['unknown', 'the still couldn’t be checked before making it, so it wasn’t made']] as const) {
       const d = deps({ promptGate: vi.fn().mockResolvedValue({ ...pass, status, reason: 'adds a smile' }) })
       const r = await makeStill(job, ctx, d)
-      expect(r.result).toMatchObject({ status: 'blocked', fileId: null, reasons: ['adds a smile'] })
+      expect(r.result).toMatchObject({ status: 'blocked', fileId: null, reasons: [why] })
       expect(d.generateStill).not.toHaveBeenCalled()
     }
   })

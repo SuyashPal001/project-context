@@ -16,15 +16,21 @@ const brandSchema = z.object({ name: z.string().min(1), product: z.string().min(
 const lineSchema = z.object({ ref: z.string(), action: z.enum(['keep', 'swap', 'drop']), to: z.string().optional(), why: z.string().optional() })
 
 type Out = { success: boolean } & Record<string, unknown>
-type RunResult = { status: string; steps?: Record<string, { suspendPayload?: Record<string, unknown>; error?: unknown; output?: Record<string, unknown> }>; result?: Record<string, unknown>; error?: unknown }
+export type RunResult = { status: string; steps?: Record<string, { suspendPayload?: Record<string, unknown>; error?: unknown; output?: Record<string, unknown> }>; result?: Record<string, unknown>; error?: unknown }
 
 function errorText(e: unknown): string {
   const msg = e instanceof Error ? e.message : typeof e === 'string' ? e : (e as { message?: string } | undefined)?.message ?? ''
   if (e instanceof RemakeAccessError || msg === 'not_found') return 'not_found'
-  return PLAIN.test(msg) ? msg : 'the remake stopped; please try again'
+  if (PLAIN.test(msg)) return msg
+  // Acting on a step the run is already past (approve twice, edit after approving) or a
+  // second resume racing the first: plain words, and never a hint to start over and pay again.
+  if (/not suspended|already/i.test(msg)) return 'that step is already done or in progress; use status to see where the remake is'
+  return 'the remake stopped; please try again'
 }
 
-function shape(runId: string, r: RunResult): Out {
+export function shapeRun(runId: string, r: RunResult): Out {
+  // Stills run inside one long tool call; a status check meanwhile must not read as a failure.
+  if (r.status === 'running' || r.status === 'pending') return { success: true, runId, stage: 'working' }
   if (r.status === 'suspended') {
     const p = Object.values(r.steps ?? {}).map((s) => s.suspendPayload).filter((x) => x && x.stage).pop() as Out | undefined
     if (!p) return { success: false, runId, error: 'the remake stopped; please try again' }
@@ -33,7 +39,7 @@ function shape(runId: string, r: RunResult): Out {
       const plan = p.plan as { warnings?: string[] }
       return { success: true, runId, stage: 'plan_review', plan: p.plan, warnings: plan.warnings ?? [], estimate: { images: e.images, firstPassCredits: credits(e.firstPassMicro), maxCredits: credits(e.maxMicro) } }
     }
-    return { success: true, runId, stage: 'cast_pick', sheetFileId: p.sheetFileId }
+    return { success: true, runId, stage: 'cast_pick', sheetFileId: p.sheetFileId, ...(p.error ? { error: p.error } : {}) }
   }
   const result = r.result ?? r.steps?.preview?.output
   if (r.status === 'success' && result) {
@@ -50,7 +56,9 @@ export const remakeVideoTool = createTool({
   description: 'Remake a reference video for the user\'s brand, step by step, with the user approving each paid step. '
     + 'start (link or fileId + brand: name, product, optional productPhotoFileId/audience/notes; optional castFileId when the user brings their own person): returns the remake plan (each part of the video kept, swapped or dropped) and the cost of the stills. Show the plan in plain words and ask for changes. '
     + 'edit_plan (runId + edits) for changes; approve_plan (runId) when the user agrees. If the video has a person, approve_plan returns a casting sheet of 3 new people: show it and ask which one (pick_cast, runId + pick 1-3). '
+    + 'If cast_pick comes back with an error and no sheetFileId, tell the user the error; once fixed, call pick_cast with no pick to make the sheet again. If it has an error and a sheet, ask the user to pick again. '
     + 'Then every look gets checked stills and a free preview video (stage preview_ready): share the preview, say which stills failed or were held back, and the credits spent. Video clips are a later step. '
+    + 'stage working means it is still making the stills: wait and use status; never call start again while a remake for this video exists (that pays twice). '
     + 'Never describe how it works inside; use plain outcome words. status (runId) re-reads where a remake is.',
   inputSchema: z.object({
     action: z.enum(['start', 'edit_plan', 'approve_plan', 'pick_cast', 'status']),
@@ -85,19 +93,18 @@ export const remakeVideoTool = createTool({
         if (refusal) return { success: false, error: refusal }
         const run = await w.createRun()
         const r = await run.start({ inputData: { tenantId, conversationId, breakdown: b, brand: input.brand, castFileId: input.castFileId }, requestContext: rc as never })
-        return shape(run.runId, r as unknown as RunResult)
+        return shapeRun(run.runId, r as unknown as RunResult)
       }
       if (!input.runId) return { success: false, error: 'runId_required' }
       const state = await w.getWorkflowRunById(input.runId) as unknown as (RunResult & { payload?: { tenantId?: string; conversationId?: string } }) | null
       if (!state || state.payload?.tenantId !== tenantId || state.payload?.conversationId !== conversationId) return { success: false, error: 'not_found' }
-      if (input.action === 'status') return shape(input.runId, state)
-      if (input.action === 'pick_cast' && !input.pick) return { success: false, error: 'pick_required' }
+      if (input.action === 'status') return shapeRun(input.runId, state)
       const [step, resumeData] = input.action === 'edit_plan' ? ['plan', { decision: 'edit', edits: input.edits ?? [] }]
         : input.action === 'approve_plan' ? ['plan', { decision: 'approve' }]
-        : ['cast', { pick: input.pick }]
+        : ['cast', input.pick ? { pick: input.pick } : {}]
       const run = await w.createRun({ runId: input.runId })
       const r = await run.resume({ step, resumeData, requestContext: rc as never })
-      return shape(input.runId, r as unknown as RunResult)
+      return shapeRun(input.runId, r as unknown as RunResult)
     } catch (err) {
       console.error('[remake] tool failed:', err instanceof Error ? err.message : String(err))
       return { success: false, error: errorText(err) }

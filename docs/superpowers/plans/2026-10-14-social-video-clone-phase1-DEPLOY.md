@@ -43,3 +43,4 @@ Confirm with the user before restarting any PM2 process.
 2. Rebuild and restart the orchestrator (ask first). The remake workflow uses the existing Mastra Postgres store on its own private Mastra instance; no migration.
 3. Re-seed official skills (template-video step 8): `pnpm --filter @serverless-saas/agent-api db:seed:official-skills`.
 4. Check `/studio/api/workflows` does NOT list `video-remake` (it must never be on the Studio-mounted instance).
+5. Restarting the orchestrator while a remake is making its stills loses that run (it stays "working" and cannot resume). Runs waiting on the plan review or the cast pick survive restarts. Avoid restarts while a remake is mid-stills.
