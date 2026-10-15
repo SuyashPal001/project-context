@@ -1,6 +1,7 @@
 import type { BodyReading } from './aiServiceClient.js'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
+import { linkSchema } from './links.js'
 import { askGeminiVideo, parseModelJson, asObject } from './geminiVideo.js'
 import { fetchVideo, type FetchedVideo } from './fetchVideo.js'
 
@@ -78,7 +79,7 @@ export async function watchVideo(video: Pick<FetchedVideo, 'filePath' | 'youtube
 export const watchVideoTool = createTool({
   id: 'watch_video',
   description: 'Watch and listen to a whole video once and return its overview: format, how scenes change, each look (outfit, expression, start/end pose, moves, leg side), story, moments, setting, props, the trick, sound and on-screen text. Rough times only — exact times come from find_cuts / find_hidden_cuts / sound_timeline.',
-  inputSchema: z.object({ fileId: z.string().optional(), url: z.string().url().optional() }),
+  inputSchema: z.object({ fileId: z.string().optional(), url: linkSchema.optional() }),
   outputSchema: z.object({ success: z.boolean(), overview: z.any().optional(), error: z.string().optional() }),
   execute: async (input, execContext) => {
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined

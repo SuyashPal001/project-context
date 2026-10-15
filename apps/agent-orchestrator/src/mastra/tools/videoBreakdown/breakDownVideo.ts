@@ -1,5 +1,6 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
+import { linkSchema, normalizeLink } from './links.js'
 import { fetchVideo, probe, DownloadBlocked, type FetchedVideo } from './fetchVideo.js'
 import { watchVideo, type WatchOverview } from './watchVideo.js'
 import { aiService, type CutsResult, type HiddenCutsResult, type SoundResult, type PoseResult } from './aiServiceClient.js'
@@ -48,7 +49,7 @@ export function lookSpans(overview: Pick<WatchOverview, 'looks'>, hidden: Hidden
 // remake against the SAME breakdown it was planned from, without paying again (review I3).
 const RECENT_MAX = 50
 const recent = new Map<string, Breakdown>()
-const recentKey = (input: { url?: string; fileId?: string }, scopeId: string) => `${scopeId}|${input.url ?? ''}|${input.fileId ?? ''}`
+const recentKey = (input: { url?: string; fileId?: string }, scopeId: string) => `${scopeId}|${input.url ? normalizeLink(input.url) : ''}|${input.fileId ?? ''}`
 export function recentBreakdown(input: { url?: string; fileId?: string }, ctx: { scopeId: string }): Breakdown | undefined {
   return recent.get(recentKey(input, ctx.scopeId))
 }
@@ -183,7 +184,7 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
 export const breakDownVideoTool = createTool({
   id: 'break_down_video',
   description: 'Break down a reference video completely from a link or an attached file: format, story, moments, each look (outfit, expression, poses, moves, leg side), props, setting, the trick, exact cuts and hidden cuts, exact sound timing, and every shot. Use this first when the user wants to clone or recreate a video. Over 90s: ask which part.',
-  inputSchema: z.object({ url: z.string().url().optional(), fileId: z.string().optional() }),
+  inputSchema: z.object({ url: linkSchema.optional(), fileId: z.string().optional() }),
   outputSchema: z.object({ success: z.boolean(), breakdown: z.any().optional(), error: z.string().optional() }),
   execute: async (input, execContext) => {
     const rc = execContext?.requestContext

@@ -1,5 +1,6 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
+import { linkSchema } from './links.js'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -152,7 +153,7 @@ export async function compareToReference(refInput: { url?: string; fileId?: stri
 export const compareToReferenceTool = createTool({
   id: 'compare_to_reference',
   description: 'Compare a finished remake to its reference video at measured moments: pose and leg side, expression, same person throughout, and sudden brightness jumps. Use when the user asks how close the remake is.',
-  inputSchema: z.object({ referenceUrl: z.string().url().optional(), referenceFileId: z.string().optional(), remakeFileId: z.string() }),
+  inputSchema: z.object({ referenceUrl: linkSchema.optional(), referenceFileId: z.string().optional(), remakeFileId: z.string() }),
   outputSchema: z.object({ success: z.boolean(), result: z.any().optional(), error: z.string().optional() }),
   execute: async (input, execContext) => {
     const rc = execContext?.requestContext

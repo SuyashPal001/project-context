@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { classifyLink, fetchVideo, FetchRefused, DownloadBlocked } from './fetchVideo.js'
+import { classifyLink, fetchVideo, FetchRefused, DownloadBlocked, normalizeLink } from './fetchVideo.js'
 import { uploadGeneratedFile } from '../../../persistence.js'
 
 const execCalls: Array<{ file: string; args: string[] }> = []
@@ -130,5 +130,24 @@ describe('download failure logging (server only)', () => {
     expect(spy.mock.calls.map((c) => c.join(' ')).join('\n')).toMatch(/\[fetchVideo\].*facebook.*Cannot parse data/)
     expect(err.message).not.toMatch(/Cannot parse data/)
     spy.mockRestore()
+  })
+})
+
+describe('links pasted without https://', () => {
+  it('normalises a bare link before using it', () => {
+    expect(normalizeLink('facebook.com/reel/1479672313280365/?s=ifu')).toBe('https://facebook.com/reel/1479672313280365/?s=ifu')
+    expect(normalizeLink('  www.instagram.com/p/x/ ')).toBe('https://www.instagram.com/p/x/')
+    expect(normalizeLink('https://x.com/a/status/1')).toBe('https://x.com/a/status/1')
+    expect(classifyLink(normalizeLink('facebook.com/reel/1/'))).toBe('facebook')
+  })
+  it('downloads a bare link with https:// added', async () => {
+    await fetchVideo({ url: 'facebook.com/reel/1479672313280365/?s=ifu' }, ctx)
+    const dl = execCalls.find((c) => c.file === 'yt-dlp' && !c.args.includes('--skip-download'))!
+    expect(dl.args[dl.args.length - 1]).toBe('https://facebook.com/reel/1479672313280365/?s=ifu')
+  })
+  it('the tools accept a bare link', async () => {
+    const { fetchVideoTool } = await import('./fetchVideo.js')
+    const { breakDownVideoTool } = await import('./breakDownVideo.js')
+    for (const t of [fetchVideoTool, breakDownVideoTool]) expect((t.inputSchema as any).safeParse({ url: 'facebook.com/reel/1/' }).success).toBe(true)
   })
 })

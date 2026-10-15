@@ -1,5 +1,6 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
+import { linkSchema, normalizeLink } from './links.js'
 import { execFile as execFileCb } from 'node:child_process'
 import { promisify } from 'node:util'
 import { readFileSync, existsSync, writeFileSync } from 'node:fs'
@@ -14,6 +15,7 @@ const execFile = promisify(execFileCb)
 const MAX_SOURCE_BYTES = 300 * 1024 * 1024
 export const MAX_FULL_BREAKDOWN_S = 90
 
+export { normalizeLink } from './links.js'
 export class FetchRefused extends Error {}
 // The server could not download a YouTube link (YouTube blocks datacenter IPs).
 // Gemini can still watch the link itself, so the breakdown falls back to watch-only.
@@ -44,6 +46,7 @@ export async function probe(filePath: string) {
 }
 
 export async function fetchVideo(input: { url?: string; fileId?: string }, ctx: { idToken: string; scopeId: string; conversationId: string }): Promise<FetchedVideo> {
+  if (input.url) input = { ...input, url: normalizeLink(input.url) }
   let filePath: string
   let caption: string | null = null
   let song: FetchedVideo['song'] = null
@@ -120,7 +123,7 @@ export async function fetchVideo(input: { url?: string; fileId?: string }, ctx: 
 export const fetchVideoTool = createTool({
   id: 'fetch_video',
   description: 'Get a reference video from a social link (YouTube, Instagram, X, Facebook, LinkedIn) or an attached file, ready for breaking down. Logged-out downloads only; TikTok needs an upload. Returns fileId, length, size, caption and tooLong (over 90s: ask the user which part to clone).',
-  inputSchema: z.object({ url: z.string().url().optional(), fileId: z.string().optional() }),
+  inputSchema: z.object({ url: linkSchema.optional(), fileId: z.string().optional() }),
   outputSchema: z.object({ success: z.boolean(), video: z.any().optional(), error: z.string().optional() }),
   execute: async (input, execContext) => {
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined

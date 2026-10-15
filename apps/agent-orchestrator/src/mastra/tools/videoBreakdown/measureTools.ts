@@ -1,5 +1,6 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
+import { linkSchema } from './links.js'
 import { fetchVideo } from './fetchVideo.js'
 import { aiService, type CutsResult, type HiddenCutsResult, type SoundResult, type PoseResult } from './aiServiceClient.js'
 
@@ -25,7 +26,7 @@ async function shortVideo(input: { url?: string; fileId?: string }, ctx: Ctx) {
   return v
 }
 const out = z.object({ success: z.boolean(), result: z.any().optional(), error: z.string().optional() })
-const src = z.object({ fileId: z.string().optional(), url: z.string().url().optional() })
+const src = z.object({ fileId: z.string().optional(), url: linkSchema.optional() })
 
 export const findCutsTool = createTool({
   id: 'find_cuts',
