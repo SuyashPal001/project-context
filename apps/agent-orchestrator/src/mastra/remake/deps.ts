@@ -2,15 +2,23 @@
 // without a gateway, a model, a store or ffmpeg.
 import { execFile as execFileCb } from 'node:child_process'
 import { promisify } from 'node:util'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { costMicro, resolveRate } from '@serverless-saas/credits'
 import { generateImageItem, type ImageItemInput } from '../tools/generateImage.js'
 import type { MediaExecContext } from '../tools/batchRunner.js'
-import { gatewayAsk, runStillChecks, type AskFn, type Img } from '../tools/tvcChecks.js'
+import { gatewayAsk, runStillChecks, sampleFrames, type AskFn, type Img } from '../tools/tvcChecks.js'
 import { fetchBase64 } from '../tools/checkClip.js'
 import { fetchPresignedUrl, downloadToSessionCache } from '../tools/mediaCache.js'
 import { uploadFileWithKey } from '../../persistence.js'
-import { aiService, type ImagePose } from '../tools/videoBreakdown/aiServiceClient.js'
+import { aiService, type ImagePose, type PoseResult } from '../tools/videoBreakdown/aiServiceClient.js'
+import { generateVideoItem, VIDEO_MODEL } from '../tools/generateVideo.js'
+import { generateVeoClipItem, VEO_CLIP_MODEL } from '../tools/veoClip.js'
+import { generateSongItem } from '../tools/generateSong.js'
+import { compareToReference } from '../tools/videoBreakdown/compareToReference.js'
+import type { Breakdown } from '../tools/videoBreakdown/breakDownVideo.js'
+import { trimToFrames } from './compose.js'
 import { checkModel } from '../tools/videoBreakdown/models.js'
 import { imageModelFor } from '../tools/imageEngine.js'
 import { runGate, type CheckResult } from '../scorers/video/gate.js'
@@ -35,6 +43,16 @@ export interface RemakeDeps {
   readFile: (path: string) => Buffer
   renderPreview: (job: PreviewJob) => Promise<string>
   imageRateMicro: () => Promise<bigint | null>
+  // 3b: clips, music, final checks
+  generateVeoClip: typeof generateVeoClipItem
+  generateOmniClip: (input: { prompt: string; startImageFileId: string; durationSeconds: number; aspectRatio: '9:16' | '16:9'; title: string }, exec: MediaExecContext, index: number) => Promise<{ fileId?: string; refused?: boolean; refusalReason?: string; insufficientCredits?: boolean; creditsUsedMicro?: string }>
+  poseClip: (path: string, seconds: number) => Promise<PoseResult>
+  sample: (path: string, times: number[]) => Promise<Img[]>
+  trimToFrames: typeof trimToFrames
+  clipRateMicro: (engine: 'veo' | 'omni') => Promise<bigint | null>
+  musicRateMicro: () => Promise<bigint | null>
+  generateMusic: (prompt: string, exec: MediaExecContext) => Promise<{ fileId?: string; refused?: boolean; refusalReason?: string; insufficientCredits?: boolean; creditsUsedMicro?: string }>
+  compare: (breakdown: Breakdown, remakeFileId: string, ctx: { idToken: string; scopeId: string; conversationId: string }, tenantId: string) => Promise<{ checks: CheckResult[]; summary: string }>
 }
 
 const real: RemakeDeps = {
@@ -53,6 +71,24 @@ const real: RemakeDeps = {
     const rate = await resolveRate('image_generation', imageModelFor('gemini').rateSubject)
     return rate ? costMicro(rate.schema, { count: 1 }) : null
   },
+  generateVeoClip: (input, exec, index) => generateVeoClipItem(input, exec, index),
+  generateOmniClip: async (input, exec, index) => {
+    const r = await generateVideoItem({ mode: 'animate_frame', prompt: input.prompt, aspectRatio: input.aspectRatio, durationSeconds: input.durationSeconds, startImageFileId: input.startImageFileId, title: input.title }, exec, index)
+    return r as { fileId?: string; refused?: boolean; refusalReason?: string; insufficientCredits?: boolean; creditsUsedMicro?: string }
+  },
+  poseClip: (path, seconds) => aiService<PoseResult>('/media/pose', { path, looks: [{ label: 'clip', start_s: 0, end_s: seconds }] }),
+  sample: (path, times) => sampleFrames(path, times, mkdtempSync(join(tmpdir(), 'remake-sample-'))),
+  trimToFrames: (i, f, o, s) => trimToFrames(i, f, o, s),
+  clipRateMicro: async (engine) => {
+    const rate = await resolveRate('video_generation', engine === 'veo' ? VEO_CLIP_MODEL : VIDEO_MODEL)
+    return rate ? costMicro(rate.schema, { count: 1 }) : null
+  },
+  musicRateMicro: async () => {
+    const rate = await resolveRate('music_generation', 'lyria-002')
+    return rate ? costMicro(rate.schema, { count: 1 }) : null
+  },
+  generateMusic: (prompt, exec) => generateSongItem({ prompt, title: 'Remake music' }, exec),
+  compare: (breakdown, remakeFileId, ctx, tenantId) => compareToReference({ fileId: breakdown.video.fileId }, remakeFileId, ctx, tenantId, breakdown),
 }
 
 let override: Partial<RemakeDeps> | null = null

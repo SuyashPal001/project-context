@@ -45,7 +45,7 @@ describe('generateSong tool', () => {
     const result = await generateSong.execute!({ prompt: 'a calm lo-fi beat' } as never, baseCtx())
 
     expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', amountMicro: -20_000n, kind: 'debit', jobType: 'music_generation' }))
-    expect(result).toEqual({ fileId: 'f1', name: 'song.wav', fileType: 'audio/wav', size: 3 })
+    expect(result).toEqual({ fileId: 'f1', name: 'song.wav', fileType: 'audio/wav', size: 3, creditsUsedMicro: '20000' })
     expect(result).not.toHaveProperty('audioBase64')
   })
 

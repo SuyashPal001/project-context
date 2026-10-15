@@ -20,6 +20,7 @@ const outputSchema = z.object({
   refused: z.boolean().optional(),
   refusalReason: z.string().optional(),
   insufficientCredits: z.boolean().optional(),
+  creditsUsedMicro: z.string().optional(),
 })
 
 export const generateSong = createTool({
@@ -35,7 +36,17 @@ export const generateSong = createTool({
   execute: async (inputData, execContext) => {
     if (videoBlockedThisTurn(execContext?.requestContext)) return SHOW_FIRST_FOLLOW_ON_REFUSAL
     emitGenerationStarted(execContext)
-    const { prompt, title } = inputData as { prompt: string; title?: string }
+    return generateSongItem(inputData as { prompt: string; title?: string }, execContext as unknown as SongExecContext)
+
+  },
+})
+
+type SongExecContext = { requestContext?: { get: (key: string) => unknown } }
+
+/** The song call itself (charge first, refund on every failure), without the tool's
+ *  per-turn guard, so a workflow (the video remake) can make its music. */
+export async function generateSongItem(inputData: { prompt: string; title?: string }, execContext: SongExecContext | undefined) {
+    const { prompt, title } = inputData
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     // Left undefined, not '' — '' reaches Postgres as ''::uuid and every charge
     // throws. Same fix as generateImage.ts.
@@ -51,6 +62,7 @@ export const generateSong = createTool({
     let charged = false
     let rateId: string | null = null
     let rateVersion: number | null = null
+    let amountMicro = 0n
 
     if (!(await isUnlimited(tenantId))) {
       const rate = await resolveRate('music_generation', MUSIC_MODEL)
@@ -59,7 +71,7 @@ export const generateSong = createTool({
       } else {
         rateId = rate.id
         rateVersion = rate.version
-        const amountMicro = costMicro(rate.schema, { count: 1 })
+        amountMicro = costMicro(rate.schema, { count: 1 })
         try {
           await spendCredits({
             tenantId, amountMicro: -amountMicro, key: chargeKey, kind: 'debit',
@@ -124,6 +136,5 @@ export const generateSong = createTool({
       return { refused: true, refusalReason: 'STORAGE_FAILED' }
     }
 
-    return { fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size }
-  },
-})
+    return { fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size, creditsUsedMicro: String(amountMicro) }
+}

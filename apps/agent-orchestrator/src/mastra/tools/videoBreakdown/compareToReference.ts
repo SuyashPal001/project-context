@@ -107,8 +107,9 @@ async function attachEvidence(checks: CheckResult[], times: number[], refFrames:
 }
 
 
-export async function compareToReference(refInput: { url?: string; fileId?: string }, remakeFileId: string, ctx: Ctx, tenantId?: string) {
-  const reference = recentBreakdown(refInput, ctx) ?? await breakDownVideo(refInput, ctx, tenantId)
+export async function compareToReference(refInput: { url?: string; fileId?: string }, remakeFileId: string, ctx: Ctx, tenantId?: string, known?: Breakdown) {
+  // `known`: a breakdown the caller already has (the remake's own), so nothing is paid for again.
+  const reference = known ?? recentBreakdown(refInput, ctx) ?? await breakDownVideo(refInput, ctx, tenantId)
   const refVideo = await fetchVideo(refInput, ctx)
   const remake = await fetchVideo({ fileId: remakeFileId }, ctx)
   const times = pairTimes(reference).filter((t) => t < remake.durationS)
