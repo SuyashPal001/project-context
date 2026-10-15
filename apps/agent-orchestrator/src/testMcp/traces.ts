@@ -59,7 +59,15 @@ export async function readToolSpans(store: ObservabilityLike, conversationId: st
 
   const out: ToolSpan[] = []
   for (const root of roots) {
-    const trace = await store.getTrace({ traceId: root.traceId })
+    let trace: GetTraceResponse | null
+    try {
+      trace = await store.getTrace({ traceId: root.traceId })
+    } catch {
+      // A trace can disappear mid-fan-out (retention sweep, race with a
+      // delete). Skip it and keep whatever spans we already gathered rather
+      // than aborting the whole read over one bad trace.
+      continue
+    }
     if (!trace) continue
     for (const span of trace.spans) {
       if (!INCLUDED_SPAN_TYPES.includes(span.spanType)) continue
@@ -77,6 +85,8 @@ export async function readToolSpans(store: ObservabilityLike, conversationId: st
     }
   }
 
-  out.sort((a, b) => a.startedAt.localeCompare(b.startedAt))
-  return out.slice(0, limit)
+  // Keep the most recent `limit` spans -- not the oldest -- then return them
+  // oldest-first: sort newest-first, slice to the cap, reverse.
+  out.sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+  return out.slice(0, limit).reverse()
 }

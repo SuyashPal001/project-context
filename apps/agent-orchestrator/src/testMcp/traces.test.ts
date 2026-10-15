@@ -67,4 +67,45 @@ describe('readToolSpans', () => {
     }
     expect(await readToolSpans(store, 'c1')).toEqual([])
   })
+
+  it('skips a trace whose getTrace throws, keeping spans already gathered', async () => {
+    const store: ObservabilityLike = {
+      async listTraces() {
+        return { spans: [{ traceId: 'ok' } as any, { traceId: 'broken' } as any] } as any
+      },
+      async getTrace({ traceId }) {
+        if (traceId === 'broken') throw new Error('connection reset')
+        return {
+          traceId: 'ok',
+          spans: [{ traceId: 'ok', spanId: 's1', name: 'survivor', spanType: 'tool_call', startedAt: new Date('2026-10-15T10:00:00.000Z'), endedAt: new Date('2026-10-15T10:00:01.000Z') }],
+        } as any
+      },
+    }
+    const result = await readToolSpans(store, 'c1')
+    expect(result.map((s) => s.name)).toEqual(['survivor'])
+  })
+
+  it('keeps the most recent `limit` spans, still returned oldest first', async () => {
+    const spans = Array.from({ length: 5 }, (_, i) => ({
+      traceId: 't1',
+      spanId: `s${i}`,
+      name: `tool-${i}`,
+      spanType: 'tool_call',
+      startedAt: new Date(2026, 9, 15, 10, 0, i),
+      endedAt: new Date(2026, 9, 15, 10, 0, i + 1),
+    }))
+    const store: ObservabilityLike = {
+      async listTraces() {
+        return { spans: [{ traceId: 't1' } as any] } as any
+      },
+      async getTrace() {
+        return { traceId: 't1', spans } as any
+      },
+    }
+    const result = await readToolSpans(store, 'c1', 3)
+    // tool-0..tool-4 are oldest to newest; capping at 3 must keep the 3
+    // newest (tool-2, tool-3, tool-4), not the 3 oldest, and still return
+    // them in oldest-first order.
+    expect(result.map((s) => s.name)).toEqual(['tool-2', 'tool-3', 'tool-4'])
+  })
 })
