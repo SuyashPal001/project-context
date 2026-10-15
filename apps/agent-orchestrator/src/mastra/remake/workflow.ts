@@ -8,6 +8,7 @@ import type { Breakdown } from '../tools/videoBreakdown/breakDownVideo.js'
 import type { MediaExecContext } from '../tools/batchRunner.js'
 import { generatedFileKey } from '../../persistence.js'
 import { remakeDeps } from './deps.js'
+import { runToken } from './runTokens.js'
 import { writePlan, applyEdits } from './plan.js'
 import { estimateCost, estimateClipsCost, ledgerSummary } from './cost.js'
 import { castSheetPrompt, stillPrompt, stillGateInput, usesProduct } from './prompts.js'
@@ -27,15 +28,21 @@ const MAX_PARALLEL = 4
 const any = z.any()
 
 type Rc = { get: (k: string) => unknown }
-function access(rc: Rc, tenantId: string) {
+function access(rc: Rc, tenantId: string, runId: string) {
   const t = rc.get('tenantId') as string | undefined
-  const idToken = rc.get('idToken') as string | undefined
+  // From the tool call's memory (never stored with the run); a direct caller may pass it in rc.
+  const idToken = runToken(runId) ?? (rc.get('idToken') as string | undefined)
   if (!t || t !== tenantId || !idToken) throw new RemakeAccessError('not_found')
   const conversationId = (rc.get('conversationId') as string | undefined) ?? (rc.get('sessionId') as string | undefined) ?? 'unknown'
   return { tenantId: t, idToken, conversationId, scopeId: t }
 }
 // Charge keys: generateImageItem hashes this id with stableToolCallId; the slot is the item index.
-const execFor = (rc: Rc, runId: string) => (_slot: number): MediaExecContext => ({ requestContext: rc, agent: { toolCallId: `remake:${runId}` } })
+// The generation items read idToken from their request context; give it to them here, so it
+// never has to live in the run's stored context.
+const execFor = (rc: Rc, runId: string, idToken: string) => (_slot: number): MediaExecContext => ({
+  requestContext: { get: (k: string) => (k === 'idToken' ? idToken : rc.get(k)) },
+  agent: { toolCallId: `remake:${runId}` },
+})
 
 const inputSchema = z.object({ tenantId: z.string(), conversationId: z.string(), breakdown: any, brand: any, castFileId: z.string().optional() })
 const planned = inputSchema.extend({ plan: any })
@@ -44,8 +51,8 @@ const planStep = createStep({
   id: 'plan', inputSchema, outputSchema: planned,
   suspendSchema: z.object({ stage: z.literal('plan_review'), plan: any, estimate: any }),
   resumeSchema: z.object({ decision: z.enum(['edit', 'approve']), edits: z.array(any).optional() }),
-  execute: async ({ inputData, resumeData, suspendData, suspend, requestContext }) => {
-    const { tenantId } = access(requestContext as Rc, inputData.tenantId)
+  execute: async ({ inputData, resumeData, suspendData, suspend, requestContext, runId }) => {
+    const { tenantId } = access(requestContext as Rc, inputData.tenantId, runId)
     const deps = remakeDeps()
     const brand = inputData.brand as Brand
     let plan = (suspendData?.plan as RemakePlan | undefined) ?? await writePlan(inputData.breakdown as Breakdown, brand, deps.ask(tenantId))
@@ -65,7 +72,7 @@ const castStep = createStep({
   // no pick = make the sheet again (only when there is none); a pick crops that panel
   resumeSchema: z.object({ pick: z.number().int().min(1).max(3).optional() }),
   execute: async ({ inputData, resumeData, suspendData, suspend, requestContext, runId }) => {
-    const a = access(requestContext as Rc, inputData.tenantId)
+    const a = access(requestContext as Rc, inputData.tenantId, runId)
     const plan = inputData.plan as RemakePlan
     if (!plan.needsCasting) return { ...inputData, portraitFileId: null, ledger: [] }
     if (inputData.castFileId) return { ...inputData, portraitFileId: inputData.castFileId, ledger: [] }
@@ -82,7 +89,7 @@ const castStep = createStep({
         const error = gate.status === 'unknown' ? 'the casting sheet couldn’t be checked before making it, so it wasn’t made; try again in a minute' : `the casting sheet wasn’t made: ${gate.reason}`
         return await suspend({ stage: 'cast_pick', sheetFileId: null, sheetCreditsMicro: spentSoFar, error })
       }
-      const g = await deps.generateStill({ prompt, aspectRatio: '16:9', engine: 'gemini', skipAvatarExpansion: true, title: 'Remake casting sheet' }, execFor(requestContext as Rc, runId)(0), 0)
+      const g = await deps.generateStill({ prompt, aspectRatio: '16:9', engine: 'gemini', skipAvatarExpansion: true, title: 'Remake casting sheet' }, execFor(requestContext as Rc, runId, a.idToken)(0), 0)
       if (!g.fileId) {
         if (!g.insufficientCredits) console.error('[remake] casting sheet not made:', g.refusalReason ?? 'unknown')
         return await suspend({ stage: 'cast_pick', sheetFileId: null, sheetCreditsMicro: spentSoFar, error: g.insufficientCredits ? 'not enough credits for the casting sheet' : 'the casting sheet could not be made' })
@@ -112,7 +119,7 @@ const stilled = casted.extend({ stills: z.array(any) })
 const stillsStep = createStep({
   id: 'stills', inputSchema: casted, outputSchema: stilled,
   execute: async ({ inputData, requestContext, runId }) => {
-    const a = access(requestContext as Rc, inputData.tenantId)
+    const a = access(requestContext as Rc, inputData.tenantId, runId)
     const deps = remakeDeps()
     const plan = inputData.plan as RemakePlan
     const brand = inputData.brand as Brand
@@ -126,22 +133,34 @@ const stillsStep = createStep({
     const portraitId = inputData.portraitFileId
     const portrait = portraitId ? { fileId: portraitId, img: await deps.fetchImage(portraitId, a.idToken) } : null
     const product = brand.productPhotoFileId && usesProduct(plan, brand) ? brand.productPhotoFileId : null
-    const ctx: StillCtx = { tenantId: a.tenantId, idToken: a.idToken, scopeId: a.scopeId, runId, exec: execFor(requestContext as Rc, runId), portrait }
+    const ctx: StillCtx = { tenantId: a.tenantId, idToken: a.idToken, scopeId: a.scopeId, runId, exec: execFor(requestContext as Rc, runId, a.idToken), portrait }
+    ctx.outOfCredits = () => outOfCredits
     const jobs: Array<() => Promise<{ result: StillResult; ledger: LedgerEntry[] }>> = []
+    // Once credits run out, the remaining stills stop before any guide, gate or call (M3).
+    let outOfCredits = false
+    const noCredits = (look: number, kind: 'start' | 'end') => ({ result: { look, kind, fileId: null, status: 'failed' as const, reasons: ['not enough credits'] }, ledger: [] })
+    // Pose-guide frames show the original person: deleted from the user's files after use (M4).
+    const guideIds: string[] = []
     for (const look of plan.looks) {
       for (const kind of (look.needsEndStill ? ['start', 'end'] : ['start']) as Array<'start' | 'end'>) {
         jobs.push(async () => {
           // Never paid: a look whose people were not measured (spec §8a).
           if (!look.measuredPeople) return { result: { look: look.n, kind, fileId: null, status: 'blocked', reasons: ['this part of the video couldn’t be measured, so its still wasn’t made'] }, ledger: [] }
           // One still failing never ends the run: earlier stills are paid for and must reach the ledger and the preview.
+          if (outOfCredits) return noCredits(look.n, kind)
           try {
             const g = await guide(look.n, kind, kind === 'start' ? look.guideStartS : look.guideEndS)
+            if (g) guideIds.push(g)
+            if (outOfCredits) return noCredits(look.n, kind)
             if (!g) return { result: { look: look.n, kind, fileId: null, status: 'blocked', reasons: ['the pose guide could not be saved'] }, ledger: [] }
             const person = personIn(look)
             const references = [...(person && portrait ? [portrait.fileId] : []), g, ...(product ? [product] : [])]
             const prompt = stillPrompt(plan, look, kind, brand, !!product)
             const job: StillJob = { look, kind, prompt, references, aspectRatio: plan.aspectRatio, gate: stillGateInput(plan, look, kind, prompt) }
-            return await makeStill(job, ctx, deps)
+            if (outOfCredits) return noCredits(look.n, kind)
+            const made = await makeStill(job, ctx, deps)
+            if (made.result.reasons.some((r) => r.includes('not enough credits'))) outOfCredits = true
+            return made
           } catch (err) {
             console.error(`[remake] look ${look.n} ${kind} still failed:`, err instanceof Error ? err.message : String(err))
             return { result: { look: look.n, kind, fileId: null, status: 'failed', reasons: ['this still could not be made this time'] }, ledger: [] }
@@ -154,6 +173,7 @@ const stillsStep = createStep({
       for (let i = 0; i < jobs.length; i += MAX_PARALLEL) done.push(...await Promise.all(jobs.slice(i, i + MAX_PARALLEL).map((j) => j())))
     } finally {
       deps.removeDir(dir)
+      await Promise.all(guideIds.map((id) => deps.deleteFile(a.idToken, id)))
     }
     return { ...inputData, stills: done.map((d) => d.result), ledger: [...(inputData.ledger as LedgerEntry[]), ...done.flatMap((d) => d.ledger)] }
   },
@@ -165,7 +185,7 @@ const previewStep = createStep({
   suspendSchema: z.object({ stage: z.literal('preview_review'), previewFileId: z.string().nullable(), stills: z.array(any), summary: any, clipsEstimate: any.optional(), cantAnimate: z.string().optional() }),
   resumeSchema: z.object({ decision: z.enum(['approve', 'stop']) }),
   execute: async ({ inputData, requestContext, runId, resumeData, suspendData, suspend }) => {
-    const a = access(requestContext as Rc, inputData.tenantId)
+    const a = access(requestContext as Rc, inputData.tenantId, runId)
     const deps = remakeDeps()
     const plan = inputData.plan as RemakePlan
     const stills = inputData.stills as StillResult[]
@@ -199,7 +219,7 @@ const clipped = previewed.extend({ clips: z.array(any), clipsDir: z.string().nul
 const clipsStep = createStep({
   id: 'clips', inputSchema: previewed, outputSchema: clipped,
   execute: async ({ inputData, requestContext, runId }) => {
-    const a = access(requestContext as Rc, inputData.tenantId)
+    const a = access(requestContext as Rc, inputData.tenantId, runId)
     if (inputData.stop) return { ...inputData, clips: [], clipsDir: null }
     const deps = remakeDeps()
     const plan = inputData.plan as RemakePlan
@@ -208,7 +228,7 @@ const clipsStep = createStep({
     // Kept until the finish step has joined the clips; removed there.
     const workDir = deps.tempDir('remake-clips-')
     const ctx: ClipCtx = {
-      tenantId: a.tenantId, idToken: a.idToken, scopeId: a.scopeId, runId, exec: execFor(requestContext as Rc, runId),
+      tenantId: a.tenantId, idToken: a.idToken, scopeId: a.scopeId, runId, exec: execFor(requestContext as Rc, runId, a.idToken),
       portrait, plan, brand: inputData.brand as Brand, size, workDir,
       check: (clipPath: string, spec: ClipSpec, engine: 'veo' | 'omni') => checkClip({ clipPath, seconds: spec.frames / CLIP_FPS, look: spec.look, portrait, tenantId: a.tenantId, checkEnd: engine === 'veo' }, { poseClip: deps.poseClip, sample: deps.sample, gate: runGate }),
     }
@@ -233,7 +253,7 @@ const MUSIC_SLOT = 2000
 const finishStep = createStep({
   id: 'finish', inputSchema: clipped, outputSchema,
   execute: async ({ inputData, requestContext, runId }) => {
-    const a = access(requestContext as Rc, inputData.tenantId)
+    const a = access(requestContext as Rc, inputData.tenantId, runId)
     const plan = inputData.plan as RemakePlan
     const stills = inputData.stills as StillResult[]
     const clips = inputData.clips as ClipResult[]
@@ -271,7 +291,7 @@ const finishStep = createStep({
         const prompt = musicPrompt(plan)
         const gate = await deps.promptGate({ prompt, planLine: `music: ${plan.lines.find((l) => l.ref === 'sound.music')?.to ?? 'new music'}`, look: {}, startFrameObjects: [], keyMoments: [], tenantId: a.tenantId })
         if (gate.status !== 'pass') console.error('[remake] music prompt not passed:', gate.status, gate.reason)
-        const music = gate.status === 'pass' ? await deps.generateMusic(prompt, execFor(requestContext as Rc, runId)(MUSIC_SLOT), `remake:${runId}:music`) : null
+        const music = gate.status === 'pass' ? await deps.generateMusic(prompt, execFor(requestContext as Rc, runId, a.idToken)(MUSIC_SLOT), `remake:${runId}:music`) : null
         if (music) ledger.push({ item: 'music', attempt: 0, creditsMicro: music.creditsUsedMicro ?? '0', outcome: music.fileId ? 'kept' : 'failed' })
         if (music?.fileId) {
           const fitted = await deps.fitMusic(await deps.localFile(music.fileId, a.idToken, a.scopeId), totalS, join(work, 'music.m4a'))

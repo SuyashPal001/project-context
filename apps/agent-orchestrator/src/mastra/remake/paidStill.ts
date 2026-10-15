@@ -14,6 +14,8 @@ export interface StillCtx {
   tenantId: string; idToken: string; scopeId: string; runId: string
   exec: (slot: number) => MediaExecContext
   portrait: { fileId: string; img: Img } | null
+  /** True once the run has run out of credits: checked right before each paid call. */
+  outOfCredits?: () => boolean
 }
 export interface StillJob { look: RemakeLook; kind: 'start' | 'end'; prompt: string; references: string[]; aspectRatio: '9:16' | '16:9' | '1:1'; gate: ReturnType<typeof stillGateInput> }
 
@@ -48,13 +50,20 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
   for (let attempt = 0; attempt < 2; attempt++) {
     const gate = await deps.promptGate({ ...job.gate, prompt, tenantId: ctx.tenantId })
     if (gate.status !== 'pass') {
-      ledger.push({ item, attempt, creditsMicro: '0', outcome: 'blocked' })
+      // A blocked retry after a failed attempt: the item failed (the paid attempt was wasted),
+      // so the ledger says failed too, never "blocked" next to a failed result (M6).
+      if (last) ledger[ledger.length - 1].outcome = 'failed'
+      else ledger.push({ item, attempt, creditsMicro: '0', outcome: 'blocked' })
       // An unknown gate is an outage: log the raw reason, tell the user plain words (no internals).
       if (gate.status === 'unknown') console.error(`[remake] ${item} prompt check unavailable: ${gate.reason}`)
       const why = gate.status === 'unknown' ? 'the still couldn’t be checked before making it, so it wasn’t made' : gate.reason
       return last
         ? { result: { ...base, fileId: last.fileId, status: 'failed', reasons: last.reasons }, ledger }
         : { result: { ...base, fileId: null, status: 'blocked', reasons: [why] }, ledger }
+    }
+    if (ctx.outOfCredits?.()) {
+      if (last) ledger[ledger.length - 1].outcome = 'failed'
+      return { result: { ...base, fileId: last?.fileId ?? null, status: 'failed', reasons: last ? [...last.reasons, 'no second try: not enough credits'] : ['not enough credits'] }, ledger }
     }
     const slot = slotFor(job.look.n, job.kind, attempt)
     // skipAvatarExpansion: images are placed by role (portrait, then pose guide); an avatar's
@@ -66,7 +75,9 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
     if (!g.fileId) {
       if (!g.insufficientCredits) console.error(`[remake] ${item} not made: ${g.refusalReason ?? 'unknown'}`)
       ledger.push({ item, attempt, creditsMicro: spent, outcome: 'failed' })
-      return { result: { ...base, fileId: last?.fileId ?? null, status: 'failed', reasons: [g.insufficientCredits ? 'not enough credits' : 'the image could not be made'] }, ledger }
+      const why = g.insufficientCredits ? 'not enough credits' : 'the image could not be made'
+      // A retry that couldn't be made keeps the first try's reason (M9).
+      return { result: { ...base, fileId: last?.fileId ?? null, status: 'failed', reasons: last ? [...last.reasons, `no second try: ${why}`] : [why] }, ledger }
     }
     const c = await checkStill(g.fileId, job, ctx, deps)
     if (c.status === 'pass' || c.status === 'unknown') {

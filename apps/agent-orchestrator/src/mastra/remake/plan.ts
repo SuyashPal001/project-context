@@ -93,5 +93,6 @@ export function applyEdits(plan: RemakePlan, edits: PlanLine[], brand: Brand): R
   const merged = plan.lines.map((l) => edited.get(l.ref) ?? l).concat(edits.filter((e) => !plan.lines.some((l) => l.ref === e.ref)))
   const refs = plan.lines.map((l) => ({ ref: l.ref, what: '' }))
   const { lines, warnings } = enforceRules(merged, refs, { brand, musicMood: plan.reference.musicMood })
-  return { ...plan, lines, warnings }
+  // Earlier warnings still apply after an edit; keep them, new ones after (M7).
+  return { ...plan, lines, warnings: [...new Set([...plan.warnings, ...warnings])] }
 }

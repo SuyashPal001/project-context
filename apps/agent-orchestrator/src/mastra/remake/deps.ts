@@ -11,7 +11,7 @@ import type { MediaExecContext } from '../tools/batchRunner.js'
 import { gatewayAsk, runStillChecks, sampleFrames, type AskFn, type Img } from '../tools/tvcChecks.js'
 import { fetchBase64 } from '../tools/checkClip.js'
 import { fetchPresignedUrl, downloadToSessionCache } from '../tools/mediaCache.js'
-import { uploadFileWithKey } from '../../persistence.js'
+import { uploadFileWithKey, deleteFile } from '../../persistence.js'
 import { aiService, type ImagePose, type PoseResult } from '../tools/videoBreakdown/aiServiceClient.js'
 import { generateVideoItem, VIDEO_MODEL } from '../tools/generateVideo.js'
 import { generateVeoClipItem, VEO_CLIP_MODEL } from '../tools/veoClip.js'
@@ -60,6 +60,7 @@ export interface RemakeDeps {
   // temp working dirs: every one a run makes is removed when the step that needs it is done
   tempDir: (prefix: string) => string
   removeDir: (path: string) => void
+  deleteFile: (idToken: string, fileId: string) => Promise<boolean>
 }
 
 const real: RemakeDeps = {
@@ -105,6 +106,7 @@ const real: RemakeDeps = {
   muxMusic: (v, m, o) => muxMusic(v, m, o),
   tempDir: (prefix) => mkdtempSync(join(tmpdir(), prefix)),
   removeDir: (path) => { try { rmSync(path, { recursive: true, force: true }) } catch { /* best effort */ } },
+  deleteFile: (idToken, fileId) => deleteFile(idToken, fileId),
 }
 
 let override: Partial<RemakeDeps> | null = null

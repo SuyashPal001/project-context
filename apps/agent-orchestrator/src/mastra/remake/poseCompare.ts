@@ -13,6 +13,7 @@ export function comparePose(ref: BodyReading | null, refPeople: number | null, g
   if (refPeople === null || !ref) return result('unknown', 'the reference body was not measured')
   if (got.people === 0 || !got.main) return result('fail', 'no person found in the still')
   if (refPeople === 1 && got.people > 1) return result('fail', `extra person: ${got.people} people in the still, 1 in the reference`)
+  if (refPeople > 1 && got.people < 2) return result('fail', `only ${got.people} person in the still, ${refPeople} in the reference`)
   const g = got.main
   const diffs: string[] = []
   const unread: string[] = []

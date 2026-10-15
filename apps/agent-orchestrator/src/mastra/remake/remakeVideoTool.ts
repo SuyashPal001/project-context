@@ -10,6 +10,8 @@ import { refuseReason } from './looks.js'
 import { credits } from './cost.js'
 import { remakeMastra, REMAKE_WORKFLOW_ID } from './instance.js'
 import { RemakeAccessError } from './workflow.js'
+import { withRunToken } from './runTokens.js'
+import { RequestContext } from '@mastra/core/request-context'
 
 // Messages the steps throw that are already plain words for the user; anything else
 // is logged and replaced with a generic line (no internals reach the user).
@@ -74,6 +76,16 @@ async function cantAnimateOf(runId: string | undefined): Promise<string | null> 
   } catch { return null }
 }
 
+// Only what the run's steps need. Mastra stores this context with every run snapshot, so the
+// login token, user id, system prompt and the rest of the chat context stay out (3a review M1);
+// the token travels via withRunToken for the length of this call only.
+const RUN_CONTEXT_KEYS = ['tenantId', 'conversationId', 'sessionId', 'agentId', 'allowMode']
+function runContext(rc: { get: (k: string) => unknown }): RequestContext {
+  const slim = new RequestContext()
+  for (const k of RUN_CONTEXT_KEYS) { const v = rc.get(k); if (v !== undefined) slim.set(k, v) }
+  return slim
+}
+
 export const remakeVideoTool = createTool({
   id: 'remake_video',
   description: 'Remake a reference video for the user\'s brand, step by step, with the user approving each paid step. '
@@ -124,7 +136,7 @@ export const remakeVideoTool = createTool({
         const refusal = refuseReason(b)
         if (refusal) return { success: false, error: refusal }
         const run = await w.createRun()
-        const r = await run.start({ inputData: { tenantId, conversationId, breakdown: b, brand: input.brand, castFileId: input.castFileId }, requestContext: rc as never })
+        const r = await withRunToken(run.runId, idToken, () => run.start({ inputData: { tenantId, conversationId, breakdown: b, brand: input.brand, castFileId: input.castFileId }, requestContext: runContext(rc) as never }))
         return shapeRun(run.runId, r as unknown as RunResult)
       }
       if (!input.runId) return { success: false, error: 'runId_required' }
@@ -141,7 +153,7 @@ export const remakeVideoTool = createTool({
         if (cant) return { success: false, runId: input.runId, stage: 'preview_review', error: cant }
       }
       const run = await w.createRun({ runId: input.runId })
-      const r = await run.resume({ step, resumeData, requestContext: rc as never })
+      const r = await withRunToken(input.runId, idToken, () => run.resume({ step, resumeData, requestContext: runContext(rc) as never }))
       return shapeRun(input.runId, r as unknown as RunResult)
     } catch (err) {
       console.error('[remake] tool failed:', err instanceof Error ? err.message : String(err))

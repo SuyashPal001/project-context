@@ -2,6 +2,7 @@
 // survive restarts), but never registered on the instance mounted at /studio, whose
 // API has no user auth (review I5). Only the remake_video tool reaches it.
 import { Mastra } from '@mastra/core'
+import { Observability, DefaultExporter } from '@mastra/observability'
 import type { MastraCompositeStore } from '@mastra/core/storage'
 import { videoRemakeWorkflow } from './workflow.js'
 
@@ -21,7 +22,11 @@ export const REMAKE_WORKFLOW_ID = 'video-remake'
 export async function remakeMastra(): Promise<Mastra> {
   if (!instance) {
     const storage = testStorage ?? (await import('../memory.js')).getMastraStore()
-    instance = new Mastra({ workflows: { [REMAKE_WORKFLOW_ID]: videoRemakeWorkflow }, storage, logger: false })
+    // Logs and trace spans like the main instance, so remake runs can be debugged (M8).
+    instance = new Mastra({
+      workflows: { [REMAKE_WORKFLOW_ID]: videoRemakeWorkflow }, storage,
+      observability: new Observability({ configs: { default: { serviceName: 'project-context-video-remake', exporters: [new DefaultExporter()] } } }),
+    })
   }
   return instance
 }

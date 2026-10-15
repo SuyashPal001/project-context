@@ -226,3 +226,16 @@ describe('wording the user (or Olmo) can see', () => {
     expect(text).not.toMatch(/gemini|download|server|ai-service|gateway|yt-dlp|502/i)
   })
 })
+
+describe('trick log (which tricks real reels use)', () => {
+  it('logs one structured line per breakdown with the trick, change style, format and platform', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    watch.mockResolvedValue({ ...overview(['hidden_changes'], 2), trick: 'a fan blade sweeps past the lens', format: 'outfit change', layout: 'full frame' })
+    ai.mockImplementation(async (route: string) => route === '/media/cuts' ? { cuts: [], fades: [], duration_s: 14.9 } : route === '/media/hidden-cuts' ? { hidden_cuts: [], cover_threshold: null } : { curve_db: [], events: [], rhythm: [], silent_from_s: null, bpm: null, beats_s: [], has_audio: true })
+    await breakDownVideo({ url: 'https://www.instagram.com/p/trick/' }, ctx)
+    const line = info.mock.calls.map((c) => String(c[0])).find((s) => s.startsWith('[trick-log] '))
+    expect(line).toBeTruthy()
+    expect(JSON.parse(line!.slice('[trick-log] '.length))).toMatchObject({ platform: 'instagram', trick: 'a fan blade sweeps past the lens', change_style: ['hidden_changes'], format: 'outfit change', layout: 'full frame', measured: true })
+    info.mockRestore()
+  })
+})

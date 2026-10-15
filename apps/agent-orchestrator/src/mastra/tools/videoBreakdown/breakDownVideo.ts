@@ -61,16 +61,28 @@ export function recentBreakdown(input: { url?: string; fileId?: string }, ctx: {
   return recent.get(recentKey(input, ctx.scopeId))
 }
 
+// Which tricks real reels use (server log only), so new remake recipes are built for the tricks
+// users actually bring, not the one test video (2026-10-16). One JSON line per breakdown.
+function logTrick(b: Breakdown): Breakdown {
+  const o = b.overview
+  console.info('[trick-log] ' + JSON.stringify({
+    platform: b.video.platform, durationS: Math.round(b.video.durationS * 10) / 10, measured: b.measured,
+    format: o.format, layout: o.layout, change_style: o.change_style, trick: o.trick,
+    looks: o.looks.length, hidden_cuts: b.hidden_cuts.length, cuts: b.cuts?.cuts.length ?? null,
+  }))
+  return b
+}
+
 export async function breakDownVideo(input: { url?: string; fileId?: string }, ctx: { idToken: string; scopeId: string; conversationId: string }, tenantId?: string): Promise<Breakdown> {
   let video: FetchedVideo
   try {
     video = await fetchVideo(input, ctx)
   } catch (e) {
-    if (e instanceof DownloadBlocked) return watchOnlyBreakdown(e, tenantId)
+    if (e instanceof DownloadBlocked) return logTrick(await watchOnlyBreakdown(e, tenantId))
     throw e
   }
   if (video.tooLong) throw new Error(`The video is ${Math.round(video.durationS)}s long. Ask the user which part (up to 90s) to clone.`)
-  const b = await breakDownFetched(video, tenantId)
+  const b = logTrick(await breakDownFetched(video, tenantId))
   const key = recentKey(input, ctx.scopeId)
   recent.delete(key)
   recent.set(key, b)

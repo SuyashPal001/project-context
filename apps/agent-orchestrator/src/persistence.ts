@@ -688,3 +688,16 @@ export async function setTenantAvatarReference(idToken: string, avatarId: string
     return false
   }
 }
+
+/** Deletes a file the agent created for its own working use (e.g. a remake's pose-guide
+ *  frames). Best effort: false on any failure. */
+export async function deleteFile(idToken: string, fileId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/files/${encodeURIComponent(fileId)}`, { method: 'DELETE', headers: authHeaders(idToken) })
+    if (!res.ok) console.error('[persistence] deleteFile failed:', res.status)
+    return res.ok
+  } catch (err) {
+    console.error('[persistence] deleteFile failed:', (err as Error).message)
+    return false
+  }
+}

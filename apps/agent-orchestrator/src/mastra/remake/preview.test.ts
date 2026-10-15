@@ -15,10 +15,10 @@ it('one segment per look, timed from the measured spans; missing stills become g
   const segs = previewSegments(plan, [
     { look: 1, kind: 'start', fileId: 'a1', status: 'passed', reasons: [] },
     { look: 2, kind: 'start', fileId: null, status: 'blocked', reasons: ['x'] },
-    { look: 2, kind: 'end', fileId: 'b2', status: 'failed', reasons: ['y'] },
+    { look: 2, kind: 'end', fileId: 'b2', status: 'unchecked', reasons: ['y'] },
   ], new Map([['a1', '/m/a1.jpg'], ['b2', '/m/b2.jpg']]))
   expect(segs).toEqual([
     { seconds: 4.1, start: '/m/a1.jpg', end: null },
     { seconds: 5.9, start: null, end: '/m/b2.jpg' },
-  ])
+  ]) // a failed still is a grey card (3a review M2, pinned in reviewMinors3a.test.ts)
 })

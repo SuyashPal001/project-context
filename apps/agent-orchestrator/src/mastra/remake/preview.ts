@@ -20,7 +20,8 @@ export function previewSize(w: number, h: number): { width: number; height: numb
   return { width: even(w * s), height: even(h * s) }
 }
 
-const usable = (s: StillResult | undefined) => (s && s.fileId ? s.fileId : null)
+// A still that failed its checks is never shown as fine: grey card (it is still listed with its reasons).
+const usable = (s: StillResult | undefined) => (s && s.fileId && (s.status === 'passed' || s.status === 'unchecked') ? s.fileId : null)
 
 export function previewSegments(plan: RemakePlan, stills: StillResult[], localPaths: Map<string, string>): PreviewJob['segments'] {
   const path = (id: string | null) => (id ? localPaths.get(id) ?? null : null)
