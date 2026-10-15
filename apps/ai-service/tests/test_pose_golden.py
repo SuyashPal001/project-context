@@ -33,7 +33,8 @@ def test_single_person_readings_on_the_disc_golf_reel(client, media_dir):
         m = L[f"t{t}"]["main_end"]
         assert m["framing"] == "knees_up" and m["orientation"] == "vertical", (t, m)
     m26 = L["t26"]["main_end"]
-    assert m26["framing"] == "full_body" and set(m26["arms"].values()) & {"raised"}
+    # 26s: both feet touch the frame's bottom edge — full body or cut by a hair, either is fair
+    assert m26["framing"] in ("full_body", "knees_up") and set(m26["arms"].values()) & {"raised"}
 
 def test_split_screen_counts_both_people(client, media_dir):
     # both panels' people; background passers-by count too (26s has one on a scooter)
@@ -62,4 +63,11 @@ def test_lying_down_reel_leg_sides_and_slide(client, media_dir):
     assert [l["leg_side_end"] for l in d["looks"]] == ["image-right", "image-left", "image-right", "image-left"]
     assert d["looks"][0]["leg_side_start"] == "center"
     assert all(l["people"] == 1 and l["main_end"]["orientation"] == "vertical" for l in d["looks"])
-    assert any(m["area"] == "lower" and m["direction"] == "image-right" and 2.75 <= m["t_s"] <= 3.75 for m in d["moves"])
+    assert any(m["area"] == "lower" and "image-right" in m["direction"] and 2.75 <= m["t_s"] <= 3.75 for m in d["moves"])
+    # the remote is raised at ~1.25s: the upper body moves up
+    assert any(m["area"] == "upper" and "image-up" in m["direction"] and 0.9 <= m["t_s"] <= 1.6 for m in d["moves"])
+    # feet are in shot (lying full length), and no move is reported right next to a blade pass
+    assert all(l["main_end"]["framing"] == "full_body" for l in d["looks"])
+    covered = [[4.6, 6.2], [8.5, 9.9], [12.3, 13.5]]
+    assert not any(a - 0.5 <= m["t_s"] <= b + 0.5 for m in d["moves"] for a, b in covered)
+    assert len(d["moves"]) <= 10

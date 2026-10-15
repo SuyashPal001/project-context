@@ -39,10 +39,17 @@ def test_knees_and_feet_can_point_opposite_ways():
     r = pose.read_person(*person(knee=(64, 68), ankle=(42, 88)))
     assert r["knees_toward"] == "image-right" and r["feet_toward"] == "image-left" and r["legs_toward"] == "image-right"
 
-def test_a_box_cut_by_the_bottom_edge_is_not_full_body():
+def test_framing_at_the_bottom_edge():
     kp, sc = person()
-    assert pose.read_person(kp, sc, 1.0, (0.3, 0.1, 0.7, 0.999))["framing"] == "knees_up"
-    assert pose.read_person(kp, sc, 1.0, (0.3, 0.1, 0.7, 0.95))["framing"] == "full_body"
+    # both ankles seen with room for the feet: full body even when the box reaches the edge
+    assert pose.read_person(kp, sc, 1.0, (0.3, 0.1, 0.7, 0.999))["framing"] == "full_body"
+    # ankles squeezed against the edge: the feet are cut
+    kp_edge = kp.copy(); kp_edge[15, 1] = kp_edge[16, 1] = 0.975
+    assert pose.read_person(kp_edge, sc, 1.0, (0.3, 0.1, 0.7, 0.999))["framing"] == "knees_up"
+    # one ankle hidden and the box at the edge: the feet may be cut
+    sc2 = sc.copy(); sc2[16] = 0.05
+    assert pose.read_person(kp, sc2, 1.0, (0.3, 0.1, 0.7, 0.999))["framing"] == "knees_up"
+    assert pose.read_person(kp, sc2, 1.0, (0.3, 0.1, 0.7, 0.95))["framing"] == "full_body"
 
 def test_joints_placed_outside_the_frame_count_as_not_seen():
     kp, sc = person()
@@ -82,3 +89,18 @@ def test_a_still_video_has_no_moves_at_all(client, media_dir):
     ff(["-f", "lavfi", "-i", "testsrc2=s=180x320:d=3:r=25", "-vf", "trim=end_frame=1,loop=74:1:0", "-c:v", "libx264", str(p)])
     m = pose.motion_summary(str(p), [])
     assert m["moves"] == [] and m["camera_moves"] == []
+
+def test_clean_moves_drops_weak_ones_and_ones_next_to_covered_spans_and_merges_same_moment():
+    raw = [
+        {"t_s": 1.23, "from_s": 1.03, "to_s": 1.57, "area": "upper", "direction": "image-up", "strength": 0.095},
+        {"t_s": 1.23, "from_s": 0.93, "to_s": 1.47, "area": "upper", "direction": "image-right", "strength": 0.055},
+        {"t_s": 2.93, "from_s": 2.93, "to_s": 3.0, "area": "upper", "direction": "image-right", "strength": 0.01},
+        {"t_s": 8.23, "from_s": 7.63, "to_s": 8.4, "area": "upper", "direction": "image-right", "strength": 0.036},
+        {"t_s": 3.23, "from_s": 2.93, "to_s": 3.87, "area": "lower", "direction": "image-right", "strength": 0.086},
+    ]
+    out = pose.clean_moves(raw, [[8.70, 10.03]])
+    assert [(m["t_s"], m["area"], m["direction"]) for m in out] == [(1.23, "upper", "image-up + image-right"), (3.23, "lower", "image-right")]
+
+def test_framing_on_a_tall_frame_uses_frame_position_not_scaled_distance():
+    kp, sc = person(ankle=(50, 80))
+    assert pose.read_person(kp, sc, 16 / 9, (0.3, 0.1, 0.7, 0.999))["framing"] == "full_body"

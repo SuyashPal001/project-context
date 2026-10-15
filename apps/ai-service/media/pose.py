@@ -29,7 +29,10 @@ MIN_BOX_AREA = 0.004    # of the frame; smaller boxes are noise
 WINDOW_S = 1.0          # look start / end window
 MIN_FRAMES = 2
 LEG_THRESHOLD = 0.05    # knee / foot offset as a fraction of torso length
-EDGE = 0.985            # a person box reaching the frame's bottom edge may have its feet cut off
+EDGE = 0.985            # with only one ankle seen, a box reaching the bottom edge may have its feet cut off
+FOOT_ROOM = 0.04        # of frame height: space a foot needs below its ankle
+MOVE_MIN = 0.025        # frame widths per second; weaker body moves are noise
+MOVE_GUARD_S = 0.5      # moves this close to a covered span are the occluder, not the body
 FLOW_WIDTH = 120
 
 NOSE, L_SH, R_SH, L_EL, R_EL, L_WR, R_WR, L_HIP, R_HIP, L_KN, R_KN, L_AN, R_AN = 0, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
@@ -70,8 +73,14 @@ def read_person(kp, sc, aspect: float = 1.0, box=None) -> dict:
     kp = np.array(kp, dtype=float)
     # a joint the model places outside the frame was not seen, however confident it is
     sc = np.where(((kp < 0.0) | (kp > 1.0)).any(axis=1), 0.0, np.asarray(sc, dtype=float))
+    # judged on frame fractions, before the height is scaled for distances
+    roomy = [sc[i] >= VIS and kp[i][1] <= 1.0 - FOOT_ROOM for i in (L_AN, R_AN)]
     kp = kp * np.array([1.0, aspect])
-    framing = ("full_body" if _seen(sc, (L_AN, R_AN)) and feet_in_frame else "knees_up" if _seen(sc, (L_KN, R_KN))
+    # Full body needs the feet in shot. A foot reaches below the ankle, so both ankles must
+    # sit at least FOOT_ROOM above the frame's bottom edge; with only one ankle visible
+    # (a side view hiding a leg) the person's box must not reach the edge either.
+    feet_in = all(roomy) or (any(roomy) and feet_in_frame)
+    framing = ("full_body" if feet_in else "knees_up" if _seen(sc, (L_KN, R_KN))
                else "waist_up" if _seen(sc, (L_HIP, R_HIP)) else "chest_up" if _seen(sc, (L_SH, R_SH))
                else "face" if _seen(sc, range(5)) else "unknown")
     sh, hp = _mid(kp, sc, (L_SH, R_SH)), _mid(kp, sc, (L_HIP, R_HIP))
@@ -242,17 +251,38 @@ class _Motion:
 
     def result(self):
         ts = self.ts
+        # pixels per frame -> frame widths per second, so reels at any frame rate compare
+        fps = 1.0 / float(np.median(np.diff(ts))) if len(ts) > 2 else 30.0
+        scale = fps / FLOW_WIDTH
+        self.sig = {k: [v * scale for v in vs] for k, vs in self.sig.items()}
         moves, cams = [], []
         for area in ("upper", "lower"):
             for axis, names in (("x", ("image-left", "image-right")), ("y", ("image-up", "image-down"))):
-                for i, k, j, s, m in _segments(ts, self.sig[f"{area}_{axis}"], 0.035, 3):
+                for i, k, j, s, m in _segments(ts, self.sig[f"{area}_{axis}"], 0.009, 3):
                     if not any(_excluded(ts[q], self.exclude) for q in range(i, j + 1)):
                         moves.append({"t_s": round(ts[k], 2), "from_s": round(ts[i], 2), "to_s": round(ts[j], 2), "area": area, "direction": names[s > 0], "strength": round(m, 3)})
         # content moving right means the camera turned left
         for axis, names in (("x", ("pan-right", "pan-left")), ("y", ("tilt-down", "tilt-up"))):
-            for i, k, j, s, m in _segments(ts, self.sig[f"cam_{axis}"], 0.1, 8):
+            for i, k, j, s, m in _segments(ts, self.sig[f"cam_{axis}"], 0.025, 8):
                 cams.append({"t_s": round(ts[k], 2), "from_s": round(ts[i], 2), "to_s": round(ts[j], 2), "direction": names[s > 0], "strength": round(m, 3)})
-        return {"moves": sorted(moves, key=lambda m: m["t_s"]), "camera_moves": sorted(cams, key=lambda m: m["t_s"])}
+        return {"moves": clean_moves(moves, self.exclude), "camera_moves": sorted(cams, key=lambda m: m["t_s"])}
+
+
+def clean_moves(moves: list[dict], exclude) -> list[dict]:
+    """Keep clear body moves only: drop weak ones and ones next to a covered span, and
+    merge moves of the same body area at the same moment (up + right = one diagonal move)."""
+    keep = [m for m in moves if m["strength"] >= MOVE_MIN and not any(a - MOVE_GUARD_S <= m["t_s"] <= b + MOVE_GUARD_S for a, b in exclude)]
+    keep.sort(key=lambda m: (m["area"], m["t_s"], -m["strength"]))
+    merged: list[dict] = []
+    for m in keep:
+        last = merged[-1] if merged else None
+        if last and last["area"] == m["area"] and abs(last["t_s"] - m["t_s"]) <= 0.2:
+            if m["direction"] not in last["direction"]:
+                last["direction"] += f" + {m['direction']}"
+            last["from_s"], last["to_s"] = min(last["from_s"], m["from_s"]), max(last["to_s"], m["to_s"])
+        else:
+            merged.append(dict(m))
+    return sorted(merged, key=lambda m: m["t_s"])
 
 
 def motion_summary(path: str, exclude) -> dict:
