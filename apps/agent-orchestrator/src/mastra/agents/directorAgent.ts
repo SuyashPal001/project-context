@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent'
+import { UnmeasuredNoticeProcessor } from '../processors/unmeasuredNotice.js'
 import { StreamErrorRetryProcessor } from '@mastra/core/processors'
 import type { RequestContext } from '@mastra/core/request-context'
 import { tenantContextSchema, type TenantContext } from '../context.js'
@@ -179,6 +180,7 @@ export const directorAgent = new Agent({
   skills: directorSkills,
   inputProcessors: [new DirectorSkillLoader()],
   errorProcessors: [streamErrorRetry()],
+  outputProcessors: [new UnmeasuredNoticeProcessor()],
 })
 
 // Used only as Olmo's delegate — no `memory:` of its own. Note this does NOT
@@ -200,6 +202,7 @@ export const directorAgentDelegate = new Agent({
   skills: directorSkills,
   inputProcessors: [new DirectorSkillLoader()],
   errorProcessors: [streamErrorRetry()],
+  outputProcessors: [new UnmeasuredNoticeProcessor()],
   // Its thought summaries come back so the chat can show what it is thinking
   // during the long stretches it works alone (2026-10-07). No budget is set:
   // how much it thinks stays the model's own default.

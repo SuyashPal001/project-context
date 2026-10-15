@@ -18,6 +18,7 @@ import { getMCPClientForTenant } from '../tools.js'
 import { isComposioEnabled, getComposioTools } from '../composio.js'
 import { timed } from '../stageTiming.js'
 import { createViolationHandler } from '../guardrails.js'
+import { UnmeasuredNoticeProcessor } from '../processors/unmeasuredNotice.js'
 import { makeAppPool } from '../../db.js'
 import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
 import { retrieveTemplate } from '../tools/retrieveTemplate.js'
@@ -667,6 +668,10 @@ You only remember the current task. When the user refers to earlier work from an
   // covers OpenAI Responses stream errors; the AI SDK's isRetryable flag
   // covers our undici timeouts through the inference-gateway proxy.
   errorProcessors: [new StreamErrorRetryProcessor({ maxRetries: 4, delayMs: 500 })],
+
+  // A breakdown nobody could measure (YouTube blocked the download) always opens
+  // the reply with that warning — code, not prompt (see unmeasuredNotice.ts).
+  outputProcessors: [new UnmeasuredNoticeProcessor()],
 
   // Dynamic model selection — see modelSelection.ts for the precedence order and
   // why it's a separate module (testability: this file eagerly builds DB/network
