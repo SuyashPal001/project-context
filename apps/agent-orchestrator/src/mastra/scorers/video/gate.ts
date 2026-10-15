@@ -1,7 +1,8 @@
 // Cost-meter labels for every video check call (review M4).
 export const VIDEO_CHECK_COST = { agentId: 'video-check', workflowId: 'video-checks' }
 
-export interface CheckResult { name: string; status: 'pass' | 'fail' | 'unknown'; reason: string; evidenceTimes: number[] }
+// evidenceFileIds: Drive images (reference | remake) a person can open to see why (spec §8).
+export interface CheckResult { name: string; status: 'pass' | 'fail' | 'unknown'; reason: string; evidenceTimes: number[]; evidenceFileIds?: string[] }
 
 type RunnableScorer = { run: (r: { input: unknown; output: unknown }) => Promise<{ score: number; analyzeStepResult?: unknown }> }
 

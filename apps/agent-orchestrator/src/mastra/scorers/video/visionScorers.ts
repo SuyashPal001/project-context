@@ -40,8 +40,10 @@ export const samePersonScorer = videoScorer('video-same-person', 'Every frame sh
   return scores.every((s) => s >= 8) ? { status: 'pass', reason: `scores ${scores.join(', ')}`, scores } : { status: 'fail', reason: `scores ${scores.join(', ')}: ${String(v.differences ?? '')}`, scores }
 })
 
-export const expressionScorer = videoScorer('video-expression', 'Same mouth, eyes and mood as the reference at the same moment', async (input: VisionInput & { reference: Img; frame: Img; expected: string }) => {
-  const v = await askChecked(askFor(input), [{ text: 'REFERENCE face:' }, { image: input.reference }, { text: 'REMAKE face:' }, { image: input.frame }, { text: `Expected expression: ${input.expected}. Compare the REMAKE to the REFERENCE. Reply ONLY JSON {"same_mouth":true|false,"same_eyes":true|false,"same_mood":true|false,"what":"short"}` }], [{ key: 'same_mouth', type: 'boolean' }, { key: 'same_eyes', type: 'boolean' }, { key: 'same_mood', type: 'boolean' }])
+export const expressionScorer = videoScorer('video-expression', 'Same mouth, eyes and mood as the reference at the same moment', async (input: VisionInput & { reference: Img; frame: Img; referenceFace?: Img; frameFace?: Img; expected: string }) => {
+  // Face close-ups when we have them (spec §8), with the whole frames for context in case a crop is off.
+  const faces: AskPart[] = input.referenceFace && input.frameFace ? [{ text: 'REFERENCE face close-up:' }, { image: input.referenceFace }, { text: 'REMAKE face close-up:' }, { image: input.frameFace }] : []
+  const v = await askChecked(askFor(input), [...faces, { text: 'REFERENCE full frame:' }, { image: input.reference }, { text: 'REMAKE full frame:' }, { image: input.frame }, { text: `Judge the FACE only. Expected expression: ${input.expected}. Compare the REMAKE to the REFERENCE. Reply ONLY JSON {"same_mouth":true|false,"same_eyes":true|false,"same_mood":true|false,"what":"short"}` }], [{ key: 'same_mouth', type: 'boolean' }, { key: 'same_eyes', type: 'boolean' }, { key: 'same_mood', type: 'boolean' }])
   const ok = v.same_mouth === true && v.same_eyes === true && v.same_mood === true
   return { status: ok ? 'pass' : 'fail', reason: String(v.what ?? '') }
 })

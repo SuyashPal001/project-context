@@ -77,3 +77,13 @@ describe('cost labels (review M4)', () => {
     } finally { vi.unstubAllGlobals() }
   })
 })
+
+describe('expression face close-ups (review M6)', () => {
+  it('sends the face close-ups alongside the whole frames when given', async () => {
+    const ask = askReturning({ same_mouth: true, same_eyes: true, same_mood: true, what: 'same' })
+    const face = { data: 'FF', mime: 'image/jpeg' }
+    await runGate(expressionScorer, 'expression', { ask, reference: img, frame: img, referenceFace: face, frameFace: face, expected: 'poised' }, [1])
+    const parts = ask.mock.calls[0][0] as Array<{ image?: unknown }>
+    expect(parts.filter((p) => p.image).length).toBe(4)
+  })
+})

@@ -1,6 +1,6 @@
 import { execFile as execFileCb } from 'node:child_process'
 import { promisify } from 'node:util'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { persistCost } from '../cost.js'
 import { findFaces } from './findFaces.js'
@@ -97,15 +97,28 @@ export const lastTimes = (duration: number): number[] =>
 
 let sampleSeq = 0
 /** Full-resolution frames (no scaling): small frames hid a still-on cap. */
-export async function sampleFrames(clipPath: string, times: number[], workDir: string): Promise<Img[]> {
+// crop: optional [x0, y0, x1, y1] fractions of the frame (e.g. a face close-up).
+export async function sampleFrames(clipPath: string, times: number[], workDir: string, crop?: [number, number, number, number]): Promise<Img[]> {
   const batch = ++sampleSeq
   const out: Img[] = []
+  const vf = crop ? ['-vf', `crop=iw*${crop[2] - crop[0]}:ih*${crop[3] - crop[1]}:iw*${crop[0]}:ih*${crop[1]}`] : []
   for (const [i, t] of times.entries()) {
     const f = join(workDir, `s${batch}-${i}.jpg`)
-    await execFile('ffmpeg', ['-y', '-ss', String(t), '-i', clipPath, '-frames:v', '1', '-q:v', '2', f], { timeout: 30_000 })
+    await execFile('ffmpeg', ['-y', '-ss', String(t), '-i', clipPath, '-frames:v', '1', ...vf, '-q:v', '2', f], { timeout: 30_000 })
     out.push({ data: readFileSync(f).toString('base64'), mime: 'image/jpeg' })
   }
   return out
+}
+
+/** Images side by side (same height) as one JPEG — evidence a person can look at. */
+export async function sideBySide(imgs: Img[], workDir: string): Promise<Buffer> {
+  if (imgs.length === 1) return Buffer.from(imgs[0].data, 'base64')
+  const batch = ++sampleSeq
+  const ins = imgs.flatMap((im, i) => { const f = join(workDir, `e${batch}-${i}.jpg`); writeFileSync(f, Buffer.from(im.data, 'base64')); return ['-i', f] })
+  const scaled = imgs.map((_, i) => `[${i}]scale=-2:480[s${i}]`).join(';')
+  const out = join(workDir, `e${batch}-out.jpg`)
+  await execFile('ffmpeg', ['-y', ...ins, '-filter_complex', `${scaled};${imgs.map((_, i) => `[s${i}]`).join('')}hstack=inputs=${imgs.length}`, '-q:v', '3', out], { timeout: 30_000 })
+  return readFileSync(out)
 }
 
 export function productQuestion(scale: ProductScale, expectedState?: string): string {
