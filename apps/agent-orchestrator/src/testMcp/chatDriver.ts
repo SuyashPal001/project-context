@@ -12,7 +12,10 @@ export type Pending =
   | { kind: 'confirm'; id: string; label?: string; subject?: string }
   | { kind: 'approval'; id: string; toolName?: string }
   | { kind: 'upload'; id: string; prompt?: string }
-export type RunState = 'running' | 'waiting' | 'done' | 'error' | 'ended' | 'unknown_after_restart'
+// 'not_tracked': this process holds no live run for the conversation (it
+// restarted, never drove it, or let go of a run whose stream had closed), so
+// the result comes from the saved messages.
+export type RunState = 'running' | 'waiting' | 'done' | 'error' | 'ended' | 'not_tracked'
 export type ReadResult = {
   conversationId: string; state: RunState; pending?: Pending; text: string
   toolCalls: Array<{ toolName: string; ok: boolean }>
@@ -35,6 +38,9 @@ const MAX_WAIT_S = 240
 
 export class ChatDriver {
   private runs = new Map<string, Run>()
+  // Made by newConversation() and not yet sent to: their first send must say
+  // isFirstMessage so the chat gets its title, like a fresh web chat.
+  private unsent = new Set<string>()
   constructor(private id: TestIdentity, private cfg: TestMcpConfig, private fetchImpl: typeof fetch = fetch) {}
 
   async send(a: { conversationId?: string; message: string; fileIds?: string[]; waitSeconds?: number }): Promise<ReadResult> {
@@ -46,15 +52,24 @@ export class ChatDriver {
     const token = await this.id.idToken()
     const run = this.newRun()
     this.runs.set(conversationId, run)
-    const res = await this.fetchImpl(`${this.cfg.selfBaseUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'X-Id-Token': token, Accept: 'text/event-stream' },
-      body: JSON.stringify({
-        conversationId, message: a.message, agentId: this.cfg.agentId, allowMode: 'auto',
-        attachments: (a.fileIds ?? []).map((fileId) => ({ fileId })),
-        isFirstMessage: !a.conversationId,
-      }),
-    })
+    const isFirstMessage = this.unsent.delete(conversationId) || !a.conversationId
+    let res: Response
+    try {
+      res = await this.fetchImpl(`${this.cfg.selfBaseUrl}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'X-Id-Token': token, Accept: 'text/event-stream' },
+        body: JSON.stringify({
+          conversationId, message: a.message, agentId: this.cfg.agentId, allowMode: 'auto',
+          attachments: (a.fileIds ?? []).map((fileId) => ({ fileId })),
+          isFirstMessage,
+        }),
+      })
+    } catch (err) {
+      // No stream will ever update this run; leaving it 'running' would wedge
+      // the conversation (every later send refused, every read 'running').
+      run.state = 'error'; run.error = `chat request failed: ${(err as Error).message}`
+      return this.snapshot(conversationId, run)
+    }
     if (!res.ok || !res.body) {
       run.state = 'error'; run.error = `chat ${res.status}: ${await res.text().catch(() => '')}`
       return this.snapshot(conversationId, run)
@@ -73,14 +88,37 @@ export class ChatDriver {
     const run = this.runs.get(conversationId)
     if (!run?.pending) throw new Error('nothing is waiting for an answer in this conversation')
     if (run.pending.kind !== ans.kind) throw new Error(`waiting for a ${run.pending.kind} answer, got ${ans.kind}`)
+    const p = run.pending
+    // A partly answered card stays open server-side and the turn hangs.
+    const asked = p.kind === 'question' && Array.isArray(p.questions) ? p.questions.length : 0
+    if (ans.kind === 'question' && ans.answers.length < asked) {
+      throw new Error(`card has ${asked} questions; answer all of them, use skipped:true for any to skip`)
+    }
+    const bodies = answerBodies(p, ans)
     const token = await this.id.idToken()
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'X-Id-Token': token }
-    for (const { path, body } of answerBodies(run.pending, ans)) {
-      const r = await this.fetchImpl(`${this.cfg.selfBaseUrl}${path}`, { method: 'POST', headers, body: JSON.stringify(body) })
-      if (!r.ok) throw new Error(`${path} ${r.status}: ${await r.text().catch(() => '')}`)
-    }
+    // The stream already closed (ended/error) with the card still open: the
+    // server keeps the card and continues the turn detached, but nothing will
+    // update this run again.
+    const streamOver = run.state === 'ended' || run.state === 'error'
+    // Cleared before the POSTs, not after: the pump keeps applying events while
+    // they are in flight, and a done or a follow-up card that lands then must
+    // not be overwritten.
     run.pending = undefined
-    run.state = 'running'
+    if (!streamOver) run.state = 'running'
+    for (const { path, body } of bodies) {
+      const r = await this.fetchImpl(`${this.cfg.selfBaseUrl}${path}`, { method: 'POST', headers, body: JSON.stringify(body) })
+      if (!r.ok) {
+        if (run.pending === undefined && run.state === 'running') { run.pending = p; run.state = 'waiting' }
+        else if (streamOver && run.pending === undefined) run.pending = p
+        throw new Error(`${path} ${r.status}: ${await r.text().catch(() => '')}`)
+      }
+    }
+    if (streamOver) {
+      // Let go of the run so olmo_read falls back to the saved messages.
+      if (this.runs.get(conversationId) === run) this.runs.delete(conversationId)
+      return this.fromSaved(conversationId)
+    }
     return this.wait(conversationId, run, waitSeconds)
   }
 
@@ -96,6 +134,7 @@ export class ChatDriver {
     if (!c.ok || !id) throw new Error(`create conversation failed ${c.status}`)
     const p = await this.fetchImpl(`${this.cfg.apiBaseUrl}/api/v1/conversations/${id}`, { method: 'PATCH', headers: h, body: JSON.stringify({ allowMode: 'auto' }) })
     if (!p.ok) throw new Error(`set auto mode failed ${p.status}`)
+    this.unsent.add(id)
     return id
   }
 
@@ -145,7 +184,7 @@ export class ChatDriver {
     const r = await this.fetchImpl(`${this.cfg.apiBaseUrl}/api/v1/conversations/${conversationId}/messages`, { headers: { Authorization: `Bearer ${token}` } })
     const json = r.ok ? await r.json() as { data?: Array<{ role?: string; content?: string }> } : { data: [] }
     const text = (json.data ?? []).filter((m) => m.role === 'assistant').map((m) => m.content ?? '').join('\n\n')
-    return { conversationId, state: 'unknown_after_restart', text, toolCalls: [], files: [], newEvents: 0 }
+    return { conversationId, state: 'not_tracked', text, toolCalls: [], files: [], newEvents: 0 }
   }
 }
 
