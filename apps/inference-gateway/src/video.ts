@@ -3,8 +3,9 @@ import { GoogleAuth } from 'google-auth-library'
 import { vertexVideoBreaker, geminiVideoBreaker } from './router.js'
 import { requestsTotal, latency } from './metrics.js'
 import { isContentBlocked } from './contentBlocked.js'
+import { VEO_31_MODEL, callVeoTransition } from './veo.js'
 
-const VIDEO_MODEL_ALLOWLIST = new Set(['gemini-omni-1.1-flash'])
+const VIDEO_MODEL_ALLOWLIST = new Set(['gemini-omni-1.1-flash', VEO_31_MODEL])
 
 // Read at call time, not module load — the test suite sets these in
 // beforeEach() so a captured-at-import constant would always be empty in tests
@@ -72,6 +73,8 @@ export interface VideoGenerationRequest {
    *  dialogue — the uploaded-video "extend" task refuses new speech. Vertex
    *  only (the id belongs to the project that made it); no task, no images. */
   previousInteractionId?: string
+  /** veo-3.1-fast-generate-001 only: the last frame (presigned URL) for first+last frame motion. */
+  lastFrameUri?: string
 }
 
 const OMNI_MAX_REFERENCE_IMAGES = 3
@@ -416,6 +419,21 @@ export class UnsupportedVideoModelError extends Error {}
 export async function generateVideo(req: VideoGenerationRequest): Promise<VideoGenerationResult> {
   if (!VIDEO_MODEL_ALLOWLIST.has(req.model)) {
     throw new UnsupportedVideoModelError(`Unsupported video model: ${req.model}`)
+  }
+  // Veo 3.1 Fast is routed by its own explicit model id, before Omni's dispatch, and
+  // never falls back to another model (the caller chooses any fallback, spec rule 11).
+  if (req.model === VEO_31_MODEL) {
+    if (![4, 6, 8].includes(req.durationSeconds)) throw new UnsupportedVideoModelError(`Veo 3.1 takes 4, 6 or 8 seconds, got ${req.durationSeconds}`)
+    if (!req.imageUri) throw new UnsupportedVideoModelError('Veo 3.1 here needs a start image')
+    try {
+      const r = await callVeoTransition({ prompt: req.prompt, startUri: req.imageUri, lastUri: req.lastFrameUri, seconds: req.durationSeconds, aspectRatio: req.aspectRatio })
+      vertexVideoBreaker.onSuccess()
+      return r
+    } catch (err) {
+      if (isContentBlocked((err as Error).message)) return { refused: true, reason: 'CONTENT_BLOCKED' }
+      vertexVideoBreaker.onFailure()
+      throw new VideoBackendUnavailableError(`Veo 3.1 failed: ${(err as Error).message}`)
+    }
   }
   validateOmniDuration(req.durationSeconds)
   if ((req.referenceImageUris?.length ?? 0) > OMNI_MAX_REFERENCE_IMAGES) {
