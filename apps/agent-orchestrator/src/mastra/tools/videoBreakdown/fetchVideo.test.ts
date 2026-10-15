@@ -121,3 +121,14 @@ describe('fetchVideo', () => {
     expect(err).not.toBeInstanceOf(DownloadBlocked)
   })
 })
+
+describe('download failure logging (server only)', () => {
+  it('logs yt-dlp\'s own error line for us, and never shows it to the user', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    ytdlpFails = 'ERROR: [facebook] 123: Cannot parse data'
+    const err = await fetchVideo({ url: 'https://www.facebook.com/reel/123/' }, ctx).catch((e) => e)
+    expect(spy.mock.calls.map((c) => c.join(' ')).join('\n')).toMatch(/\[fetchVideo\].*facebook.*Cannot parse data/)
+    expect(err.message).not.toMatch(/Cannot parse data/)
+    spy.mockRestore()
+  })
+})

@@ -85,6 +85,9 @@ export async function fetchVideo(input: { url?: string; fileId?: string }, ctx: 
         await execFile('yt-dlp', ['-q', '--no-warnings', '--no-playlist', '--max-filesize', '300M', '-S', 'vcodec:h264,res:1080,acodec:m4a', '--merge-output-format', 'mp4', '-o', filePath, '--', input.url], { timeout: 240_000 })
       } catch (err) {
         const msg = `${(err as { stderr?: string }).stderr ?? ''} ${(err as Error).message}`
+        // For us only (the user gets the plain upload message below): the real reason, so a
+        // failed link can be diagnosed from the logs without digging through the database.
+        console.error(`[fetchVideo] download failed platform=${platform} url=${input.url} :: ${msg.replace(/\s+/g, ' ').trim().slice(0, 500)}`)
         if (platform === 'youtube') throw new DownloadBlocked('YouTube didn’t let our server download that video. For exact timing and poses, please download it and upload it here.', input.url, metaDurationS, caption, song)
         throw new FetchRefused(/not granting access|login|private|cookies/i.test(msg)
           ? 'That post can’t be opened without logging in. Please download the video and upload it here.'
