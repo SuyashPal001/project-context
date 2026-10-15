@@ -113,10 +113,15 @@ Shared tools: `test_status` (tenant/user/agent/balance/current conversation),
 (tool/agent spans for a conversation, read from the Mastra observability store, not
 from `mastra_messages` or pm2 logs).
 
-`olmo_trace` and `olmo_send`/`olmo_read`/`olmo_answer` (when given a `conversationId`)
-all refuse a conversation the test user doesn't own — a GET on
-`/api/v1/conversations/:id` must return 200 before the call proceeds, since that route
-is already tenant+user scoped server-side.
+`olmo_trace` (always) and `olmo_send` (only when given a `conversationId`) call
+`assertOwnConversation` first and refuse a conversation the test user doesn't own — a
+GET on `/api/v1/conversations/:id` must return 200 before the call proceeds, since that
+route is already tenant+user scoped server-side. `olmo_read` and `olmo_answer` don't
+make that same check: `olmo_answer` only acts on runs this server itself started and is
+still tracking in memory, and `olmo_read`'s restart fallback (when the in-memory run is
+gone) reads prior messages through the tenant-scoped `/api/v1/conversations/:id/messages`
+API using the test user's own id token, so it can't read another tenant's or user's
+conversation either way.
 
 ### Protocol and Claude Code config
 
