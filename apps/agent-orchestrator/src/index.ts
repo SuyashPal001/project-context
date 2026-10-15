@@ -321,6 +321,9 @@ const server = serve({ fetch: app.fetch, port }, () => {
   console.log(`agent-orchestrator listening on port ${port}`)
 }) as unknown as Server
 
+// Internal test MCP: off unless TEST_MCP_ENABLED=1, localhost only (src/testMcp).
+void import('./testMcp/server.js').then(({ startTestMcp }) => startTestMcp()).catch((err) => console.warn('[test-mcp] failed to start:', (err as Error).message))
+
 server.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
   const url = new URL(req.url ?? '/', `http://localhost`)
 
