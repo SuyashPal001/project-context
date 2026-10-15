@@ -5,7 +5,7 @@ Confirm with the user before restarting any PM2 process.
 1. Pull and build: `git pull` on main, `pnpm install --frozen-lockfile`, then the usual workspace build for the orchestrator and gateway.
 2. System tools: `ffmpeg -version` and `ffprobe -version` must work (the ai-service and the orchestrator both call them). If missing: `sudo apt install ffmpeg`.
 3. Gateway: deploy as usual (PM2 `inference-gateway` restart). It now accepts video input and never falls back to Ollama for a video request.
-4. yt-dlp on the VM: `python3 -m pip install --user -U yt-dlp` and add a weekly cron `python3 -m pip install --user -U yt-dlp`. Check: `yt-dlp --version`. Logged-out only: never add cookies or accounts.
+4. yt-dlp on the VM: it is pipx-managed with a weekly `pipx upgrade yt-dlp` cron already (0 4 * * 0). Do NOT `pip install --user` (it clobbers the pipx symlink); use `pipx install yt-dlp` / `pipx upgrade yt-dlp` only if missing or old. Check: `yt-dlp --version`. Logged-out only: never add cookies or accounts. As of 2026-10-15 YouTube downloads are blocked from the VM's datacenter IP ("Sign in to confirm you're not a bot"); Instagram works. YouTube users upload instead.
 5. ai-service:
    First run `pm2 ls`. If an `ai-service` process already exists, keep its name and update its command/env; do not start a second process on port 3004.
    cd apps/ai-service && python3 -m venv .venv && . .venv/bin/activate
@@ -34,5 +34,5 @@ Confirm with the user before restarting any PM2 process.
 
 1. ai-service: `pip install -r requirements.txt` again (adds rtmlib, onnxruntime), then restart PM2 `ai-service`.
 2. Pre-download the pose model once so the first breakdown is not slow or blocked: `cd apps/ai-service && .venv/bin/python -c "from media.pose import _pose_model; _pose_model()"` (fetches RTMPose-s from download.openmmlab.com into ~/.cache/rtmlib).
-3. Time one `/media/pose` call on the VM (Mac: ~5s for a 15s reel) and note it.
+3. Time one `/media/pose` call on the VM (Mac: ~5s for a 15s reel; VM measured 15.5s for a 14.8s reel on 2026-10-15).
 4. Orchestrator restart picks up the `measure_pose` tool (Olmo + Director) and the measured leg sides in `break_down_video` (`leg_side_source: "measured" | "gemini"`).
