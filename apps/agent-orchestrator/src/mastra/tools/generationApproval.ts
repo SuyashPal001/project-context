@@ -1,6 +1,7 @@
 import { isUnlimited, resolveRate } from '@serverless-saas/credits'
 import { filterPII } from '../../pii-filter.js'
 import { imageEngineFor, imageModelFor, type ImageEngine } from './imageEngine.js'
+import { VEO_CLIP_MODEL } from './veoClip.js'
 
 /**
  * Shared predicate behind every generation tool's `requireApproval`. Runs
@@ -170,8 +171,17 @@ const remakePreview = (args: Record<string, unknown>): string | undefined =>
     ? 'Approves the remake plan and makes the casting sheet (3 new people to choose from). When the video has no person to cast, it makes the stills and the free preview instead, as estimated with the plan.'
     : args.action === 'pick_cast'
       ? 'Makes every still for the remake with the chosen person (at most one automatic retry each), then the free preview, as estimated with the plan.'
-      : undefined
-const remakeGen = { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Remake video', buildPreview: remakePreview }
+      : args.action === 'approve_preview'
+        ? 'Animates every part of the remake (at most one automatic retry each), adds new music, checks it against the original and delivers the video, as estimated with the preview.'
+        : undefined
+// approve_preview pays for clips, so its card is priced as video (Veo 3.1 Fast, the costlier
+// per-call clip); the earlier stages pay for images.
+const remakeIsClips = (args: Record<string, unknown>) => args.action === 'approve_preview'
+const remakeGen = {
+  resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Remake video', buildPreview: remakePreview,
+  resourceTypeFor: (args: Record<string, unknown>) => (remakeIsClips(args) ? 'video_generation' : 'image_generation'),
+  subjectFor: (args: Record<string, unknown>) => (remakeIsClips(args) ? VEO_CLIP_MODEL : IMAGE_MODEL),
+}
 
 export const GENERATION_APPROVAL_METADATA: Record<string, {
   resourceType: string
@@ -180,6 +190,8 @@ export const GENERATION_APPROVAL_METADATA: Record<string, {
   buildPreview?: (args: Record<string, unknown>) => string | undefined
   buildCount?: (args: Record<string, unknown>) => number | undefined
   subjectFor?: (args: Record<string, unknown>, ctx: ContextLike) => string
+  /** When one tool's stages are priced as different resources (remake_video). */
+  resourceTypeFor?: (args: Record<string, unknown>) => string
 }> = {
   'generate-image': imageGen,
   'generate_image': imageGen,

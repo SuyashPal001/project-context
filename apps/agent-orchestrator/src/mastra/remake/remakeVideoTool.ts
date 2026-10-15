@@ -4,6 +4,7 @@ import { linkSchema } from '../tools/videoBreakdown/links.js'
 import { breakDownVideo, recentBreakdown, type Breakdown } from '../tools/videoBreakdown/breakDownVideo.js'
 import { shouldRequireApproval } from '../tools/generationApproval.js'
 import { imageModelFor } from '../tools/imageEngine.js'
+import { VEO_CLIP_MODEL } from '../tools/veoClip.js'
 import { refuseReason } from './looks.js'
 import { credits } from './cost.js'
 import { remakeMastra, REMAKE_WORKFLOW_ID } from './instance.js'
@@ -28,6 +29,11 @@ function errorText(e: unknown): string {
   return 'the remake stopped; please try again'
 }
 
+const plainSummary = (v: unknown) => {
+  const s = v as { spentMicro: string; wastedMicro: string; failed: string[]; blocked: string[] }
+  return { spentCredits: credits(s.spentMicro), wastedCredits: credits(s.wastedMicro), failed: s.failed, blocked: s.blocked }
+}
+
 export function shapeRun(runId: string, r: RunResult): Out {
   // Stills run inside one long tool call; a status check meanwhile must not read as a failure.
   if (r.status === 'running' || r.status === 'pending') return { success: true, runId, stage: 'working' }
@@ -39,12 +45,16 @@ export function shapeRun(runId: string, r: RunResult): Out {
       const plan = p.plan as { warnings?: string[] }
       return { success: true, runId, stage: 'plan_review', plan: p.plan, warnings: plan.warnings ?? [], estimate: { images: e.images, firstPassCredits: credits(e.firstPassMicro), maxCredits: credits(e.maxMicro) } }
     }
+    if (p.stage === 'preview_review') {
+      const e = p.clipsEstimate as { clips: number; firstPassMicro: string | null; maxMicro: string | null }
+      return { success: true, runId, stage: 'preview_review', previewFileId: p.previewFileId, stills: p.stills, summary: plainSummary(p.summary), clipsEstimate: { clips: e.clips, firstPassCredits: credits(e.firstPassMicro), maxCredits: credits(e.maxMicro) }, ...(p.cantAnimate ? { cantAnimate: p.cantAnimate } : {}) }
+    }
     return { success: true, runId, stage: 'cast_pick', sheetFileId: p.sheetFileId, ...(p.error ? { error: p.error } : {}) }
   }
-  const result = r.result ?? r.steps?.preview?.output
+  const result = r.result ?? r.steps?.finish?.output
   if (r.status === 'success' && result) {
-    const s = result.summary as { spentMicro: string; wastedMicro: string; failed: string[]; blocked: string[] }
-    return { success: true, runId, stage: 'preview_ready', previewFileId: result.previewFileId, stills: result.stills, summary: { spentCredits: credits(s.spentMicro), wastedCredits: credits(s.wastedMicro), failed: s.failed, blocked: s.blocked } }
+    if (result.finalFileId) return { success: true, runId, stage: 'final_ready', finalFileId: result.finalFileId, note: result.note, clips: result.clips, summary: plainSummary(result.summary) }
+    return { success: true, runId, stage: 'preview_ready', previewFileId: result.previewFileId, stills: result.stills, summary: plainSummary(result.summary), ...(result.note ? { note: result.note } : {}) }
   }
   const stepErr = Object.values(r.steps ?? {}).map((s) => s.error).find(Boolean) ?? r.error
   console.error('[remake] run ended', r.status, stepErr)
@@ -57,11 +67,12 @@ export const remakeVideoTool = createTool({
     + 'start (link or fileId + brand: name, product, optional productPhotoFileId/audience/notes; optional castFileId when the user brings their own person): returns the remake plan (each part of the video kept, swapped or dropped) and the cost of the stills. Show the plan in plain words and ask for changes. '
     + 'edit_plan (runId + edits) for changes; approve_plan (runId) when the user agrees. If the video has a person, approve_plan returns a casting sheet of 3 new people: show it and ask which one (pick_cast, runId + pick 1-3). '
     + 'If cast_pick comes back with an error and no sheetFileId, tell the user the error; once fixed, call pick_cast with no pick to make the sheet again. If it has an error and a sheet, ask the user to pick again. '
-    + 'Then every look gets checked stills and a free preview video (stage preview_ready): share the preview, say which stills failed or were held back, and the credits spent. Video clips are a later step. '
+    + 'Then every look gets checked stills and a free preview video (stage preview_review): share the preview, say which stills failed or were held back, the credits spent, and the cost to animate it (clipsEstimate). If it has cantAnimate, say so and stop there. If the user wants it animated, call approve_preview (runId); if they only wanted the preview, call stop. '
+    + 'When it is done (stage final_ready), share the video and its note exactly as given (what changed on purpose, what stayed a still, anything that did not pass), the credits spent, and remind the user to label it as AI-generated when they post it. '
     + 'stage working means it is still making the stills: wait and use status; never call start again while a remake for this video exists (that pays twice). '
     + 'Never describe how it works inside; use plain outcome words. status (runId) re-reads where a remake is.',
   inputSchema: z.object({
-    action: z.enum(['start', 'edit_plan', 'approve_plan', 'pick_cast', 'status']),
+    action: z.enum(['start', 'edit_plan', 'approve_plan', 'pick_cast', 'approve_preview', 'stop', 'status']),
     url: linkSchema.optional(), fileId: z.string().optional(),
     brand: brandSchema.optional(),
     castFileId: z.string().optional().describe('start: the user\'s own person (an avatar or photo fileId); skips the casting sheet'),
@@ -72,6 +83,7 @@ export const remakeVideoTool = createTool({
   outputSchema: z.object({ success: z.boolean() }).passthrough(),
   requireApproval: async (input, ctx) => {
     const action = (input as { action?: string }).action
+    if (action === 'approve_preview') return shouldRequireApproval({ resourceType: 'video_generation', subject: VEO_CLIP_MODEL }, ctx as never)
     if (action !== 'approve_plan' && action !== 'pick_cast') return false
     return shouldRequireApproval({ resourceType: 'image_generation', subject: imageModelFor('gemini').rateSubject }, ctx as never)
   },
@@ -101,6 +113,8 @@ export const remakeVideoTool = createTool({
       if (input.action === 'status') return shapeRun(input.runId, state)
       const [step, resumeData] = input.action === 'edit_plan' ? ['plan', { decision: 'edit', edits: input.edits ?? [] }]
         : input.action === 'approve_plan' ? ['plan', { decision: 'approve' }]
+        : input.action === 'approve_preview' ? ['preview', { decision: 'approve' }]
+        : input.action === 'stop' ? ['preview', { decision: 'stop' }]
         : ['cast', input.pick ? { pick: input.pick } : {}]
       const run = await w.createRun({ runId: input.runId })
       const r = await run.resume({ step, resumeData, requestContext: rc as never })

@@ -11,7 +11,7 @@ vi.mock('../tools/videoBreakdown/breakDownVideo.js', async (orig) => ({
   breakDownVideo: vi.fn(async () => breakdown()),
 }))
 vi.mock('../tools/generationApproval.js', async (orig) => ({ ...(await orig<typeof import('../tools/generationApproval.js')>()), shouldRequireApproval: vi.fn(async () => true) }))
-const { remakeVideoTool } = await import('./remakeVideoTool.js')
+const { remakeVideoTool, shapeRun } = await import('./remakeVideoTool.js')
 const { recentBreakdown } = await import('../tools/videoBreakdown/breakDownVideo.js')
 
 const ctx = (tenantId = 't1', conversationId = 'c1') => {
@@ -69,5 +69,21 @@ describe('remake_video', () => {
     expect(await need('pick_cast')).toBe(true)
     expect(await need('start')).toBe(false)
     expect(await need('edit_plan')).toBe(false)
+  })
+
+  it('approve_preview needs approval, priced as video; stop does not', async () => {
+    const need = (action: string) => (remakeVideoTool.requireApproval as (i: unknown, c: unknown) => Promise<boolean>)({ action }, ctx())
+    expect(await need('approve_preview')).toBe(true)
+    expect(await need('stop')).toBe(false)
+    const { shouldRequireApproval } = await import('../tools/generationApproval.js')
+    expect(vi.mocked(shouldRequireApproval)).toHaveBeenCalledWith({ resourceType: 'video_generation', subject: 'google/veo-3.1-fast-generate-001' }, expect.anything())
+  })
+  it('shapes preview_review and final_ready', () => {
+    expect(shapeRun('r', { status: 'suspended', steps: { preview: { suspendPayload: { stage: 'preview_review', previewFileId: 'p', stills: [], summary: { spentMicro: '0', wastedMicro: '0', failed: [], blocked: [] }, clipsEstimate: { clips: 2, firstPassMicro: '268000000', maxMicro: '468000000' } } } } }))
+      .toMatchObject({ success: true, stage: 'preview_review', previewFileId: 'p', clipsEstimate: { clips: 2, firstPassCredits: '268.00', maxCredits: '468.00' } })
+    expect(shapeRun('r', { status: 'success', result: { finalFileId: 'f', note: 'N', summary: { spentMicro: '1000000', wastedMicro: '0', failed: [], blocked: [] } } }))
+      .toMatchObject({ success: true, stage: 'final_ready', finalFileId: 'f', note: 'N', summary: { spentCredits: '1.00' } })
+    expect(shapeRun('r', { status: 'success', result: { finalFileId: null, previewFileId: 'p', note: '', stills: [], summary: { spentMicro: '0', wastedMicro: '0', failed: [], blocked: [] } } }))
+      .toMatchObject({ success: true, stage: 'preview_ready', previewFileId: 'p' })
   })
 })

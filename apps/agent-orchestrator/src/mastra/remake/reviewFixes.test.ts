@@ -55,6 +55,10 @@ describe('C1 approval card', () => {
     expect(meta?.resourceType).toBe('image_generation')
     expect(meta.buildPreview!({ action: 'approve_plan' })).toMatch(/casting sheet/)
     expect(meta.buildPreview!({ action: 'pick_cast' })).toMatch(/every still/)
+    expect(meta.buildPreview!({ action: 'approve_preview' })).toMatch(/Animates every part/)
+    expect(meta.subjectFor!({ action: 'approve_preview' }, undefined)).toBe('google/veo-3.1-fast-generate-001')
+    expect(meta.resourceTypeFor!({ action: 'approve_preview' })).toBe('video_generation')
+    expect(meta.resourceTypeFor!({ action: 'pick_cast' })).toBe('image_generation')
   })
 })
 
