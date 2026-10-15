@@ -10,3 +10,5 @@ transnetv2-pytorch==1.0.5
 ffmpeg-python>=0.2.0
 pytest>=8.3
 librosa>=0.11
+rtmlib>=0.0.16
+onnxruntime>=1.20

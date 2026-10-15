@@ -31,3 +31,12 @@ def test_fan_reel_has_a_tempo(client, media_dir):
 def test_sony_sound_drop(client, media_dir):
     d = client.post("/media/sound", json={"path": _copy(media_dir, "sony.mp4")}, headers={"x-internal-service-key": "k"}).json()
     assert d["silent_from_s"] is not None and 54 <= d["silent_from_s"] <= 58
+
+def test_fan_reel_leg_sides_and_slide_from_pose(client, media_dir):
+    looks = [{"label": "jacket", "start_s": 0, "end_s": 5.47}, {"label": "saree", "start_s": 5.47, "end_s": 9.32},
+             {"label": "sharara", "start_s": 9.32, "end_s": 12.82}, {"label": "cape", "start_s": 12.82, "end_s": 14.9}]
+    covered = [[4.6, 6.2], [8.5, 9.9], [12.3, 13.5]]   # fan-blade spans
+    d = client.post("/media/pose", json={"path": _copy(media_dir, "fan_reel.mp4"), "looks": looks, "subject_box": [0.1, 0.05, 0.9, 0.95], "exclude": covered}, headers={"x-internal-service-key": "k"}).json()
+    assert [l["leg_side_end"] for l in d["looks"]] == ["image-right", "image-left", "image-right", "image-left"]
+    assert d["looks"][0]["leg_side_start"] == "center"               # legs straight, then slide right
+    assert any(m["direction"] == "image-right" and 2.75 <= m["t_s"] <= 3.75 for m in d["moves"])
