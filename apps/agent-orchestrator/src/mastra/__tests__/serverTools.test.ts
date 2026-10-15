@@ -82,6 +82,7 @@ describe('SERVER_TOOLS', () => {
       'list_folder',
       'measure_pose',
       'read_file',
+      'remake_video',
       'render_canvas',
       'request_upload',
       'retrieve_documents',

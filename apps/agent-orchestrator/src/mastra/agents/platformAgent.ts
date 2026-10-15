@@ -40,6 +40,7 @@ import { renderCanvas } from '../tools/renderCanvas.js'
 import { analyzeAudioTool } from '../tools/analyzeAudio.js'
 import { analyzeVideoTool } from '../tools/analyzeVideo.js'
 import { fetchVideoTool, watchVideoTool, findCutsTool, findHiddenCutsTool, soundTimelineTool, breakDownVideoTool, compareToReferenceTool, measurePoseTool } from '../tools/videoBreakdown/index.js'
+import { remakeVideoTool } from '../remake/remakeVideoTool.js'
 import { draftSkillTool } from '../tools/draftSkill.js'
 import { saveSkillTool } from '../tools/saveSkill.js'
 import { buildOlmoDelegates } from './olmoDelegates.js'
@@ -206,6 +207,7 @@ export const SERVER_TOOLS = {
   break_down_video: breakDownVideoTool,
   compare_to_reference: compareToReferenceTool,
   measure_pose: measurePoseTool,
+  remake_video: remakeVideoTool,
   // Two-step, user-triggered only — the tool descriptions tell the model
   // never to call either on its own initiative. draft_skill has no approval
   // gate (nothing to show yet); save_skill does. See saveSkill.ts for the
