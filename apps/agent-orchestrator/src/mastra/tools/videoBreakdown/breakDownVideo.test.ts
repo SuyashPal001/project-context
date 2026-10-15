@@ -188,3 +188,23 @@ describe('watch-only fallback (YouTube blocks the server download)', () => {
     expect(recentBreakdown({ url: 'https://www.youtube.com/watch?v=abc' }, ctx)).toBeUndefined()
   })
 })
+
+describe('speed', () => {
+  it('measures pose while Gemini describes the shots, not before or after', async () => {
+    watch.mockResolvedValue(overview(['hard_cuts'], 2))
+    let describing = false
+    let overlapped = false
+    ai.mockImplementation(async (route: string) => {
+      if (route === '/media/cuts') return { cuts: [7], fades: [], duration_s: 14.9 }
+      if (route === '/media/pose') {
+        for (let i = 0; i < 20 && !describing; i++) await new Promise((r) => setTimeout(r, 2))
+        overlapped = describing
+        return { model: 'rtmpose-s', looks: [], moves: [] }
+      }
+      return { curve_db: [], events: [], rhythm: [], silent_from_s: null, bpm: null, beats_s: [], has_audio: true }
+    })
+    describeShots.mockImplementation(async () => { describing = true; await new Promise((r) => setTimeout(r, 20)); describing = false; return { shots: [], sound_arc: '' } })
+    await breakDownVideo({ url: 'https://x.com/a/status/1' }, ctx)
+    expect(overlapped).toBe(true)
+  })
+})

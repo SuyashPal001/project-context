@@ -111,7 +111,7 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
   }
   const measured = cuts !== null && sound !== null
   let refinedOverview: WatchOverview
-  let pose: PoseResult | null = null
+  let posePending: Promise<PoseResult | null> = Promise.resolve(null)
   // Refining without knowing every cut and covered span would snap moments onto
   // a cut or the occluder and call them measured (review I1) — keep them unmeasured.
   if (cuts === null || hiddenFailed) {
@@ -132,22 +132,12 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
     if (r.unmeasured) warnings.push(`${r.unmeasured} moment time(s) could not be measured and are Gemini's estimate`)
     // Leg side and body angle are MEASURED from the frames; Gemini's reading was wrong
     // for most looks on the golden set (spec §8a: no paid step from a model's guess).
+    // Started now, awaited after the shot descriptions: CPU pose overlaps the Gemini call.
     const spans = lookSpans(overview, hidden, video.durationS)
     if (spans.length) {
-      try {
-        pose = await aiService<PoseResult>('/media/pose', { path: video.filePath, looks: spans, subject_box: overview.subject_box ?? undefined, exclude })
-      } catch (e) { warnings.push(`pose not measured (${(e as Error).message}); leg sides are Gemini's reading`) }
+      posePending = aiService<PoseResult>('/media/pose', { path: video.filePath, looks: spans, subject_box: overview.subject_box ?? undefined, exclude })
+        .catch((e: Error) => { warnings.push(`pose not measured (${e.message}); leg sides are Gemini's reading`); return null })
     }
-  }
-  const measuredLooks = new Map((pose?.looks ?? []).map((l) => [l.label, l]))
-  refinedOverview = {
-    ...refinedOverview,
-    looks: refinedOverview.looks.map((l) => {
-      const m = measuredLooks.get(l.label)
-      return m && m.leg_side_end !== 'unknown'
-        ? { ...l, leg_side: m.leg_side_end, leg_side_start: m.leg_side_start, leg_side_source: 'measured' as const, body_angle: m.body_angle_end }
-        : { ...l, leg_side_source: 'gemini' as const }
-    }),
   }
   const bounds = mergeBounds(video.durationS, cuts?.cuts ?? [], hidden.map((h) => h.at_s), (cuts?.fades ?? []).map((f) => f[0]))
   let shots: Shot[]
@@ -175,6 +165,17 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
   if (check.status === 'unknown') warnings.push('short-shot picture check unavailable')
   const { filePath: _fp, ...videoOut } = video
   const soundOut = sound ? (({ curve_db: _c, ...rest }) => rest)(sound) : null
+  const pose = await posePending
+  const measuredLooks = new Map((pose?.looks ?? []).map((l) => [l.label, l]))
+  refinedOverview = {
+    ...refinedOverview,
+    looks: refinedOverview.looks.map((l) => {
+      const m = measuredLooks.get(l.label)
+      return m && m.leg_side_end !== 'unknown'
+        ? { ...l, leg_side: m.leg_side_end, leg_side_start: m.leg_side_start, leg_side_source: 'measured' as const, body_angle: m.body_angle_end }
+        : { ...l, leg_side_source: 'gemini' as const }
+    }),
+  }
   return { video: videoOut, overview: refinedOverview, measured, pose, cuts, hidden_cuts: hidden, sound: soundOut, shots, sound_arc: soundArc, short_shot_check: { checked: check.checked, status: check.status }, warnings }
 }
 
