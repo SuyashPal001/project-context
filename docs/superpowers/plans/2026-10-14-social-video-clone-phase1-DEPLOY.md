@@ -26,5 +26,5 @@ Confirm with the user before restarting any PM2 process.
 
 1. Orchestrator env (optional): VIDEO_WATCH_MODEL, VIDEO_CHECK_MODEL (default gemini-3.8-flash; set gemini-3.6-flash to switch back without code).
 2. ai-service: restart PM2 `ai-service` (new /media/motion-peaks, /media/brightness-jumps, /media/coverage).
-3. Studio: the six video scorers and the `video-breakdown-local` workflow appear after the orchestrator restart.
+3. Studio: the six video scorers appear after the orchestrator restart. (The local-file breakdown is deliberately not a Studio workflow: Studio has no auth.)
 4. Golden set before any prompt/model change: GOLDEN_DIR=<folder with fan_reel.mp4, sony.mp4> pnpm tsx scripts/video-golden-set.ts → must print "passed". Needs a reachable gateway and ai-service (INFERENCE_GATEWAY_URL, AI_SERVICE_URL, INTERNAL_SERVICE_KEY) and MEDIA_DIR covering GOLDEN_DIR. As of 2026-10-15 it prints "failed" (fan-reel hidden cuts flaky, leg sides low) — known, not a deploy blocker for the breakdown itself.
