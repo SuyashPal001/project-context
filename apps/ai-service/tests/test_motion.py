@@ -33,3 +33,22 @@ def test_rejects_a_box_without_four_numbers(client, media_dir):
     ff(["-f", "lavfi", "-i", "color=gray:s=160x288:d=1:r=25", "-c:v", "libx264", str(p)])
     body = {"path": str(p), "items": [{"id": "x", "t_s": 0.5, "box": [0, 0, 1]}]}
     assert client.post("/media/motion-peaks", json=body, headers={"x-internal-service-key": "k"}).status_code == 400
+
+def test_motion_just_after_an_excluded_span_is_not_measured(client, media_dir):
+    # review C1: the occluder sweeping off just past the covered span must not become a "measured" moment
+    p = media_dir / "edge.mp4"; _moving_square(p, 2.3)
+    body = {"path": str(p), "items": [{"id": "blade", "t_s": 2.6, "box": [0, 0.5, 1, 1]}], "exclude": [[1.0, 2.2]], "window_s": 1.5}
+    it = client.post("/media/motion-peaks", json=body, headers={"x-internal-service-key": "k"}).json()["items"][0]
+    assert it["measured"] is False and it["t_s"] == 2.6
+
+def test_a_hint_inside_an_excluded_span_is_not_measured(client, media_dir):
+    p = media_dir / "inside.mp4"; _moving_square(p, 3.5)
+    body = {"path": str(p), "items": [{"id": "blade", "t_s": 2.5, "box": [0, 0.5, 1, 1]}], "exclude": [[2.0, 3.0]], "window_s": 1.5}
+    it = client.post("/media/motion-peaks", json=body, headers={"x-internal-service-key": "k"}).json()["items"][0]
+    assert it["measured"] is False and it["t_s"] == 2.5
+
+def test_a_peak_on_the_window_edge_is_not_measured(client, media_dir):
+    p = media_dir / "wedge.mp4"; _moving_square(p, 1.0)
+    body = {"path": str(p), "items": [{"id": "x", "t_s": 2.8, "box": [0, 0.5, 1, 1]}], "exclude": [], "window_s": 1.5}
+    it = client.post("/media/motion-peaks", json=body, headers={"x-internal-service-key": "k"}).json()["items"][0]
+    assert it["measured"] is False
