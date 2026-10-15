@@ -293,6 +293,33 @@ def motion_summary(path: str, exclude) -> dict:
     return mo.result()
 
 
+def _persons(img, det, pose_model):
+    """[(kp 17x2 fractions, scores 17, box fractions)] for every person worth counting in one frame."""
+    h, w = img.shape[:2]
+    boxes = [b for b in np.asarray(det(img)).reshape(-1, 4) if _box_area((b[0] / w, b[1] / h, b[2] / w, b[3] / h)) >= MIN_BOX_AREA]
+    persons = []
+    if boxes:
+        kps, scs = pose_model(img, bboxes=[list(map(float, b)) for b in boxes])
+        for kp, sc, b in zip(kps, scs, boxes):
+            if int((sc >= VIS).sum()) >= MIN_JOINTS:
+                persons.append((kp / np.array([w, h]), sc, (b[0] / w, b[1] / h, b[2] / w, b[3] / h)))
+    return persons
+
+
+def read_image(path: str) -> dict:
+    """The same general body reading as a look, for one still (a generated remake frame)."""
+    img = cv2.imread(path)
+    if img is None:
+        raise ValueError("unreadable image")
+    det, pose_model = _load()
+    h, w = img.shape[:2]
+    persons = _persons(img, det, pose_model)
+    if not persons:
+        return {"model": MODEL_NAME, "people": 0, "no_person": True, "main": None}
+    main = max(persons, key=lambda p: _box_area(p[2]))
+    return {"model": MODEL_NAME, "people": len(persons), "no_person": False, "main": read_person(main[0], main[1], h / w, main[2])}
+
+
 def measure_pose(path: str, looks: list[dict], exclude=None, fps: float = 5.0) -> dict:
     """One pass: optical flow on every frame inside the looks, people and joints at `fps`."""
     exclude = exclude or []
@@ -311,13 +338,7 @@ def measure_pose(path: str, looks: list[dict], exclude=None, fps: float = 5.0) -
         next_t = t + 1.0 / fps
         h, w = img.shape[:2]
         aspect = h / w
-        boxes = [b for b in np.asarray(det(img)).reshape(-1, 4) if _box_area((b[0] / w, b[1] / h, b[2] / w, b[3] / h)) >= MIN_BOX_AREA]
-        persons = []
-        if boxes:
-            kps, scs = pose_model(img, bboxes=[list(map(float, b)) for b in boxes])
-            for kp, sc, b in zip(kps, scs, boxes):
-                if int((sc >= VIS).sum()) >= MIN_JOINTS:
-                    persons.append((kp / np.array([w, h]), sc, (b[0] / w, b[1] / h, b[2] / w, b[3] / h)))
+        persons = _persons(img, det, pose_model)
         frames.append((t, persons))
         if persons:
             main = max(persons, key=lambda p: _box_area(p[2]))

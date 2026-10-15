@@ -103,3 +103,11 @@ def post_pose(body: PoseBody):
     if not 0 < body.fps <= 30:
         raise HTTPException(status_code=400, detail="fps must be above 0 and at most 30")
     return pose.measure_pose(str(safe_media_path(body.path)), [l.model_dump() for l in body.looks], body.exclude, body.fps)
+
+
+@router.post("/pose-image")
+def post_pose_image(body: PathBody):
+    try:
+        return pose.read_image(str(safe_media_path(body.path)))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

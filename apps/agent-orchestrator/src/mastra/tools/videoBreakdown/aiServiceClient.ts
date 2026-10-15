@@ -1,4 +1,4 @@
-export async function aiService<T>(route: '/media/cuts' | '/media/hidden-cuts' | '/media/sound' | '/media/motion-peaks' | '/media/brightness-jumps' | '/media/coverage' | '/media/pose', body: Record<string, unknown>, fetchImpl: typeof fetch = fetch): Promise<T> {
+export async function aiService<T>(route: '/media/cuts' | '/media/hidden-cuts' | '/media/sound' | '/media/motion-peaks' | '/media/brightness-jumps' | '/media/coverage' | '/media/pose' | '/media/pose-image', body: Record<string, unknown>, fetchImpl: typeof fetch = fetch): Promise<T> {
   const base = process.env.AI_SERVICE_URL ?? 'http://localhost:3004'
   const res = await fetchImpl(`${base}${route}`, {
     method: 'POST',
@@ -36,3 +36,4 @@ export interface PoseLookResult {
 export interface PoseMove { t_s: number; from_s: number; to_s: number; area: 'upper' | 'lower'; direction: 'image-left' | 'image-right' | 'image-up' | 'image-down'; strength: number }
 export interface CameraMove { t_s: number; from_s: number; to_s: number; direction: 'pan-left' | 'pan-right' | 'tilt-up' | 'tilt-down'; strength: number }
 export interface PoseResult { model: string; looks: PoseLookResult[]; moves: PoseMove[]; camera_moves: CameraMove[] }
+export interface ImagePose { model: string; people: number; no_person: boolean; main: Omit<BodyReading, 'frames'> | null }
