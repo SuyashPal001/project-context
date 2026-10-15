@@ -56,9 +56,9 @@ export async function fetchVideo(input: { url?: string; fileId?: string }, ctx: 
   let metaDurationS: number | null = null
   if (input.url) {
     platform = classifyLink(input.url)
-    if (platform === 'tiktok') throw new FetchRefused('TikTok links can’t be opened from our servers in India. Please download the video from TikTok and upload it here.')
+    if (platform === 'tiktok') throw new FetchRefused('I can’t open TikTok links. Please upload the video file here.')
     // Only the platforms we support (spec §5.1); anything else would let a link make the VM fetch any host (review I7).
-    if (platform === 'other') throw new FetchRefused('I can open YouTube, Instagram, X, Facebook and LinkedIn links. For anything else, please download the video and upload it here.')
+    if (platform === 'other') throw new FetchRefused('I can open YouTube, Instagram, X, Facebook and LinkedIn links. For other sites, please upload the video file here.')
     if (platform === 'youtube') youtubeUrl = input.url
     filePath = join(MEDIA_DIR, `${ctx.scopeId}-link-${createHash('sha256').update(input.url).digest('hex').slice(0, 16)}.mp4`)
     const sidecar = `${filePath}.meta.json`
@@ -91,10 +91,10 @@ export async function fetchVideo(input: { url?: string; fileId?: string }, ctx: 
         // For us only (the user gets the plain upload message below): the real reason, so a
         // failed link can be diagnosed from the logs without digging through the database.
         console.error(`[fetchVideo] download failed platform=${platform} url=${input.url} :: ${msg.replace(/\s+/g, ' ').trim().slice(0, 500)}`)
-        if (platform === 'youtube') throw new DownloadBlocked('YouTube didn’t let our server download that video. For exact timing and poses, please download it and upload it here.', input.url, metaDurationS, caption, song)
+        if (platform === 'youtube') throw new DownloadBlocked('I could only get a quick read of that video. For exact timing and poses, please upload the video file here.', input.url, metaDurationS, caption, song)
         throw new FetchRefused(/not granting access|login|private|cookies/i.test(msg)
-          ? 'That post can’t be opened without logging in. Please download the video and upload it here.'
-          : 'I couldn’t download that link. Please download the video and upload it here.')
+          ? 'That post is private or needs a login, so I can’t open it. Please upload the video file here.'
+          : 'I couldn’t open that video. Please upload the video file here.')
       }
     }
   } else if (input.fileId) {

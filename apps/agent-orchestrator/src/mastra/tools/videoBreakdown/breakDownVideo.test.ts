@@ -66,7 +66,8 @@ describe('breakDownVideo', () => {
     const b = await breakDownVideo({ url: 'https://x.com/a/status/1' }, ctx)
     expect(b.measured).toBe(false)
     expect(b.overview.change_style).toEqual(['hard_cuts'])
-    expect(b.warnings.join(' ')).toMatch(/ai-service/)
+    expect(b.warnings.join(' ')).toMatch(/cuts not measured/)
+    expect(b.warnings.join(' ')).not.toMatch(/ai-service|502/)
   })
   it('keeps the paid overview and measurements when describing shots fails (review M3)', async () => {
     watch.mockResolvedValue(overview(['hard_cuts']))
@@ -160,7 +161,7 @@ describe('breakDownVideo', () => {
     })
     const b = await breakDownVideo({ url: 'https://x.com/a/status/1' }, ctx)
     expect(b.overview.looks[0]).toMatchObject({ leg_side: 'image-left', leg_side_source: 'gemini' })
-    expect(b.warnings.join(' ')).toMatch(/pose not measured/)
+    expect(b.warnings.join(' ')).toMatch(/body readings unavailable/)
   })
 })
 
@@ -207,5 +208,19 @@ describe('speed', () => {
     describeShots.mockImplementation(async () => { describing = true; await new Promise((r) => setTimeout(r, 20)); describing = false; return { shots: [], sound_arc: '' } })
     await breakDownVideo({ url: 'https://x.com/a/status/1' }, ctx)
     expect(overlapped).toBe(true)
+  })
+})
+
+describe('wording the user (or Olmo) can see', () => {
+  it('never names providers or internal machinery', async () => {
+    vi.mocked(fetchVideo).mockRejectedValueOnce(new DownloadBlocked('x', 'https://www.youtube.com/watch?v=abc', null, null, null))
+    watch.mockResolvedValue({ ...overview(['hard_cuts'], 1), moments: [{ t_s: 2, what: 'x', why_it_matters: '' }] })
+    const yt = await breakDownVideo({ url: 'https://www.youtube.com/watch?v=abc' }, ctx)
+    watch.mockResolvedValue({ ...overview(['hidden_changes'], 2), moments: [{ t_s: 2, what: 'x', why_it_matters: '' }] })
+    ai.mockRejectedValue(new Error('ai-service 502'))
+    describeShots.mockRejectedValueOnce(new Error('gateway 502'))
+    const down = await breakDownVideo({ url: 'https://x.com/a/status/1' }, ctx)
+    const text = [...yt.warnings, ...down.warnings].join(' ')
+    expect(text).not.toMatch(/gemini|download|server|ai-service|gateway|yt-dlp|502/i)
   })
 })

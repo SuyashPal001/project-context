@@ -6,8 +6,9 @@ import type { ChunkType } from '@mastra/core/stream'
 // spending on a remake (spec §8a). The model dropped this warning in a live run
 // (2026-10-15), so code guarantees it: the reply after such a tool result starts
 // with this notice, live and in the saved message.
+// User-facing: plain words, no provider names and no internal steps.
 export const UNMEASURED_NOTICE =
-  'Heads-up: YouTube blocked our download of this video, so the times, cuts and poses below are Gemini\'s estimates — nothing was measured. Upload the video file before we spend anything on a remake.'
+  'Heads-up: I could only get a quick read of this video, so the times, cuts and poses below are estimates, not exact. Upload the video file here if you want an exact breakdown before we create anything.'
 
 const WATCH_ONLY = /"watch_only"\s*:\s*true/
 

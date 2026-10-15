@@ -30,3 +30,8 @@ it('adds the notice to the saved reply when the turn ends without text, or the s
   const again = (await p.processOutputResult({ messages: out, state } as any)) as any[]
   expect(again[0].content.parts[0].text.split(UNMEASURED_NOTICE).length).toBe(2)   // never twice
 })
+
+it('the notice itself names no provider and no internal step', () => {
+  expect(UNMEASURED_NOTICE).not.toMatch(/gemini|youtube blocked|download|server/i)
+  expect(UNMEASURED_NOTICE).toMatch(/upload/i)
+})

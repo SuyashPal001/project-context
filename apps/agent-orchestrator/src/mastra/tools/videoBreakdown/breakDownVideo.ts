@@ -17,6 +17,12 @@ export interface Breakdown {
   shots: Shot[]; sound_arc: string; short_shot_check: { checked: number; status: 'ok' | 'unknown' }; warnings: string[]
 }
 
+// Real errors go to the server log; the breakdown's warnings stay in plain words because
+// the agent may repeat them to the user (no provider or service names).
+function logStep(step: string, e: unknown) {
+  console.error(`[breakDownVideo] ${step} failed: ${e instanceof Error ? e.message : String(e)}`)
+}
+
 export function mergeBounds(durationS: number, cuts: number[], hidden: number[], fadeStarts: number[]): number[] {
   const h = hidden.filter((x) => cuts.every((c) => Math.abs(x - c) > 0.5))
   const all = [...new Set([...cuts, ...h, ...fadeStarts])].filter((x) => x > 0 && x < durationS).sort((a, b) => a - b)
@@ -86,7 +92,7 @@ async function watchOnlyBreakdown(e: DownloadBlocked, tenantId?: string): Promis
     video: { fileId: '', durationS: e.durationS ?? 0, width: 0, height: 0, fps: 0, hasAudio: false, caption: e.caption, song: e.song, youtubeUrl: e.youtubeUrl, platform: 'youtube', tooLong: false },
     overview, measured: false, watch_only: true, cuts: null, hidden_cuts: [], sound: null, pose: null, shots: [], sound_arc: o.sound,
     short_shot_check: { checked: 0, status: 'unknown' },
-    warnings: ['watch_only: YouTube blocked our server from downloading this video, so nothing here is measured — times, cuts and leg sides are Gemini\'s estimate. Before planning any paid remake, ask the user to download it and upload the video file.'],
+    warnings: ['watch_only: only a quick read of this video was possible, so nothing here is measured — times, cuts and leg sides are estimates. Before planning any paid remake, ask the user to upload the video file. Never tell the user how the video was or was not fetched.'],
   }
 }
 
@@ -100,15 +106,15 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
   const warnings: string[] = []
   const [overview, cuts, sound] = await Promise.all([
     watchVideo(video, tenantId),
-    aiService<CutsResult>('/media/cuts', { path: video.filePath }).catch((e: Error) => { warnings.push(`cuts not measured (${e.message})`); return null }),
-    aiService<SoundResult>('/media/sound', { path: video.filePath }).catch((e: Error) => { warnings.push(`sound not measured (${e.message})`); return null }),
+    aiService<CutsResult>('/media/cuts', { path: video.filePath }).catch((e: Error) => { logStep('cuts', e); warnings.push('cuts not measured this time'); return null }),
+    aiService<SoundResult>('/media/sound', { path: video.filePath }).catch((e: Error) => { logStep('sound', e); warnings.push('sound not measured this time'); return null }),
   ])
   let hidden: HiddenCutsResult['hidden_cuts'] = []
   let hiddenFailed = false
   if (overview.change_style.includes('hidden_changes') && overview.looks.length > 1) {
     try {
       hidden = (await aiService<HiddenCutsResult>('/media/hidden-cuts', { path: video.filePath, looks: overview.looks.map((l) => ({ label: l.label, approx_start_s: l.approx_start_s, approx_end_s: l.approx_end_s })), subject_box: overview.subject_box ?? undefined })).hidden_cuts
-    } catch (e) { hiddenFailed = true; warnings.push(`hidden cuts not measured (${(e as Error).message})`) }
+    } catch (e) { hiddenFailed = true; logStep('hidden cuts', e); warnings.push('hidden cuts not measured this time') }
   }
   const measured = cuts !== null && sound !== null
   let refinedOverview: WatchOverview
@@ -121,7 +127,7 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
       moments: overview.moments.map((m) => ({ ...m, measured: false })),
       looks: overview.looks.map((l) => ({ ...l, moves: (l.moves ?? []).map((v) => ({ ...v, measured: false })) })),
     }
-    warnings.push("moment times not measured (cuts or hidden cuts unavailable); they are Gemini's estimate")
+    warnings.push('moment times not measured (cuts or hidden cuts unavailable); they are estimates')
   } else {
     const exclude: Array<[number, number]> = [
       ...cuts.cuts.map((c) => [Math.round((c - 0.1) * 100) / 100, Math.round((c + 0.1) * 100) / 100] as [number, number]),
@@ -130,14 +136,14 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
     ]
     const r = await refineMoments(video.filePath, overview, exclude)
     refinedOverview = r.overview
-    if (r.unmeasured) warnings.push(`${r.unmeasured} moment time(s) could not be measured and are Gemini's estimate`)
+    if (r.unmeasured) warnings.push(`${r.unmeasured} moment time(s) could not be measured and are estimates`)
     // Leg side and body angle are MEASURED from the frames; Gemini's reading was wrong
     // for most looks on the golden set (spec §8a: no paid step from a model's guess).
     // Started now, awaited after the shot descriptions: CPU pose overlaps the Gemini call.
     const spans = lookSpans(overview, hidden, video.durationS)
     if (spans.length) {
       posePending = aiService<PoseResult>('/media/pose', { path: video.filePath, looks: spans, exclude })
-        .catch((e: Error) => { warnings.push(`pose not measured (${e.message}); leg sides are Gemini's reading`); return null })
+        .catch((e: Error) => { logStep('pose', e); warnings.push('body readings unavailable this time; leg sides are estimates'); return null })
     }
   }
   const bounds = mergeBounds(video.durationS, cuts?.cuts ?? [], hidden.map((h) => h.at_s), (cuts?.fades ?? []).map((f) => f[0]))
@@ -152,7 +158,7 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
       d = await describeShots(video, bounds, sound, tenantId)
     } catch (e) {
       // Keep the overview and measurements already paid for (review M3).
-      warnings.push(`shot descriptions unavailable (${(e as Error).message})`)
+      logStep('shot descriptions', e); warnings.push('shot descriptions unavailable this time')
     }
     shots = fillMissingShots(bounds, d.shots)
     soundArc = d.sound_arc

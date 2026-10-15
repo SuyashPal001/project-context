@@ -151,3 +151,18 @@ describe('links pasted without https://', () => {
     for (const t of [fetchVideoTool, breakDownVideoTool]) expect((t.inputSchema as any).safeParse({ url: 'facebook.com/reel/1/' }).success).toBe(true)
   })
 })
+
+describe('messages the user sees when a link cannot be opened', () => {
+  it.each([
+    ['https://www.tiktok.com/@a/video/1', ''],
+    ['https://example.com/v.mp4', ''],
+    ['https://www.instagram.com/p/x/', 'ERROR: [Instagram] x: Instagram API is not granting access'],
+    ['https://x.com/a/status/1', 'ERROR: something broke'],
+    ['https://www.youtube.com/watch?v=abc', "ERROR: [youtube] abc: Sign in to confirm you're not a bot"],
+  ])('%s: plain words, asks for an upload, no internals', async (url, fail) => {
+    ytdlpFails = fail
+    const err = await fetchVideo({ url }, ctx).catch((e) => e)
+    expect(err.message).toMatch(/upload/i)
+    expect(err.message).not.toMatch(/download|server|india|gemini|yt-dlp/i)
+  })
+})
