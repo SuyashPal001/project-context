@@ -76,6 +76,13 @@ export const RATES = [
   // capability range.
   { resourceType: 'video_generation', subject: 'gemini-omni-1.1-flash',
     pricingSchema: { per_call_micro: 100_000_000 } },
+  // Veo 3.1 Fast (veo-3.1-fast-generate-001) first+last frame, 720p, no audio, used only by
+  // the remake workflow: $0.10 per second on the Gemini API (same as Omni); flat per call at
+  // the longest clip we make (8s) = $0.80 = 80 credits, so a shorter clip is overcharged
+  // rather than undercharged. Standard Veo 3.1 is $0.40/s and is not used. Verify against
+  // the first Google invoice.
+  { resourceType: 'video_generation', subject: 'google/veo-3.1-fast-generate-001',
+    pricingSchema: { per_call_micro: 80_000_000 } },
   // Cartesia sonic-3.5: ~$0.02 per 30s ad script (per spec's cost research,
   // $40-42/1M characters, ~500 chars max script = ~$0.021). Priced with
   // margin at a flat per-call rate rather than per-character, matching this
