@@ -89,20 +89,17 @@ class PoseLook(BaseModel):
 
 class PoseBody(PathBody):
     looks: list[PoseLook]
-    subject_box: Optional[list[float]] = None
     exclude: list[list[float]] = []
-    fps: float = 10.0
+    fps: float = 5.0
 
 @router.post("/pose")
 def post_pose(body: PoseBody):
     for lk in body.looks:
         if lk.end_s <= lk.start_s:
             raise HTTPException(status_code=400, detail="each look needs end_s after start_s")
-    if body.subject_box is not None and len(body.subject_box) != 4:
-        raise HTTPException(status_code=400, detail="subject_box must have 4 numbers")
     for span in body.exclude:
         if len(span) != 2 or span[0] > span[1]:
             raise HTTPException(status_code=400, detail="each exclude entry must be [from_s, to_s] with from_s <= to_s")
     if not 0 < body.fps <= 30:
         raise HTTPException(status_code=400, detail="fps must be above 0 and at most 30")
-    return pose.measure_pose(str(safe_media_path(body.path)), [l.model_dump() for l in body.looks], body.subject_box, body.exclude, body.fps)
+    return pose.measure_pose(str(safe_media_path(body.path)), [l.model_dump() for l in body.looks], body.exclude, body.fps)
