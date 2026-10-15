@@ -35,3 +35,30 @@ describe('filterTypedPII', () => {
     expect(out.sanitized.endsWith('<!-- olmo-creative-brief:v1:%7B%7D -->')).toBe(true)
   })
 })
+
+describe('links are never masked (2026-10-15: a Facebook reel id became [CARD_1])', () => {
+  it.each([
+    'facebook.com/reel/1479672313280365/?s=ifu',
+    'https://www.facebook.com/reel/1479672313280365/',
+    'https://x.com/primevideouk/status/1578401165338976258',
+    'https://www.instagram.com/p/DdzH5VVgmYT/',
+    'https://www.youtube.com/shorts/tsWUZRydnLY',
+    'www.facebook.com/watch/?v=987654321012345',
+    'https://lnkd.in/p/gTyWfJqy',
+  ])('keeps %s intact', (url) => {
+    expect(filterPII(`break this down ${url} please`).sanitized).toBe(`break this down ${url} please`)
+  })
+
+  it('still masks a card number and an email next to a link', () => {
+    const r = filterPII('card 4111111111111111, mail me at a.b@gmail.com, video https://www.facebook.com/reel/1479672313280365/')
+    expect(r.sanitized).toBe('card [CARD_1], mail me at [EMAIL_1], video https://www.facebook.com/reel/1479672313280365/')
+  })
+
+  it('keeps a link wrapped in brackets or followed by a full stop', () => {
+    expect(filterPII('(see https://x.com/a/status/1578401165338976258).').sanitized).toBe('(see https://x.com/a/status/1578401165338976258).')
+  })
+
+  it('a bare domain without a path is not treated as a link (emails stay masked)', () => {
+    expect(filterPII('write to rahul@gmail.com').sanitized).toBe('write to [EMAIL_1]')
+  })
+})

@@ -118,7 +118,30 @@ const RULES: Rule[] = [
   },
 ]
 
-export function filterPII(text: string): PiiFilterResult {
+// Links are never masked: a reel or post id is a long number (Facebook reel ids are 15-16
+// digits) and the CARD / BANK_ACCOUNT / PHONE rules turned one into [CARD_1], so the
+// video tools got a broken link (2026-10-15). A link is a scheme or www. address, or a
+// bare domain followed by a path; a bare domain alone (an email's) is not a link.
+const LINK = /(?:\bhttps?:\/\/|\bwww\.|(?<![@\w./-])(?:[a-z0-9-]+\.)+[a-z]{2,}\/)[^\s<>"'@]*/gi
+const LINK_TOKEN = /\u0001L([a-z]+)\u0001/g
+const letters = (n: number): string => (n < 26 ? String.fromCharCode(97 + n) : letters(Math.floor(n / 26) - 1) + String.fromCharCode(97 + (n % 26)))
+
+function protectLinks(text: string): { text: string; links: string[] } {
+  const links: string[] = []
+  const out = text.replace(LINK, (m) => {
+    const trail = m.match(/[.,;:!?)\]]+$/)?.[0] ?? ''
+    links.push(trail ? m.slice(0, -trail.length) : m)
+    return `\u0001L${letters(links.length - 1)}\u0001${trail}`
+  })
+  return { text: out, links }
+}
+
+function restoreLinks(text: string, links: string[]): string {
+  return text.replace(LINK_TOKEN, (_, id: string) => links[[...id].reduce((n, c) => n * 26 + (c.charCodeAt(0) - 96), 0) - 1] ?? '')
+}
+
+export function filterPII(input: string): PiiFilterResult {
+  const { text, links } = protectLinks(input)
   // counters[type] tracks how many distinct values of this type have been seen
   const counters: Record<string, number> = {}
   // map: placeholder token → original matched value
@@ -145,7 +168,7 @@ export function filterPII(text: string): PiiFilterResult {
 
   const detections: PiiDetection[] = Object.entries(counters).map(([type, count]) => ({ type, count }))
 
-  return { sanitized: working, map, detections }
+  return { sanitized: restoreLinks(working, links), map, detections }
 }
 
 /** Restore original values in a string using the map returned by filterPII.
