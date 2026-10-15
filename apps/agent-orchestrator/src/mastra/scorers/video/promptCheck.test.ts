@@ -38,3 +38,9 @@ it('still blocks a positive smile next to a negated one', () => {
 it('treats "poised" alone as not a no-smile expression (review I2)', () => {
   expect(precheckPrompt('she smiles softly', { expression: 'poised, soft smile' })).toEqual([])
 })
+
+it('asks the checker to flag names of real people or characters as invented', async () => {
+  const ask = vi.fn().mockResolvedValue({ invented: [], contradicts: [], missing: [], hand_on_absent_object: [] })
+  await promptCheckScorer.run({ input: { ask, prompt: 'a woman stands', planLine: 'x', look: {}, startFrameObjects: [], keyMoments: [] }, output: null })
+  expect((ask.mock.calls[0][0] as Array<{ text: string }>)[0].text).toMatch(/name of a real person or a character/)
+})

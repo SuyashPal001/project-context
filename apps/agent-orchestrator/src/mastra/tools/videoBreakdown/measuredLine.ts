@@ -9,7 +9,7 @@ const AREA: Record<string, string> = { upper: 'upper body', lower: 'legs' }
 const dir = (d: string) => d.split(' + ').map((x) => x.replace('image-', '')).join(' and ')
 const known = (v: string | null | undefined) => v && v !== 'unknown'
 
-function personWords(b: BodyReading, start: BodyReading | null): string[] {
+export function personWords(b: BodyReading, start: BodyReading | null): string[] {
   const w: string[] = []
   if (known(b.framing)) w.push(FRAMING[b.framing] ?? b.framing)
   if (known(b.orientation)) w.push(b.orientation === 'diagonal' && b.torso_angle_deg !== null ? `tilted about ${Math.round(Math.abs(b.torso_angle_deg))}° in frame` : ORIENTATION[b.orientation])

@@ -45,7 +45,7 @@ KEY MOMENTS that must happen: ${JSON.stringify(input.keyMoments)}
 OBJECTS visible in the start frame: ${JSON.stringify(input.startFrameObjects)}
 PROMPT: ${input.prompt}
 List problems in the PROMPT only:
-- invented: things the prompt adds that the reference/plan does not show (an expression, an effect, an action)
+- invented: things the prompt adds that the reference/plan does not show (an expression, an effect, an action, or the name of a real person or a character)
 - contradicts: things that conflict with the plan or look (directions are image-left/right)
 - missing: key moments or plan items the prompt leaves out
 - hand_on_absent_object: hand actions on objects NOT in the start-frame list
