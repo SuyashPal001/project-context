@@ -70,8 +70,8 @@ required var is missing it throws at startup (logged as a disabled-line, not a c
 |---|---|---|
 | `TEST_MCP_ENABLED` | — | Must be `1` to turn the server on at all |
 | `TEST_MCP_PORT` | no (default `3007`) | Port the test MCP HTTP listener binds on `127.0.0.1` |
-| `TEST_MCP_TENANT_ID` | yes | The capped test tenant. Start-up refuses an unlimited-plan tenant. |
-| `TEST_MCP_AGENT_ID` | yes | Olmo agent id on that tenant, used for route-1 context and route-2 chat |
+| `TEST_MCP_TENANT_ID` | yes | The capped test tenant. Start-up refuses an unlimited-plan tenant, and route-1 tools and `olmo_send` re-check before every call, refusing if the tenant has since become unlimited. |
+| `TEST_MCP_AGENT_ID` | yes | Olmo agent id on that tenant, used for route-1 context and route-2 chat. Start-up refuses an agent that is not in the test tenant (`[test-mcp] disabled: agent not in test tenant`). |
 | `TEST_MCP_EMAIL` | yes | Test user's Cognito username |
 | `TEST_MCP_PASSWORD` | yes | Test user's permanent Cognito password |
 | `TEST_MCP_COGNITO_CLIENT_ID` | yes | Cognito app client id (must allow `USER_PASSWORD_AUTH`) |
@@ -118,10 +118,16 @@ from `mastra_messages` or pm2 logs).
 GET on `/api/v1/conversations/:id` must return 200 before the call proceeds, since that
 route is already tenant+user scoped server-side. `olmo_read` and `olmo_answer` don't
 make that same check: `olmo_answer` only acts on runs this server itself started and is
-still tracking in memory, and `olmo_read`'s restart fallback (when the in-memory run is
-gone) reads prior messages through the tenant-scoped `/api/v1/conversations/:id/messages`
+still tracking in memory, and `olmo_read`'s fallback (when there is no in-memory run)
+reads prior messages through the tenant-scoped `/api/v1/conversations/:id/messages`
 API using the test user's own id token, so it can't read another tenant's or user's
 conversation either way.
+
+`olmo_read` returns state `not_tracked` when this process holds no live run for the
+conversation: the orchestrator restarted, this process never drove that conversation,
+or a card was answered after the stream had already closed (the server keeps the turn
+going detached, so the driver lets go of the run). The text then comes from the saved
+messages, not the live stream.
 
 ### Protocol and Claude Code config
 
@@ -152,3 +158,11 @@ before the tool itself returns:
 ```bash
 MCP_TOOL_TIMEOUT=600000 claude
 ```
+
+### Known limits
+
+- **Long route-1 calls vs client HTTP timeouts (unverified).** The stateless handler
+  sends no bytes until a tool returns, so a client transport may time out around 300 s
+  even with `MCP_TOOL_TIMEOUT` set. Until the live test proves otherwise, keep route-1
+  calls under 5 minutes and use route 2 (`olmo_send` / `olmo_read`) for long
+  generations. The step-3 live test must include one call longer than 5 minutes.
