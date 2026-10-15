@@ -201,15 +201,16 @@ const clipsStep = createStep({
     const ctx: ClipCtx = {
       tenantId: a.tenantId, idToken: a.idToken, scopeId: a.scopeId, runId, exec: execFor(requestContext as Rc, runId),
       portrait, plan, brand: inputData.brand as Brand, size, workDir,
-      check: (clipPath: string, spec: ClipSpec) => checkClip({ clipPath, seconds: spec.frames / CLIP_FPS, look: spec.look, portrait, tenantId: a.tenantId }, { poseClip: deps.poseClip, sample: deps.sample, gate: runGate }),
+      check: (clipPath: string, spec: ClipSpec, engine: 'veo' | 'omni') => checkClip({ clipPath, seconds: spec.frames / CLIP_FPS, look: spec.look, portrait, tenantId: a.tenantId, checkEnd: engine === 'veo' }, { poseClip: deps.poseClip, sample: deps.sample, gate: runGate }),
     }
     const jobs = clipSpecs(plan, inputData.stills as StillResult[]).map((spec) => async (): Promise<{ result: ClipResult; ledger: LedgerEntry[] }> => {
-      // One clip failing never ends the run: paid clips must reach the ledger and the final video.
+      // One clip failing never ends the run, and every attempt it paid for stays in its ledger.
+      const ledger: LedgerEntry[] = []
       try {
-        return await makeClip(spec, ctx, deps)
+        return await makeClip(spec, ctx, deps, ledger)
       } catch (err) {
         console.error(`[remake] look ${spec.look.n} clip failed:`, err instanceof Error ? err.message : String(err))
-        return { result: { look: spec.look.n, fileId: null, localPath: null, engine: spec.engine, fallback: false, status: 'failed', reasons: ['this part could not be animated this time'] }, ledger: [] }
+        return { result: { look: spec.look.n, fileId: null, localPath: null, engine: spec.engine, fallback: false, status: 'failed', reasons: ['this part could not be animated this time'] }, ledger }
       }
     })
     const done: Array<{ result: ClipResult; ledger: LedgerEntry[] }> = []
@@ -218,7 +219,7 @@ const clipsStep = createStep({
   },
 })
 
-const outputSchema = z.object({ finalFileId: z.string().nullable(), previewFileId: z.string().nullable(), clips: z.array(any), stills: z.array(any), portraitFileId: z.string().nullable(), ledger: z.array(any), summary: any, note: z.string(), plan: any })
+const outputSchema = z.object({ finalFileId: z.string().nullable(), stopped: z.boolean(), previewFileId: z.string().nullable(), clips: z.array(any), stills: z.array(any), portraitFileId: z.string().nullable(), ledger: z.array(any), summary: any, note: z.string(), plan: any })
 const MUSIC_SLOT = 2000
 const finishStep = createStep({
   id: 'finish', inputSchema: clipped, outputSchema,
@@ -228,7 +229,7 @@ const finishStep = createStep({
     const stills = inputData.stills as StillResult[]
     const clips = inputData.clips as ClipResult[]
     const ledger = [...(inputData.ledger as LedgerEntry[])]
-    const base = { previewFileId: inputData.previewFileId, clips, stills, portraitFileId: inputData.portraitFileId, plan }
+    const base = { previewFileId: inputData.previewFileId, clips, stills, portraitFileId: inputData.portraitFileId, plan, stopped: inputData.stop }
     if (inputData.stop) return { ...base, finalFileId: null, ledger, summary: ledgerSummary(ledger), note: '' }
     const deps = remakeDeps()
     const size = previewSize(plan.reference.width || 1080, plan.reference.height || 1920)
@@ -236,6 +237,7 @@ const finishStep = createStep({
     const frames = lookFrames(plan)
     const extra: string[] = []
     let finalFileId: string | null = null
+    let musicMade = false
     try {
       const parts: string[] = []
       for (const look of [...plan.looks].sort((x, y) => x.startS - y.startS)) {
@@ -243,24 +245,36 @@ const finishStep = createStep({
         const clip = clips.find((c) => c.look === look.n && c.localPath && (c.status === 'passed' || c.status === 'unchecked' || c.status === 'failed'))
         if (clip?.localPath) { parts.push(clip.localPath); continue }
         const still = stills.find((s) => s.look === look.n && s.kind === 'start' && s.fileId)
-        const path = still?.fileId ? await deps.localFile(still.fileId, a.idToken, a.scopeId) : null
+        // A still that can't be fetched becomes a grey card: one file never costs the whole video.
+        let path: string | null = null
+        if (still?.fileId) {
+          try { path = await deps.localFile(still.fileId, a.idToken, a.scopeId) } catch (err) {
+            console.error(`[remake] still for look ${look.n} unavailable:`, err instanceof Error ? err.message : String(err))
+          }
+        }
         parts.push(await deps.stillToFrames(path, n, join(work, `still-${look.n}.mp4`), size))
       }
       let video = await deps.joinSegments(parts, join(work, 'joined.mp4'))
       const totalS = [...frames.values()].reduce((x, y) => x + y, 0) / CLIP_FPS
-      // Music: always new (spec §9a); gated like every paid call; a failure leaves the video silent.
-      const prompt = musicPrompt(plan)
-      const gate = await deps.promptGate({ prompt, planLine: `music: ${plan.lines.find((l) => l.ref === 'sound.music')?.to ?? 'new music'}`, look: {}, startFrameObjects: [], keyMoments: [], tenantId: a.tenantId })
-      const music = gate.status === 'pass' ? await deps.generateMusic(prompt, execFor(requestContext as Rc, runId)(MUSIC_SLOT)) : null
-      if (gate.status !== 'pass') console.error('[remake] music prompt not passed:', gate.status, gate.reason)
-      if (music?.fileId) {
-        ledger.push({ item: 'music', attempt: 0, creditsMicro: music.creditsUsedMicro ?? '0', outcome: 'kept' })
-        const fitted = await deps.fitMusic(await deps.localFile(music.fileId, a.idToken, a.scopeId), totalS, join(work, 'music.m4a'))
-        video = await deps.muxMusic(video, fitted, join(work, 'final.mp4'))
-      } else {
-        if (music) ledger.push({ item: 'music', attempt: 0, creditsMicro: music.creditsUsedMicro ?? '0', outcome: 'failed' })
-        extra.push(music?.insufficientCredits ? 'The music couldn’t be made (not enough credits), so the video is silent.' : 'The music couldn’t be made this time, so the video is silent.')
+      // Music: always new (spec §9a), gated like every paid call. Its own guard: any failure
+      // leaves the finished video silent, never lost.
+      try {
+        const prompt = musicPrompt(plan)
+        const gate = await deps.promptGate({ prompt, planLine: `music: ${plan.lines.find((l) => l.ref === 'sound.music')?.to ?? 'new music'}`, look: {}, startFrameObjects: [], keyMoments: [], tenantId: a.tenantId })
+        if (gate.status !== 'pass') console.error('[remake] music prompt not passed:', gate.status, gate.reason)
+        const music = gate.status === 'pass' ? await deps.generateMusic(prompt, execFor(requestContext as Rc, runId)(MUSIC_SLOT)) : null
+        if (music) ledger.push({ item: 'music', attempt: 0, creditsMicro: music.creditsUsedMicro ?? '0', outcome: music.fileId ? 'kept' : 'failed' })
+        if (music?.fileId) {
+          const fitted = await deps.fitMusic(await deps.localFile(music.fileId, a.idToken, a.scopeId), totalS, join(work, 'music.m4a'))
+          video = await deps.muxMusic(video, fitted, join(work, 'final.mp4'))
+          musicMade = true
+        } else if (music?.insufficientCredits) {
+          extra.push('The music couldn’t be made (not enough credits), so the video is silent.')
+        }
+      } catch (err) {
+        console.error('[remake] music failed:', err instanceof Error ? err.message : String(err))
       }
+      if (!musicMade && !extra.length) extra.push('The music couldn’t be made this time, so the video is silent.')
       finalFileId = await deps.upload(a.idToken, generatedFileKey(a.conversationId, `remake ${runId} final`, 'mp4'), 'Remake.mp4', deps.readFile(video), 'video/mp4')
       if (!finalFileId) extra.push('The final video couldn’t be saved this time.')
     } catch (err) {
@@ -275,7 +289,7 @@ const finishStep = createStep({
         console.error('[remake] final comparison failed:', err instanceof Error ? err.message : String(err))
       }
     }
-    const lines = differenceNote({ plan, stills, clips, checks }).split('\n')
+    const lines = differenceNote({ plan, stills, clips, checks, musicMade }).split('\n')
     const note = [...lines.slice(0, -1), ...extra, lines[lines.length - 1]].join('\n')
     return { ...base, finalFileId, ledger, summary: ledgerSummary(ledger), note }
   },

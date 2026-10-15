@@ -20,7 +20,7 @@ async function setup(o: Partial<RemakeDeps> = {}) {
     generateVeoClip: vi.fn(async () => ({ fileId: `veo-${++n}`, creditsUsedMicro: '160' })),
     generateOmniClip: vi.fn(async () => ({ fileId: `omni-${++n}`, creditsUsedMicro: '100' })),
     localFile: vi.fn(async (id: string) => `/m/${id}`),
-    trimToFrames: vi.fn(async (_i: string, _f: number, out: string) => out),
+    fitToFrames: vi.fn(async (_i: string, _f: number, out: string) => out),
     poseClip: vi.fn(), sample: vi.fn(),
     ...o,
   } as unknown as RemakeDeps
@@ -35,7 +35,7 @@ describe('makeClip', () => {
     const r = await makeClip(specs[1], ctx, deps)
     expect(r.result).toMatchObject({ look: 2, engine: 'veo', fallback: false, status: 'passed', fileId: 'veo-1' })
     expect(deps.generateVeoClip).toHaveBeenCalledWith(expect.objectContaining({ startImageFileId: 's2', endImageFileId: 'e2', durationSeconds: 6 }), expect.anything(), clipSlot(2, 0, false))
-    expect(deps.trimToFrames).toHaveBeenCalledWith('/m/veo-1', specs[1].frames, expect.any(String), { width: 720, height: 1280 })
+    expect(deps.fitToFrames).toHaveBeenCalledWith('/m/veo-1', specs[1].frames, expect.any(String), { width: 720, height: 1280 })
     expect(r.ledger).toEqual([{ item: 'look 2 clip', attempt: 0, creditsMicro: '160', outcome: 'kept' }])
   })
   it('Veo refused → exactly one Omni attempt from the start still, gated, marked fallback (Review Focus 3)', async () => {

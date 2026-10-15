@@ -77,3 +77,25 @@ describe('generateVideo with veo-3.1-fast-generate-001', () => {
     await expect(generateVideo({ model: VEO_31_MODEL, prompt: 'P', task: 'image_to_video', aspectRatio: '9:16', durationSeconds: 4, imageUri: 'https://s3/a.jpg' })).rejects.toThrow(/quota/)
   })
 })
+
+describe('I6 Veo polling', () => {
+  beforeEach(() => { process.env.VERTEX_PROJECT = 'p'; vi.useFakeTimers({ shouldAdvanceTime: true }) })
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
+  it('a transient poll error does not throw away a generation Google is still making', async () => {
+    let polls = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.startsWith('https://s3/')) return new Response(Buffer.from('x'), { headers: { 'content-type': 'image/jpeg' } })
+      if (url.endsWith(':predictLongRunning')) return Response.json({ name: 'op' })
+      if (++polls === 1) return new Response('busy', { status: 503 })
+      return Response.json({ done: true, response: { videos: [{ bytesBase64Encoded: 'VID', mimeType: 'video/mp4' }] } })
+    }))
+    const pending = generateVideo({ model: VEO_31_MODEL, prompt: 'P', task: 'image_to_video', aspectRatio: '9:16', durationSeconds: 4, imageUri: 'https://s3/a.jpg' })
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(await pending).toEqual({ videoBase64: 'VID', mimeType: 'video/mp4' })
+    expect(polls).toBe(2)
+  })
+  it('the whole call is budgeted under the orchestrator timeout (270s), counted from the request start', async () => {
+    const { VEO_TOTAL_BUDGET_MS } = await import('./veo')
+    expect(VEO_TOTAL_BUDGET_MS).toBeLessThanOrEqual(230_000)
+  })
+})

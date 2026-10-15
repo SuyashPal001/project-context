@@ -54,6 +54,8 @@ export function shapeRun(runId: string, r: RunResult): Out {
   const result = r.result ?? r.steps?.finish?.output
   if (r.status === 'success' && result) {
     if (result.finalFileId) return { success: true, runId, stage: 'final_ready', finalFileId: result.finalFileId, note: result.note, clips: result.clips, summary: plainSummary(result.summary) }
+    // Clips were paid but no final video came out: show the clips, never "preview ready".
+    if (result.stopped === false) return { success: false, runId, stage: 'final_failed', clips: result.clips, note: result.note, summary: plainSummary(result.summary), error: 'the final video couldn’t be put together this time; the animated parts are listed' }
     return { success: true, runId, stage: 'preview_ready', previewFileId: result.previewFileId, stills: result.stills, summary: plainSummary(result.summary), ...(result.note ? { note: result.note } : {}) }
   }
   const stepErr = Object.values(r.steps ?? {}).map((s) => s.error).find(Boolean) ?? r.error
@@ -68,6 +70,7 @@ export const remakeVideoTool = createTool({
     + 'edit_plan (runId + edits) for changes; approve_plan (runId) when the user agrees. If the video has a person, approve_plan returns a casting sheet of 3 new people: show it and ask which one (pick_cast, runId + pick 1-3). '
     + 'If cast_pick comes back with an error and no sheetFileId, tell the user the error; once fixed, call pick_cast with no pick to make the sheet again. If it has an error and a sheet, ask the user to pick again. '
     + 'Then every look gets checked stills and a free preview video (stage preview_review): share the preview, say which stills failed or were held back, the credits spent, and the cost to animate it (clipsEstimate). If it has cantAnimate, say so and stop there. If the user wants it animated, call approve_preview (runId); if they only wanted the preview, call stop. '
+    + 'If stage final_failed comes back, share its note and say the animated parts were made but could not be joined; never start again on your own. '
     + 'When it is done (stage final_ready), share the video and its note exactly as given (what changed on purpose, what stayed a still, anything that did not pass), the credits spent, and remind the user to label it as AI-generated when they post it. '
     + 'stage working means it is still making the stills: wait and use status; never call start again while a remake for this video exists (that pays twice). '
     + 'Never describe how it works inside; use plain outcome words. status (runId) re-reads where a remake is.',

@@ -16,22 +16,25 @@ export interface ClipCtx {
   exec: (slot: number) => MediaExecContext
   portrait: Img | null; plan: RemakePlan; brand: Brand
   size: { width: number; height: number }; workDir: string
-  check: (clipPath: string, spec: ClipSpec) => Promise<CheckResult>
+  check: (clipPath: string, spec: ClipSpec, engine: 'veo' | 'omni') => Promise<CheckResult>
 }
 
 const aspect = (s: { width: number; height: number }): '9:16' | '16:9' => (s.height >= s.width ? '9:16' : '16:9')
 
-export async function makeClip(spec: ClipSpec, ctx: ClipCtx, deps: RemakeDeps): Promise<{ result: ClipResult; ledger: LedgerEntry[] }> {
+export async function makeClip(spec: ClipSpec, ctx: ClipCtx, deps: RemakeDeps, ledger: LedgerEntry[] = []): Promise<{ result: ClipResult; ledger: LedgerEntry[] }> {
+  // `ledger` is owned by the caller: every paid attempt is recorded the moment it is paid, so a
+  // throw later in this function can never make a paid attempt disappear from the cost meter.
   const n = spec.look.n
   const item = `look ${n} clip`
-  const ledger: LedgerEntry[] = []
   let engine: 'veo' | 'omni' = spec.engine === 'veo' ? 'veo' : 'omni'
   let fallback = false
   const base = () => ({ look: n, engine: spec.engine === 'none' ? 'none' as const : engine, fallback })
   if (spec.engine === 'none' || !spec.start) return { result: { ...base(), fileId: null, localPath: null, status: 'still', reasons: [spec.reason ?? 'this part stays a still'] }, ledger }
 
-  let prompt = clipPrompt(ctx.plan, spec.look, ctx.brand, engine)
+  const promptFor = (e: 'veo' | 'omni') => clipPrompt(ctx.plan, spec.look, ctx.brand, e, spec.seconds)
+  let prompt = promptFor(engine)
   let last: { fileId: string; localPath: string; reasons: string[] } | null = null
+  const failedResult = (reasons: string[], fileId: string | null = null) => ({ result: last ? { ...base(), fileId: last.fileId, localPath: last.localPath, status: 'failed' as const, reasons: last.reasons } : { ...base(), fileId, localPath: null, status: 'failed' as const, reasons }, ledger })
   const gate = async (p: string) => {
     const g = await deps.promptGate({ ...clipGateInput(ctx.plan, spec.look, p), tenantId: ctx.tenantId })
     if (g.status === 'unknown') console.error(`[remake] ${item} prompt check unavailable: ${g.reason}`)
@@ -41,7 +44,7 @@ export async function makeClip(spec: ClipSpec, ctx: ClipCtx, deps: RemakeDeps): 
     const blocked = await gate(prompt)
     if (blocked) {
       ledger.push({ item, attempt, creditsMicro: '0', outcome: 'blocked' })
-      return { result: last ? { ...base(), fileId: last.fileId, localPath: last.localPath, status: 'failed', reasons: last.reasons } : { ...base(), fileId: null, localPath: null, status: 'blocked', reasons: [blocked] }, ledger }
+      return last ? failedResult(last.reasons) : { result: { ...base(), fileId: null, localPath: null, status: 'blocked', reasons: [blocked] }, ledger }
     }
     const title = `Remake look ${n} clip`
     const call = (e: 'veo' | 'omni', p: string) => (e === 'veo'
@@ -51,7 +54,7 @@ export async function makeClip(spec: ClipSpec, ctx: ClipCtx, deps: RemakeDeps): 
     if (engine === 'veo' && !g.fileId && g.refusalReason === 'CONTENT_BLOCKED' && !fallback) {
       ledger.push({ item, attempt, creditsMicro: '0', outcome: 'retried' })
       engine = 'omni'; fallback = true
-      prompt = clipPrompt(ctx.plan, spec.look, ctx.brand, 'omni')
+      prompt = promptFor('omni')
       const again = await gate(prompt)
       if (again) {
         ledger.push({ item, attempt, creditsMicro: '0', outcome: 'blocked' })
@@ -63,18 +66,27 @@ export async function makeClip(spec: ClipSpec, ctx: ClipCtx, deps: RemakeDeps): 
     if (!g.fileId) {
       if (!g.insufficientCredits) console.error(`[remake] ${item} not made: ${g.refusalReason ?? 'unknown'}`)
       ledger.push({ item, attempt, creditsMicro: spent, outcome: 'failed' })
-      return { result: { ...base(), fileId: last?.fileId ?? null, localPath: last?.localPath ?? null, status: 'failed', reasons: [g.insufficientCredits ? 'not enough credits' : 'the clip could not be made'] }, ledger }
+      return failedResult([g.insufficientCredits ? 'not enough credits' : 'the clip could not be made'])
     }
-    const local = await deps.localFile(g.fileId, ctx.idToken, ctx.scopeId)
-    const trimmed = await deps.trimToFrames(local, spec.frames, join(ctx.workDir, `look-${n}-a${attempt}.mp4`), ctx.size)
-    const c = await ctx.check(trimmed, spec)
+    // Paid from here on: record it now (outcome settled below), then guard every step after.
+    const entry: LedgerEntry = { item, attempt, creditsMicro: spent, outcome: 'failed' }
+    ledger.push(entry)
+    let trimmed: string, c: Awaited<ReturnType<ClipCtx['check']>>
+    try {
+      const local = await deps.localFile(g.fileId, ctx.idToken, ctx.scopeId)
+      trimmed = await deps.fitToFrames(local, spec.frames, join(ctx.workDir, `look-${n}-a${attempt}.mp4`), ctx.size)
+      c = await ctx.check(trimmed, spec, engine)
+    } catch (err) {
+      console.error(`[remake] ${item} could not be prepared:`, err instanceof Error ? err.message : String(err))
+      return failedResult(['the clip could not be prepared this time'], g.fileId)
+    }
     if (c.status !== 'fail') {
-      ledger.push({ item, attempt, creditsMicro: spent, outcome: 'kept' })
+      entry.outcome = 'kept'
       return { result: { ...base(), fileId: g.fileId, localPath: trimmed, status: c.status === 'pass' ? 'passed' : 'unchecked', reasons: c.status === 'pass' ? [] : [c.reason] }, ledger }
     }
-    ledger.push({ item, attempt, creditsMicro: spent, outcome: attempt === 0 ? 'retried' : 'failed' })
+    entry.outcome = attempt === 0 ? 'retried' : 'failed'
     last = { fileId: g.fileId, localPath: trimmed, reasons: [c.reason] }
-    prompt = `${clipPrompt(ctx.plan, spec.look, ctx.brand, engine)} Fix: ${c.reason}`
+    prompt = `${promptFor(engine)} Fix: ${c.reason}`
   }
-  return { result: { ...base(), fileId: last!.fileId, localPath: last!.localPath, status: 'failed', reasons: last!.reasons }, ledger }
+  return failedResult(last!.reasons)
 }

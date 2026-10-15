@@ -5,7 +5,9 @@ import { GoogleAuth } from 'google-auth-library'
 
 export const VEO_31_MODEL = 'veo-3.1-fast-generate-001'
 const LOCATION = 'us-central1'
-const TIMEOUT_MS = 200_000 // under the gateway's 240s
+// The whole call (image fetches, start, polling) is budgeted from the request start, under the
+// orchestrator's 270s abort, so the orchestrator never refunds a clip the gateway then delivers.
+export const VEO_TOTAL_BUDGET_MS = 225_000
 const POLL_MS = 6_000
 const _auth = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-platform' })
 const project = () => process.env.VERTEX_PROJECT ?? process.env.GCLOUD_PROJECT ?? ''
@@ -39,6 +41,7 @@ async function token(): Promise<string> {
 export type VeoResult = { videoBase64: string; mimeType: string } | { refused: true; reason: string }
 
 export async function callVeoTransition(o: { prompt: string; startUri: string; lastUri?: string; seconds: number; aspectRatio: '16:9' | '9:16' }): Promise<VeoResult> {
+  const deadline = Date.now() + VEO_TOTAL_BUDGET_MS
   const [start, last] = await Promise.all([fetchInline(o.startUri), o.lastUri ? fetchInline(o.lastUri) : Promise.resolve(null)])
   const base = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${project()}/locations/${LOCATION}/publishers/google/models/${VEO_31_MODEL}`
   const post = async (url: string, body: unknown) => {
@@ -49,9 +52,18 @@ export async function callVeoTransition(o: { prompt: string; startUri: string; l
   const started = await post(`${base}:predictLongRunning`, veoTransitionBody({ prompt: o.prompt, start, last, seconds: o.seconds, aspectRatio: o.aspectRatio }))
   const operationName = started.name as string | undefined
   if (!operationName) throw new Error('Veo: no operation name')
-  const deadline = Date.now() + TIMEOUT_MS
   while (Date.now() < deadline) {
-    const op = await post(`${base}:fetchPredictOperation`, { operationName }) as { done?: boolean; error?: { message?: string }; response?: { videos?: Array<{ bytesBase64Encoded?: string; mimeType?: string }> } }
+    // A poll error is transient: the generation is still running (and billed), so keep polling
+    // until the deadline instead of throwing it away.
+    let polled: Record<string, unknown>
+    try {
+      polled = await post(`${base}:fetchPredictOperation`, { operationName })
+    } catch (err) {
+      console.warn('[veo] poll failed, retrying:', (err as Error).message)
+      await new Promise((r) => setTimeout(r, Math.min(POLL_MS, Math.max(0, deadline - Date.now()))))
+      continue
+    }
+    const op = polled as { done?: boolean; error?: { message?: string }; response?: { videos?: Array<{ bytesBase64Encoded?: string; mimeType?: string }> } }
     if (op.done) {
       if (op.error) throw new Error(`Veo operation error: ${op.error.message}`)
       const v = op.response?.videos?.[0]

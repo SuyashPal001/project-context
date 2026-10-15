@@ -16,14 +16,15 @@ export interface ClipCheckDeps {
 
 const asImage = (people: number | null, main: BodyReading | null) => ({ model: 'clip', people: people ?? 0, no_person: (people ?? 0) === 0, main })
 
-export async function checkClip(o: { clipPath: string; seconds: number; look: RemakeLook; portrait: Img | null; tenantId: string }, d: ClipCheckDeps): Promise<CheckResult> {
+// checkEnd: false for a clip made from the start still only (Omni) — it was never given the end pose.
+export async function checkClip(o: { clipPath: string; seconds: number; look: RemakeLook; portrait: Img | null; tenantId: string; checkEnd?: boolean }, d: ClipCheckDeps): Promise<CheckResult> {
   try {
     const times = evenTimes(o.seconds, 4)
     const [pose, frames] = await Promise.all([d.poseClip(o.clipPath, o.seconds), d.sample(o.clipPath, times)])
     const m = pose.looks[0]
     const results: CheckResult[] = [
       { ...comparePose(o.look.start, o.look.people, asImage(m?.people ?? null, m?.main_start ?? null)), name: 'start pose' },
-      { ...comparePose(o.look.end, o.look.people, asImage(m?.people ?? null, m?.main_end ?? null)), name: 'end pose' },
+      ...(o.checkEnd === false ? [] : [{ ...comparePose(o.look.end, o.look.people, asImage(m?.people ?? null, m?.main_end ?? null)), name: 'end pose' }]),
     ]
     if (personIn(o.look) && o.portrait) results.push(await d.gate(samePersonScorer, 'same-person', { tenantId: o.tenantId, reference: o.portrait, frames }, times))
     results.push(await d.gate(emptyHandScorer, 'empty-hand', { tenantId: o.tenantId, frames }, times))
