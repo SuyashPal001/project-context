@@ -137,17 +137,18 @@ describe('breakDownVideo', () => {
     ai.mockImplementation(async (route: string) => {
       if (route === '/media/cuts') return { cuts: [], fades: [], duration_s: 14.9 }
       if (route === '/media/hidden-cuts') return { hidden_cuts: [{ from: 'l0', to: 'l1', at_s: 5.4, covered_s: [4.6, 6.2] }], cover_threshold: 0.6 }
-      if (route === '/media/pose') return { model: 'rtmpose-s', moves: [{ t_s: 3.2, from_s: 3, to_s: 3.6, part: 'legs', direction: 'image-right', strength: 0.2 }], looks: [
-        { label: 'l0', start_s: 0, end_s: 5.4, leg_side_start: 'center', leg_side_end: 'image-right', body_angle_end: 4.1, frames_used: 30 },
-        { label: 'l1', start_s: 5.4, end_s: 14.9, leg_side_start: 'unknown', leg_side_end: 'unknown', body_angle_end: null, frames_used: 1 },
+      if (route === '/media/pose') return { model: 'yolox-tiny + rtmpose-s', camera_moves: [], moves: [{ t_s: 3.2, from_s: 3, to_s: 3.6, area: 'lower', direction: 'image-right', strength: 0.2 }], looks: [
+        { label: 'l0', start_s: 0, end_s: 5.4, frames_used: 30, people: 1, people_max: 1, no_person: false, main_start: { framing: 'full_body', orientation: 'vertical' }, main_end: { framing: 'full_body', orientation: 'vertical', knees: 'bent' }, leg_side_start: 'center', leg_side_end: 'image-right', body_angle_end: 4.1, key_frames: [] },
+        { label: 'l1', start_s: 5.4, end_s: 14.9, frames_used: 1, people: 0, people_max: 0, no_person: true, main_start: null, main_end: null, leg_side_start: 'unknown', leg_side_end: 'unknown', body_angle_end: null, key_frames: [] },
       ] }
       return { curve_db: [], events: [], rhythm: [], silent_from_s: null, bpm: null, beats_s: [], has_audio: true }
     })
     const b = await breakDownVideo({ url: 'https://www.instagram.com/p/x/' }, ctx)
     const poseCall = ai.mock.calls.find((c) => c[0] === '/media/pose')!
-    expect(poseCall[1]).toMatchObject({ looks: [{ label: 'l0', start_s: 0, end_s: 5.4 }, { label: 'l1', start_s: 5.4, end_s: 14.9 }], subject_box: [0.1, 0.05, 0.9, 0.95], exclude: [[4.6, 6.2]] })
+    expect(poseCall[1]).toEqual({ path: '/m/a.mp4', looks: [{ label: 'l0', start_s: 0, end_s: 5.4 }, { label: 'l1', start_s: 5.4, end_s: 14.9 }], exclude: [[4.6, 6.2]] })
     expect(b.overview.looks[0]).toMatchObject({ leg_side: 'image-right', leg_side_start: 'center', leg_side_source: 'measured', body_angle: 4.1 })
-    expect(b.overview.looks[1]).toMatchObject({ leg_side: 'center', leg_side_source: 'gemini' })
+    expect(b.overview.looks[0].body).toMatchObject({ people: 1, no_person: false, end: { knees: 'bent' } })
+    expect(b.overview.looks[1]).toMatchObject({ leg_side: 'center', leg_side_source: 'gemini', body: { people: 0, no_person: true } })
     expect(b.pose?.moves[0]).toMatchObject({ direction: 'image-right' })
   })
   it('keeps Gemini\'s leg sides, marked as such, when pose cannot be measured', async () => {

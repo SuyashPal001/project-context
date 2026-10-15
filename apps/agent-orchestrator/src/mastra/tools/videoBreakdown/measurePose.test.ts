@@ -9,8 +9,8 @@ const run = (input: unknown) => (measurePoseTool as unknown as { execute: (i: un
 
 it('measures the looks it is given', async () => {
   ai.mockResolvedValueOnce({ model: 'rtmpose-s', looks: [], moves: [] })
-  await run({ url: 'https://www.instagram.com/p/x/', looks: [{ label: 'a', start_s: 0, end_s: 5 }], subject_box: [0.1, 0.1, 0.9, 0.9] })
-  expect(ai).toHaveBeenLastCalledWith('/media/pose', expect.objectContaining({ path: '/m/a.mp4', looks: [{ label: 'a', start_s: 0, end_s: 5 }], subject_box: [0.1, 0.1, 0.9, 0.9] }))
+  await run({ url: 'https://www.instagram.com/p/x/', looks: [{ label: 'a', start_s: 0, end_s: 5 }] })
+  expect(ai).toHaveBeenLastCalledWith('/media/pose', { path: '/m/a.mp4', looks: [{ label: 'a', start_s: 0, end_s: 5 }], exclude: [] })
 })
 
 it('treats the whole video as one look when none are given', async () => {

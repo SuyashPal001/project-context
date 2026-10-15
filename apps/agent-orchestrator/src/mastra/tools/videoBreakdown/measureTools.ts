@@ -60,10 +60,9 @@ export const soundTimelineTool = createTool({
 
 export const measurePoseTool = createTool({
   id: 'measure_pose',
-  description: 'Free: MEASURED body position from the video frames (pose joints + optical flow), never a model guess. Per look: leg side at the start and end (image-left / image-right / center / unknown) and body angle (slant); plus each leg move with its exact time and direction. Trust this over watch_video\'s leg_side. Give the looks (label, start_s, end_s) — e.g. from break_down_video — or leave them out to measure the whole video as one look. Pass subject_box and covered spans (exclude) when known.',
+  description: 'Free: MEASURED body reading from the video frames (person detector + pose joints + optical flow), for any kind of reel — never a model guess. Per look: how many people (or no person), and for the main person at the look\'s start and end: framing (full body / knees up / waist up / chest up / face), orientation in the frame, torso angle (slant), knees straight or bent, each arm raised / mid / down, and where the knees and the feet fall (they can point opposite ways); key frames with every person\'s joints. Plus body moves (upper/lower body, any direction, exact times) and camera pans/tilts. Trust this over watch_video for any of these. Give the looks (label, start_s, end_s) — e.g. from break_down_video — or leave them out to read the whole video as one look; pass covered spans (exclude) when known.',
   inputSchema: src.extend({
     looks: z.array(z.object({ label: z.string(), start_s: z.number(), end_s: z.number() })).optional(),
-    subject_box: z.array(z.number()).length(4).optional(),
     exclude: z.array(z.array(z.number()).length(2)).optional(),
   }),
   outputSchema: out,
@@ -72,7 +71,7 @@ export const measurePoseTool = createTool({
     return wrap(async () => {
       const v = await shortVideo(input, ctx)
       const looks = input.looks?.length ? input.looks : [{ label: 'whole video', start_s: 0, end_s: v.durationS }]
-      return aiService<PoseResult>('/media/pose', { path: v.filePath, looks, subject_box: input.subject_box, exclude: input.exclude ?? [] })
+      return aiService<PoseResult>('/media/pose', { path: v.filePath, looks, exclude: input.exclude ?? [] })
     })
   },
 })

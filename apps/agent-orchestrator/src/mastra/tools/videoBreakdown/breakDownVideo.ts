@@ -135,7 +135,7 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
     // Started now, awaited after the shot descriptions: CPU pose overlaps the Gemini call.
     const spans = lookSpans(overview, hidden, video.durationS)
     if (spans.length) {
-      posePending = aiService<PoseResult>('/media/pose', { path: video.filePath, looks: spans, subject_box: overview.subject_box ?? undefined, exclude })
+      posePending = aiService<PoseResult>('/media/pose', { path: video.filePath, looks: spans, exclude })
         .catch((e: Error) => { warnings.push(`pose not measured (${e.message}); leg sides are Gemini's reading`); return null })
     }
   }
@@ -171,9 +171,10 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
     ...refinedOverview,
     looks: refinedOverview.looks.map((l) => {
       const m = measuredLooks.get(l.label)
+      const body = m ? { body: { people: m.people, no_person: m.no_person, start: m.main_start, end: m.main_end } } : {}
       return m && m.leg_side_end !== 'unknown'
-        ? { ...l, leg_side: m.leg_side_end, leg_side_start: m.leg_side_start, leg_side_source: 'measured' as const, body_angle: m.body_angle_end }
-        : { ...l, leg_side_source: 'gemini' as const }
+        ? { ...l, ...body, leg_side: m.leg_side_end, leg_side_start: m.leg_side_start, leg_side_source: 'measured' as const, body_angle: m.body_angle_end }
+        : { ...l, ...body, leg_side_source: 'gemini' as const }
     }),
   }
   return { video: videoOut, overview: refinedOverview, measured, pose, cuts, hidden_cuts: hidden, sound: soundOut, shots, sound_arc: soundArc, short_shot_check: { checked: check.checked, status: check.status }, warnings }

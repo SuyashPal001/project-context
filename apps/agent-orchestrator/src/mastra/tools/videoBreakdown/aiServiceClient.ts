@@ -14,6 +14,25 @@ export interface CutsResult { cuts: number[]; fades: Array<[number, number]>; du
 export interface HiddenCutsResult { hidden_cuts: Array<{ from: string; to: string; at_s: number; covered_s: [number, number] }>; cover_threshold: number | null }
 export interface SoundResult { curve_db: number[]; events: Array<{ at_s: number; change_db: number; kind: 'drop' | 'jump' }>; rhythm: Array<{ from_s: number; to_s: number; every_s: number }>; silent_from_s: number | null; bpm: number | null; beats_s: number[]; has_audio: boolean }
 export type LegSide = 'image-left' | 'image-right' | 'center' | 'unknown'
-export interface PoseLookResult { label: string; start_s: number; end_s: number; frames_used: number; leg_side_start: LegSide; leg_side_end: LegSide; leg_offset_start?: number | null; leg_offset_end?: number | null; body_angle_start?: number | null; body_angle_end: number | null }
-export interface PoseMove { t_s: number; from_s: number; to_s: number; part: 'legs'; direction: 'image-left' | 'image-right'; strength: number }
-export interface PoseResult { model: string; looks: PoseLookResult[]; moves: PoseMove[] }
+type Toward = LegSide | 'image-up' | 'image-down'
+// One person's measured body reading (ai-service /media/pose).
+export interface BodyReading {
+  framing: 'full_body' | 'knees_up' | 'waist_up' | 'chest_up' | 'face' | 'unknown'
+  orientation: 'vertical' | 'diagonal' | 'horizontal' | 'unknown'
+  torso_angle_deg: number | null
+  knees: 'straight' | 'bent' | 'unknown'
+  arms: { left: 'raised' | 'mid' | 'down' | 'unknown'; right: 'raised' | 'mid' | 'down' | 'unknown' }
+  knees_toward: Toward; feet_toward: Toward; legs_toward: Toward
+  leg_offset: number | null; frames: number
+}
+export interface PoseKeyFrame { t_s: number; people: Array<{ box: number[]; keypoints: number[][] }> }
+export interface PoseLookResult {
+  label: string; start_s: number; end_s: number; frames_used: number
+  people: number | null; people_max: number | null; no_person: boolean | null
+  main_start: BodyReading | null; main_end: BodyReading | null
+  leg_side_start: LegSide; leg_side_end: LegSide; body_angle_end: number | null
+  key_frames: PoseKeyFrame[]
+}
+export interface PoseMove { t_s: number; from_s: number; to_s: number; area: 'upper' | 'lower'; direction: 'image-left' | 'image-right' | 'image-up' | 'image-down'; strength: number }
+export interface CameraMove { t_s: number; from_s: number; to_s: number; direction: 'pan-left' | 'pan-right' | 'tilt-up' | 'tilt-down'; strength: number }
+export interface PoseResult { model: string; looks: PoseLookResult[]; moves: PoseMove[]; camera_moves: CameraMove[] }
