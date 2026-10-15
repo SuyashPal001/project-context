@@ -62,6 +62,7 @@ export function referenceOf(b: Breakdown): RemakeReference {
     props: o.props.map((p) => ({ prop: p.prop, where: p.where, when: p.when })),
     moments: o.moments.map((m) => ({ t_s: m.t_s, what: m.what })),
     musicMood: [o.music.mood, o.music.genre].filter(Boolean).join(', '),
+    music: { mood: o.music.mood, genre: o.music.genre, instruments: o.music.instruments, hasVocals: o.music.has_vocals, songName: o.music.song_name },
     videoFileId: b.video.fileId, durationS: b.video.durationS, width: b.video.width, height: b.video.height,
   }
 }

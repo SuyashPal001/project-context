@@ -28,6 +28,7 @@ export interface RemakeReference {
   props: Array<{ prop: string; where: string; when: string }>
   moments: Array<{ t_s: number; what: string }>
   musicMood: string
+  music: { mood: string; genre: string; instruments: string; hasVocals: boolean | null; songName: string | null }
   videoFileId: string
   durationS: number; width: number; height: number
 }
