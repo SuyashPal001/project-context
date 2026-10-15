@@ -1,11 +1,12 @@
 import { createScorer } from '@mastra/core/evals'
 import { askChecked, gatewayAsk, CheckUnavailableError, type AskFn, type AskPart, type Img } from '../../tools/tvcChecks.js'
 import { checkModel } from '../../tools/videoBreakdown/models.js'
+import { VIDEO_CHECK_COST } from './gate.js'
 
 type Status = 'pass' | 'fail' | 'unknown'
 type Verdict = { status: Status; reason: string } & Record<string, unknown>
 export type VisionInput = { ask?: AskFn; tenantId?: string }
-const askFor = (input: VisionInput): AskFn => input.ask ?? gatewayAsk(input.tenantId ?? '', fetch, checkModel())
+const askFor = (input: VisionInput): AskFn => input.ask ?? gatewayAsk(input.tenantId ?? '', fetch, checkModel(), VIDEO_CHECK_COST)
 const NO_FRAMES: Verdict = { status: 'unknown', reason: 'no frames to check' }
 const imgs = (label: string, frames: Img[]): AskPart[] => frames.flatMap((f, i) => [{ text: `${label} ${i + 1}:` }, { image: f }])
 

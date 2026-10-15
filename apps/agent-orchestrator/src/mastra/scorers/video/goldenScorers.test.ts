@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest'
-import { goldenCutsScorer, goldenHiddenCutsScorer, goldenMomentsScorer, goldenLegsScorer, missingFixtures, itemsWithTruth } from './goldenScorers.js'
+import { goldenCutsScorer, goldenHiddenCutsScorer, goldenMomentsScorer, goldenLegsScorer, missingFixtures, itemsWithTruth, resolveFixtures } from './goldenScorers.js'
 const out = { cuts: { cuts: Array.from({ length: 32 }, (_, i) => i) }, hidden_cuts: [{ at_s: 5.43 }, { at_s: 9.23 }, { at_s: 12.78 }],
   overview: { moments: [{ t_s: 1.3, what: 'points remote up', measured: true }, { t_s: 3.2, what: 'legs slide right', measured: false }], looks: [{ leg_side: 'image-right' }, { leg_side: 'image-left' }, { leg_side: 'center' }, { leg_side: 'image-left' }] } }
 it('cuts within 15%', async () => { expect((await goldenCutsScorer.run({ input: {}, output: out, groundTruth: { cutCount: 30 } })).score).toBe(1) })
@@ -24,4 +24,10 @@ it('unmeasured cuts never pass the cuts gate (review M1)', async () => {
 })
 it('a spurious cut on a 0-cut video fails', async () => {
   expect((await goldenCutsScorer.run({ input: {}, output: { ...out, cuts: { cuts: [3.1] } }, groundTruth: { cutCount: 0 } })).score).toBe(0)
+})
+it('puts GOLDEN_DIR into paths after parsing, so quotes and backslashes are safe (review M7)', () => {
+  const raw = JSON.stringify([{ input: { filePath: '${GOLDEN_DIR}/fan_reel.mp4' }, groundTruth: { note: '${GOLDEN_DIR} stays' } }])
+  const items = resolveFixtures(raw, 'C:\\golden "set"')
+  expect(items[0].input.filePath).toBe('C:\\golden "set"/fan_reel.mp4')
+  expect(items[0].groundTruth).toEqual({ note: '${GOLDEN_DIR} stays' })
 })

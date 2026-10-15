@@ -80,7 +80,7 @@ export async function compareToReference(refInput: { url?: string; fileId?: stri
         aiService<{ count: number }>('/media/brightness-jumps', { path: remake.filePath }),
       ])
       brightnessJumps = { reference: rj.count, remake: mj.count }
-      checks.push({ name: 'brightness-jumps', status: mj.count > rj.count ? 'fail' : 'pass', reason: `reference ${rj.count}, remake ${mj.count}`, evidenceTimes: [] })
+      checks.push({ name: 'brightness-jumps', status: mj.count !== rj.count ? 'fail' : 'pass', reason: `reference ${rj.count}, remake ${mj.count}`, evidenceTimes: [] })
     } catch (e) {
       checks.push({ name: 'brightness-jumps', status: 'unknown', reason: (e as Error).message, evidenceTimes: [] })
     }
@@ -103,9 +103,11 @@ export const compareToReferenceTool = createTool({
     const sessionId = rc?.get('sessionId') as string | undefined
     const conversationId = (rc?.get('conversationId') as string | undefined) ?? sessionId
     if (!idToken || !sessionId || !conversationId) return { success: false, error: 'no_active_session' }
+    // Every check here is a paid model call; spend that cannot be billed is not made (review M4).
+    if (!tenantId) return { success: false, error: 'no_tenant' }
     if (!input.referenceUrl && !input.referenceFileId) return { success: false, error: 'give the reference as a link or an attached file' }
     try {
-      return { success: true, result: await compareToReference({ url: input.referenceUrl, fileId: input.referenceFileId }, input.remakeFileId, { idToken, scopeId: tenantId ?? sessionId, conversationId }, tenantId) }
+      return { success: true, result: await compareToReference({ url: input.referenceUrl, fileId: input.referenceFileId }, input.remakeFileId, { idToken, scopeId: tenantId, conversationId }, tenantId) }
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) }
     }

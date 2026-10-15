@@ -54,3 +54,17 @@ it('skips the pose/legs check when the look has no leg side (review I4)', async 
   await compareToReference({ url: 'https://www.instagram.com/p/x/' }, 'remake-file', ctx)
   expect(gate.mock.calls.some((c) => String(c[1]).startsWith('pose-legs'))).toBe(false)
 })
+
+it('brightness jumps must match the reference count — fewer is a difference too (review M2)', async () => {
+  passAll(); bd.mockReset(); bd.mockResolvedValue(ref)
+  ai.mockReset(); ai.mockResolvedValueOnce({ count: 4, jumps: [] }).mockResolvedValueOnce({ count: 1, jumps: [] })
+  const r = await compareToReference({ url: 'https://www.instagram.com/p/x/' }, 'remake-file', ctx)
+  expect(r.checks.find((c) => c.name === 'brightness-jumps')?.status).toBe('fail')
+})
+
+it('the tool refuses to spend on checks it cannot bill to a tenant (review M4)', async () => {
+  const { compareToReferenceTool } = await import('./compareToReference.js')
+  const rc = new Map<string, string>([['idToken', 't'], ['sessionId', 's'], ['conversationId', 'c']])
+  const r = await (compareToReferenceTool as any).execute({ referenceUrl: 'https://www.instagram.com/p/x/', remakeFileId: 'f' }, { requestContext: rc })
+  expect(r).toMatchObject({ success: false, error: 'no_tenant' })
+})

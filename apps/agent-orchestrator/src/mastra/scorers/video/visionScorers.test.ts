@@ -66,3 +66,14 @@ describe('nothing to look at is never a pass', () => {
     expect(r.status).toBe('unknown')
   })
 })
+
+describe('cost labels (review M4)', () => {
+  it('video checks log their cost as video checks, not as check-clip', async () => {
+    const { persistCost } = await import('../../cost.js')
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: '{"empty_hand_action":false}' } }], usage: { prompt_tokens: 5, completion_tokens: 1 } }))))
+    try {
+      await runGate(emptyHandScorer, 'empty-hand', { tenantId: 'tenant-1', frames: [img] }, [1])
+      expect(persistCost).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1', agentId: 'video-check', workflowId: 'video-checks' }))
+    } finally { vi.unstubAllGlobals() }
+  })
+})

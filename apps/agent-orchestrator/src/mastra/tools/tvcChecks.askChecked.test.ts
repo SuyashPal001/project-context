@@ -14,3 +14,9 @@ it('gatewayAsk sends the model it is given', async () => {
   await gatewayAsk('', fetchImpl, 'gemini-3.8-flash')([{ text: 'q' }])
   expect(JSON.parse((fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].body as string).model).toBe('gemini-3.8-flash')
 })
+it('gatewayAsk logs cost under the labels it is given (review M4)', async () => {
+  const { persistCost } = await import('../cost.js')
+  const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: '{"ok":true}' } }], usage: { prompt_tokens: 10, completion_tokens: 2 } })))
+  await gatewayAsk('tenant-1', fetchImpl, 'gemini-3.8-flash', { agentId: 'video-check', workflowId: 'video-checks' })([{ text: 'q' }])
+  expect(persistCost).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1', agentId: 'video-check', workflowId: 'video-checks', model: 'gemini-3.8-flash' }))
+})

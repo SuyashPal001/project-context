@@ -22,3 +22,10 @@ export function missingFixtures(items: Array<{ input: { filePath: string } }>): 
 export function itemsWithTruth<T extends { groundTruth?: Record<string, unknown> }>(items: T[], key: string): T[] {
   return items.filter((i) => Array.isArray(i.groundTruth?.[key]) && (i.groundTruth![key] as unknown[]).length > 0)
 }
+
+// GOLDEN_DIR goes into file paths after parsing, so a path with quotes or
+// backslashes cannot break the JSON (review M7).
+export function resolveFixtures(raw: string, dir: string): Array<{ input: { filePath: string }; groundTruth?: Record<string, unknown> }> {
+  const items = JSON.parse(raw) as Array<{ input: { filePath: string }; groundTruth?: Record<string, unknown> }>
+  return items.map((i) => ({ ...i, input: { ...i.input, filePath: i.input.filePath.replaceAll('${GOLDEN_DIR}', dir) } }))
+}

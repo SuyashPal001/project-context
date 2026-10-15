@@ -1,6 +1,7 @@
 import { createScorer } from '@mastra/core/evals'
 import { askChecked, gatewayAsk, CheckUnavailableError, type AskFn } from '../../tools/tvcChecks.js'
 import { checkModel } from '../../tools/videoBreakdown/models.js'
+import { VIDEO_CHECK_COST } from './gate.js'
 
 const NO_SMILE = /mouth (gently )?closed|no smile|not smiling|lips (closed|together)|serious|neutral/i
 const SMILE_WORDS = /\b(smil\w*|laugh\w*|grin\w*|teeth)\b/i
@@ -35,7 +36,7 @@ export const promptCheckScorer = createScorer({ id: 'video-prompt-check', name: 
     const input = run.input as Input
     const pre = precheckPrompt(input.prompt, input.look)
     if (pre.length) return { status: 'fail', reason: pre.join('; '), ...EMPTY, invented: pre }
-    const ask = input.ask ?? gatewayAsk(input.tenantId ?? '', fetch, checkModel())
+    const ask = input.ask ?? gatewayAsk(input.tenantId ?? '', fetch, checkModel(), VIDEO_CHECK_COST)
     try {
       const v = await askChecked(ask, [{ text: `You check a video-generation prompt BEFORE money is spent.
 PLAN LINE (what this generation must do): ${input.planLine}

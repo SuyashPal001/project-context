@@ -40,7 +40,7 @@ export function parseJsonObject(raw: string): Record<string, unknown> | null {
 
 /** The gateway's chat endpoint on the Pro check model. Retries once; then
  *  throws CheckUnavailableError — callers report "unchecked", never a pass. */
-export function gatewayAsk(tenantId: string, fetchImpl: typeof fetch = fetch, model: string = PRO_CHECK_MODEL): AskFn {
+export function gatewayAsk(tenantId: string, fetchImpl: typeof fetch = fetch, model: string = PRO_CHECK_MODEL, labels: { agentId: string; workflowId: string } = { agentId: 'check-clip', workflowId: 'media-understanding' }): AskFn {
   return async (parts) => {
     const content = parts.map((p) => ('text' in p
       ? { type: 'text', text: p.text }
@@ -56,7 +56,7 @@ export function gatewayAsk(tenantId: string, fetchImpl: typeof fetch = fetch, mo
         if (!res.ok) throw new Error(`gateway ${res.status}`)
         const json = await res.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number } }
         if (tenantId && json.usage) {
-          persistCost({ tenantId, agentId: 'check-clip', workflowId: 'media-understanding', model, inputTokens: json.usage.prompt_tokens ?? 0, outputTokens: json.usage.completion_tokens ?? 0 })
+          persistCost({ tenantId, agentId: labels.agentId, workflowId: labels.workflowId, model, inputTokens: json.usage.prompt_tokens ?? 0, outputTokens: json.usage.completion_tokens ?? 0 })
         }
         const v = parseJsonObject(json.choices?.[0]?.message?.content ?? '')
         if (!v) throw new Error('unreadable verdict')

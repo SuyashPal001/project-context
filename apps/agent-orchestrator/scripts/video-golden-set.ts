@@ -6,15 +6,14 @@ import { join } from 'node:path'
 import { runEvals } from '@mastra/core/evals'
 import { createWorkflow, createStep } from '@mastra/core/workflows'
 import { z } from 'zod'
-import { goldenCutsScorer, goldenHiddenCutsScorer, goldenMomentsScorer, goldenLegsScorer, missingFixtures, itemsWithTruth } from '../src/mastra/scorers/video/goldenScorers.js'
+import { goldenCutsScorer, goldenHiddenCutsScorer, goldenMomentsScorer, goldenLegsScorer, missingFixtures, itemsWithTruth, resolveFixtures } from '../src/mastra/scorers/video/goldenScorers.js'
 
 type Item = { input: { filePath: string }; groundTruth?: Record<string, unknown> }
 
 async function main() {
   const dir = process.env.GOLDEN_DIR
   if (!dir) { console.error('Set GOLDEN_DIR to the folder holding fan_reel.mp4 and sony.mp4'); process.exit(1) }
-  const raw = readFileSync(join(import.meta.dirname, 'video-golden-set.fixtures.json'), 'utf8').replaceAll('${GOLDEN_DIR}', dir)
-  const data = JSON.parse(raw) as Item[]
+  const data: Item[] = resolveFixtures(readFileSync(join(import.meta.dirname, 'video-golden-set.fixtures.json'), 'utf8'), dir)
   const missing = missingFixtures(data)
   if (missing.length) { console.error(`Missing fixture videos: ${missing.join(', ')}`); process.exit(1) }
   // Imported only after the checks above: the pipeline pulls in DB/env-heavy modules,
