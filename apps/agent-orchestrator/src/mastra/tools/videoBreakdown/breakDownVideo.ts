@@ -28,10 +28,24 @@ export function fillMissingShots(bounds: number[], shots: Shot[]): Shot[] {
   return bounds.slice(0, -1).map((b, i) => ({ ...(byN.get(i + 1) ?? { subject: 'unclear', action: 'unclear' }), n: i + 1, start_s: b, end_s: bounds[i + 1] }))
 }
 
+// The latest breakdown per tenant scope and link, so a later comparison checks the
+// remake against the SAME breakdown it was planned from, without paying again (review I3).
+const RECENT_MAX = 50
+const recent = new Map<string, Breakdown>()
+const recentKey = (input: { url?: string; fileId?: string }, scopeId: string) => `${scopeId}|${input.url ?? ''}|${input.fileId ?? ''}`
+export function recentBreakdown(input: { url?: string; fileId?: string }, ctx: { scopeId: string }): Breakdown | undefined {
+  return recent.get(recentKey(input, ctx.scopeId))
+}
+
 export async function breakDownVideo(input: { url?: string; fileId?: string }, ctx: { idToken: string; scopeId: string; conversationId: string }, tenantId?: string): Promise<Breakdown> {
   const video = await fetchVideo(input, ctx)
   if (video.tooLong) throw new Error(`The video is ${Math.round(video.durationS)}s long. Ask the user which part (up to 90s) to clone.`)
-  return breakDownFetched(video, tenantId)
+  const b = await breakDownFetched(video, tenantId)
+  const key = recentKey(input, ctx.scopeId)
+  recent.delete(key)
+  recent.set(key, b)
+  if (recent.size > RECENT_MAX) recent.delete(recent.keys().next().value!)
+  return b
 }
 
 // Golden set (spec §8a): the same pipeline on a local fixture file, no fetch or upload.

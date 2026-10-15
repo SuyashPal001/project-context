@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { breakDownVideo, type Breakdown } from './breakDownVideo.js'
+import { breakDownVideo, recentBreakdown, type Breakdown } from './breakDownVideo.js'
 import { fetchVideo } from './fetchVideo.js'
 import { aiService } from './aiServiceClient.js'
 import { sampleFrames } from '../tvcChecks.js'
@@ -15,35 +15,63 @@ const r2 = (n: number) => Math.round(n * 100) / 100
 const lookBounds = (reference: Breakdown) =>
   [0, ...reference.hidden_cuts.map((h) => h.at_s), ...(reference.cuts?.cuts ?? []), reference.video.durationS].sort((a, b) => a - b)
 
+const MAX_TIMES = 8
+
 // Sample only at MEASURED times (spec §8: the first verifier sampled at Gemini's
-// rough times and flagged correct timing as wrong).
+// rough times and flagged correct timing as wrong). Capped: measured moments
+// first, then evenly spaced look middles (review I4: a 32-cut ad meant ~70 calls).
 export function pairTimes(reference: Breakdown): number[] {
   const bounds = lookBounds(reference)
-  const mids = bounds.slice(0, -1).map((b, i) => r2((b + bounds[i + 1]) / 2))
-  const moments = reference.overview.moments.filter((m) => m.measured).map((m) => m.t_s)
-  return [...new Set([...moments, ...mids])].sort((a, b) => a - b)
+  const moments = [...new Set(reference.overview.moments.filter((m) => m.measured).map((m) => m.t_s))].slice(0, MAX_TIMES)
+  const mids = bounds.slice(0, -1).map((b, i) => r2((b + bounds[i + 1]) / 2)).filter((m) => !moments.includes(m))
+  const room = MAX_TIMES - moments.length
+  const picked = mids.length <= room ? mids : Array.from({ length: room }, (_, i) => mids[Math.floor((i * mids.length) / room)])
+  return [...moments, ...picked].sort((a, b) => a - b)
+}
+
+type Look = Breakdown['overview']['looks'][number]
+
+// Which look a time belongs to: by the hidden cuts' labels when there are any,
+// else by the looks' own rough bounds, else by segment position (review I4).
+export function lookFor(reference: Breakdown, t: number): Look | undefined {
+  const looks = reference.overview.looks
+  const hc = [...reference.hidden_cuts].sort((a, b) => a.at_s - b.at_s)
+  if (hc.length && hc.every((h) => h.from && h.to)) {
+    const before = hc.filter((h) => h.at_s <= t).pop()
+    const label = before ? before.to : hc[0].from
+    const hit = looks.find((l) => l.label === label)
+    if (hit) return hit
+  }
+  if (looks.length && looks.every((l) => Number.isFinite(l.approx_start_s) && Number.isFinite(l.approx_end_s))) {
+    return looks.find((l) => t >= l.approx_start_s && t < l.approx_end_s)
+      ?? looks.reduce((a, b) => (Math.abs((a.approx_start_s + a.approx_end_s) / 2 - t) <= Math.abs((b.approx_start_s + b.approx_end_s) / 2 - t) ? a : b))
+  }
+  const bounds = lookBounds(reference)
+  return looks[Math.max(0, bounds.findIndex((b, i) => t >= b && t < (bounds[i + 1] ?? Infinity)))]
 }
 
 type Ctx = { idToken: string; scopeId: string; conversationId: string }
 
 export async function compareToReference(refInput: { url?: string; fileId?: string }, remakeFileId: string, ctx: Ctx, tenantId?: string) {
-  const reference = await breakDownVideo(refInput, ctx, tenantId)
+  const reference = recentBreakdown(refInput, ctx) ?? await breakDownVideo(refInput, ctx, tenantId)
   const refVideo = await fetchVideo(refInput, ctx)
   const remake = await fetchVideo({ fileId: remakeFileId }, ctx)
   const times = pairTimes(reference).filter((t) => t < remake.durationS)
-  const bounds = lookBounds(reference)
-  const lookAt = (t: number) => Math.max(0, bounds.findIndex((b, i) => t >= b && t < (bounds[i + 1] ?? Infinity)))
   const dir = mkdtempSync(join(tmpdir(), 'compare-'))
   try {
     const refFrames = await sampleFrames(refVideo.filePath, times, dir)
     const newFrames = await sampleFrames(remake.filePath, times, dir)
-    const checks: CheckResult[] = []
-    for (const [i, t] of times.entries()) {
-      const look = reference.overview.looks[lookAt(t)] ?? {}
-      const feet = (look.leg_side === 'image-left' || look.leg_side === 'image-right') ? look.leg_side : 'center'
-      checks.push(await runGate(poseLegsScorer, `pose-legs@${t}`, { tenantId, reference: refFrames[i], frame: newFrames[i], expectedFeet: feet }, [t]))
-      checks.push(await runGate(expressionScorer, `expression@${t}`, { tenantId, reference: refFrames[i], frame: newFrames[i], expected: look.expression ?? 'same as reference' }, [t]))
-    }
+    const perTime = await Promise.all(times.map(async (t, i) => {
+      const look = lookFor(reference, t) ?? ({} as Partial<Look>)
+      const out: CheckResult[] = []
+      // Leg side is only judged where the breakdown actually read one.
+      if (look.leg_side === 'image-left' || look.leg_side === 'image-right') {
+        out.push(await runGate(poseLegsScorer, `pose-legs@${t}`, { tenantId, reference: refFrames[i], frame: newFrames[i], expectedFeet: look.leg_side }, [t]))
+      }
+      out.push(await runGate(expressionScorer, `expression@${t}`, { tenantId, reference: refFrames[i], frame: newFrames[i], expected: look.expression ?? 'same as reference' }, [t]))
+      return out
+    }))
+    const checks: CheckResult[] = perTime.flat()
     checks.push(await runGate(samePersonScorer, 'same-person', { tenantId, reference: newFrames[0], frames: newFrames.slice(1) }, times))
     let brightnessJumps: { reference: number; remake: number } | null = null
     try {

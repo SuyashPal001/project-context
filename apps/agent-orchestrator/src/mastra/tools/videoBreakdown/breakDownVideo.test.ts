@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mergeBounds, fillMissingShots, breakDownVideo, breakDownLocalFile } from './breakDownVideo.js'
+import { mergeBounds, fillMissingShots, breakDownVideo, breakDownLocalFile, recentBreakdown } from './breakDownVideo.js'
 import { fetchVideo } from './fetchVideo.js'
 
 const watch = vi.fn()
@@ -124,5 +124,12 @@ describe('breakDownVideo', () => {
     ai.mockImplementation(async (route: string) => route === '/media/cuts' ? { cuts: [], fades: [[10, 11.5]], duration_s: 14.9 } : { curve_db: [], events: [], rhythm: [], silent_from_s: null, bpm: null, beats_s: [], has_audio: true })
     await breakDownVideo({ url: 'https://x.com/a/status/1' }, ctx)
     expect(refine.mock.calls[0][2]).toEqual([[10, 11.5]])
+  })
+  it('remembers the latest breakdown per scope and link for reuse (review I3)', async () => {
+    watch.mockResolvedValue(overview(['hard_cuts']))
+    ai.mockImplementation(async (route: string) => route === '/media/cuts' ? { cuts: [], fades: [], duration_s: 14.9 } : { curve_db: [], events: [], rhythm: [], silent_from_s: null, bpm: null, beats_s: [], has_audio: true })
+    const b = await breakDownVideo({ url: 'https://x.com/a/status/9' }, ctx)
+    expect(recentBreakdown({ url: 'https://x.com/a/status/9' }, ctx)).toBe(b)
+    expect(recentBreakdown({ url: 'https://x.com/a/status/9' }, { ...ctx, scopeId: 'other-tenant' })).toBeUndefined()
   })
 })
