@@ -1,5 +1,6 @@
-// Phase 3a of the clone (spec §3, §5.3–5.4, §8a): plan → cast → checked stills → FREE
-// preview. Suspends for the plan review and the cast pick; the remake_video tool resumes.
+// The clone remake (spec §3, §5.3–5.4, §8a): plan → cast → checked stills → FREE preview →
+// clips → finish (join, music, final checks). Suspends for the plan review, the cast pick and
+// the preview review; the remake_video tool resumes.
 import { createStep, createWorkflow } from '@mastra/core/workflows'
 import { z } from 'zod'
 import { mkdtempSync } from 'node:fs'
@@ -10,11 +11,17 @@ import type { MediaExecContext } from '../tools/batchRunner.js'
 import { generatedFileKey } from '../../persistence.js'
 import { remakeDeps } from './deps.js'
 import { writePlan, applyEdits } from './plan.js'
-import { estimateCost, ledgerSummary } from './cost.js'
+import { estimateCost, estimateClipsCost, ledgerSummary } from './cost.js'
 import { castSheetPrompt, stillPrompt, stillGateInput, usesProduct } from './prompts.js'
 import { makeStill, type StillCtx, type StillJob } from './paidStill.js'
 import { previewSegments, previewSize } from './preview.js'
 import { personIn } from './looks.js'
+import { clipSpecs, lookFrames, CLIP_FPS, type ClipSpec } from './clipSpec.js'
+import { makeClip, type ClipCtx, type ClipResult } from './paidClip.js'
+import { checkClip } from './clipCheck.js'
+import { musicPrompt } from './music.js'
+import { differenceNote } from './finalNote.js'
+import { runGate } from '../scorers/video/gate.js'
 import type { Brand, LedgerEntry, PlanLine, RemakePlan, StillResult } from './types.js'
 
 export class RemakeAccessError extends Error {}
@@ -148,15 +155,22 @@ const stillsStep = createStep({
   },
 })
 
-const outputSchema = z.object({ previewFileId: z.string().nullable(), stills: z.array(any), portraitFileId: z.string().nullable(), ledger: z.array(any), summary: any, plan: any })
+const previewed = stilled.extend({ previewFileId: z.string().nullable(), stop: z.boolean() })
 const previewStep = createStep({
-  id: 'preview', inputSchema: stilled, outputSchema,
-  execute: async ({ inputData, requestContext, runId }) => {
+  id: 'preview', inputSchema: stilled, outputSchema: previewed,
+  suspendSchema: z.object({ stage: z.literal('preview_review'), previewFileId: z.string().nullable(), stills: z.array(any), summary: any, clipsEstimate: any, cantAnimate: z.string().optional() }),
+  resumeSchema: z.object({ decision: z.enum(['approve', 'stop']) }),
+  execute: async ({ inputData, requestContext, runId, resumeData, suspendData, suspend }) => {
     const a = access(requestContext as Rc, inputData.tenantId)
     const deps = remakeDeps()
     const plan = inputData.plan as RemakePlan
     const stills = inputData.stills as StillResult[]
     const ledger = inputData.ledger as LedgerEntry[]
+    // Square: the video models make only 9:16 or 16:9 (Review Focus 2).
+    const cantAnimate = plan.aspectRatio === '1:1' ? 'Square videos can be previewed but not animated yet.' : undefined
+    if (resumeData) {
+      return { ...inputData, previewFileId: (suspendData?.previewFileId as string | null | undefined) ?? null, stop: resumeData.decision === 'stop' || !!cantAnimate }
+    }
     let previewFileId: string | null = null
     try {
       const paths = new Map<string, string>()
@@ -167,9 +181,105 @@ const previewStep = createStep({
     } catch (err) {
       console.error('[remake] preview failed:', err instanceof Error ? err.message : String(err))
     }
-    return { previewFileId, stills, portraitFileId: inputData.portraitFileId, ledger, summary: ledgerSummary(ledger), plan }
+    const clipsEstimate = estimateClipsCost(clipSpecs(plan, stills), { veo: await deps.clipRateMicro('veo'), omni: await deps.clipRateMicro('omni'), music: await deps.musicRateMicro() })
+    return await suspend({ stage: 'preview_review', previewFileId, stills, summary: ledgerSummary(ledger), clipsEstimate, ...(cantAnimate ? { cantAnimate } : {}) })
+  },
+})
+
+const MAX_PARALLEL_CLIPS = 3
+const clipped = previewed.extend({ clips: z.array(any) })
+const clipsStep = createStep({
+  id: 'clips', inputSchema: previewed, outputSchema: clipped,
+  execute: async ({ inputData, requestContext, runId }) => {
+    const a = access(requestContext as Rc, inputData.tenantId)
+    if (inputData.stop) return { ...inputData, clips: [] }
+    const deps = remakeDeps()
+    const plan = inputData.plan as RemakePlan
+    const portrait = inputData.portraitFileId ? await deps.fetchImage(inputData.portraitFileId, a.idToken) : null
+    const size = previewSize(plan.reference.width || 1080, plan.reference.height || 1920)
+    const workDir = mkdtempSync(join(tmpdir(), 'remake-clips-'))
+    const ctx: ClipCtx = {
+      tenantId: a.tenantId, idToken: a.idToken, scopeId: a.scopeId, runId, exec: execFor(requestContext as Rc, runId),
+      portrait, plan, brand: inputData.brand as Brand, size, workDir,
+      check: (clipPath: string, spec: ClipSpec) => checkClip({ clipPath, seconds: spec.frames / CLIP_FPS, look: spec.look, portrait, tenantId: a.tenantId }, { poseClip: deps.poseClip, sample: deps.sample, gate: runGate }),
+    }
+    const jobs = clipSpecs(plan, inputData.stills as StillResult[]).map((spec) => async (): Promise<{ result: ClipResult; ledger: LedgerEntry[] }> => {
+      // One clip failing never ends the run: paid clips must reach the ledger and the final video.
+      try {
+        return await makeClip(spec, ctx, deps)
+      } catch (err) {
+        console.error(`[remake] look ${spec.look.n} clip failed:`, err instanceof Error ? err.message : String(err))
+        return { result: { look: spec.look.n, fileId: null, localPath: null, engine: spec.engine, fallback: false, status: 'failed', reasons: ['this part could not be animated this time'] }, ledger: [] }
+      }
+    })
+    const done: Array<{ result: ClipResult; ledger: LedgerEntry[] }> = []
+    for (let i = 0; i < jobs.length; i += MAX_PARALLEL_CLIPS) done.push(...await Promise.all(jobs.slice(i, i + MAX_PARALLEL_CLIPS).map((j) => j())))
+    return { ...inputData, clips: done.map((d) => d.result), ledger: [...(inputData.ledger as LedgerEntry[]), ...done.flatMap((d) => d.ledger)] }
+  },
+})
+
+const outputSchema = z.object({ finalFileId: z.string().nullable(), previewFileId: z.string().nullable(), clips: z.array(any), stills: z.array(any), portraitFileId: z.string().nullable(), ledger: z.array(any), summary: any, note: z.string(), plan: any })
+const MUSIC_SLOT = 2000
+const finishStep = createStep({
+  id: 'finish', inputSchema: clipped, outputSchema,
+  execute: async ({ inputData, requestContext, runId }) => {
+    const a = access(requestContext as Rc, inputData.tenantId)
+    const plan = inputData.plan as RemakePlan
+    const stills = inputData.stills as StillResult[]
+    const clips = inputData.clips as ClipResult[]
+    const ledger = [...(inputData.ledger as LedgerEntry[])]
+    const base = { previewFileId: inputData.previewFileId, clips, stills, portraitFileId: inputData.portraitFileId, plan }
+    if (inputData.stop) return { ...base, finalFileId: null, ledger, summary: ledgerSummary(ledger), note: '' }
+    const deps = remakeDeps()
+    const size = previewSize(plan.reference.width || 1080, plan.reference.height || 1920)
+    const work = mkdtempSync(join(tmpdir(), 'remake-final-'))
+    const frames = lookFrames(plan)
+    const extra: string[] = []
+    let finalFileId: string | null = null
+    try {
+      const parts: string[] = []
+      for (const look of [...plan.looks].sort((x, y) => x.startS - y.startS)) {
+        const n = frames.get(look.n) ?? 0
+        const clip = clips.find((c) => c.look === look.n && c.localPath && (c.status === 'passed' || c.status === 'unchecked' || c.status === 'failed'))
+        if (clip?.localPath) { parts.push(clip.localPath); continue }
+        const still = stills.find((s) => s.look === look.n && s.kind === 'start' && s.fileId)
+        const path = still?.fileId ? await deps.localFile(still.fileId, a.idToken, a.scopeId) : null
+        parts.push(await deps.stillToFrames(path, n, join(work, `still-${look.n}.mp4`), size))
+      }
+      let video = await deps.joinSegments(parts, join(work, 'joined.mp4'))
+      const totalS = [...frames.values()].reduce((x, y) => x + y, 0) / CLIP_FPS
+      // Music: always new (spec §9a); gated like every paid call; a failure leaves the video silent.
+      const prompt = musicPrompt(plan)
+      const gate = await deps.promptGate({ prompt, planLine: `music: ${plan.lines.find((l) => l.ref === 'sound.music')?.to ?? 'new music'}`, look: {}, startFrameObjects: [], keyMoments: [], tenantId: a.tenantId })
+      const music = gate.status === 'pass' ? await deps.generateMusic(prompt, execFor(requestContext as Rc, runId)(MUSIC_SLOT)) : null
+      if (gate.status !== 'pass') console.error('[remake] music prompt not passed:', gate.status, gate.reason)
+      if (music?.fileId) {
+        ledger.push({ item: 'music', attempt: 0, creditsMicro: music.creditsUsedMicro ?? '0', outcome: 'kept' })
+        const fitted = await deps.fitMusic(await deps.localFile(music.fileId, a.idToken, a.scopeId), totalS, join(work, 'music.m4a'))
+        video = await deps.muxMusic(video, fitted, join(work, 'final.mp4'))
+      } else {
+        if (music) ledger.push({ item: 'music', attempt: 0, creditsMicro: music.creditsUsedMicro ?? '0', outcome: 'failed' })
+        extra.push(music?.insufficientCredits ? 'The music couldn’t be made (not enough credits), so the video is silent.' : 'The music couldn’t be made this time, so the video is silent.')
+      }
+      finalFileId = await deps.upload(a.idToken, generatedFileKey(a.conversationId, `remake ${runId} final`, 'mp4'), 'Remake.mp4', deps.readFile(video), 'video/mp4')
+      if (!finalFileId) extra.push('The final video couldn’t be saved this time.')
+    } catch (err) {
+      console.error('[remake] finish failed:', err instanceof Error ? err.message : String(err))
+      extra.push('The final video couldn’t be put together this time.')
+    }
+    let checks = null
+    if (finalFileId) {
+      try {
+        checks = (await deps.compare(inputData.breakdown as Breakdown, finalFileId, { idToken: a.idToken, scopeId: a.scopeId, conversationId: a.conversationId }, a.tenantId)).checks
+      } catch (err) {
+        console.error('[remake] final comparison failed:', err instanceof Error ? err.message : String(err))
+      }
+    }
+    const lines = differenceNote({ plan, stills, clips, checks }).split('\n')
+    const note = [...lines.slice(0, -1), ...extra, lines[lines.length - 1]].join('\n')
+    return { ...base, finalFileId, ledger, summary: ledgerSummary(ledger), note }
   },
 })
 
 export const videoRemakeWorkflow = createWorkflow({ id: 'video-remake', inputSchema, outputSchema })
-  .then(planStep).then(castStep).then(stillsStep).then(previewStep).commit()
+  .then(planStep).then(castStep).then(stillsStep).then(previewStep).then(clipsStep).then(finishStep).commit()

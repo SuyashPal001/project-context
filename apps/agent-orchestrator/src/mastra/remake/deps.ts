@@ -18,7 +18,7 @@ import { generateVeoClipItem, VEO_CLIP_MODEL } from '../tools/veoClip.js'
 import { generateSongItem } from '../tools/generateSong.js'
 import { compareToReference } from '../tools/videoBreakdown/compareToReference.js'
 import type { Breakdown } from '../tools/videoBreakdown/breakDownVideo.js'
-import { trimToFrames } from './compose.js'
+import { trimToFrames, stillToFrames, joinSegments, fitMusic, muxMusic } from './compose.js'
 import { checkModel } from '../tools/videoBreakdown/models.js'
 import { imageModelFor } from '../tools/imageEngine.js'
 import { runGate, type CheckResult } from '../scorers/video/gate.js'
@@ -53,6 +53,10 @@ export interface RemakeDeps {
   musicRateMicro: () => Promise<bigint | null>
   generateMusic: (prompt: string, exec: MediaExecContext) => Promise<{ fileId?: string; refused?: boolean; refusalReason?: string; insufficientCredits?: boolean; creditsUsedMicro?: string }>
   compare: (breakdown: Breakdown, remakeFileId: string, ctx: { idToken: string; scopeId: string; conversationId: string }, tenantId: string) => Promise<{ checks: CheckResult[]; summary: string }>
+  stillToFrames: typeof stillToFrames
+  joinSegments: typeof joinSegments
+  fitMusic: typeof fitMusic
+  muxMusic: typeof muxMusic
 }
 
 const real: RemakeDeps = {
@@ -89,6 +93,10 @@ const real: RemakeDeps = {
   },
   generateMusic: (prompt, exec) => generateSongItem({ prompt, title: 'Remake music' }, exec),
   compare: (breakdown, remakeFileId, ctx, tenantId) => compareToReference({ fileId: breakdown.video.fileId }, remakeFileId, ctx, tenantId, breakdown),
+  stillToFrames: (s, f, o, size) => stillToFrames(s, f, o, size),
+  joinSegments: (p, o) => joinSegments(p, o),
+  fitMusic: (m, s, o) => fitMusic(m, s, o),
+  muxMusic: (v, m, o) => muxMusic(v, m, o),
 }
 
 let override: Partial<RemakeDeps> | null = null

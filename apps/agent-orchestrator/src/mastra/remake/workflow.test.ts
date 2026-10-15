@@ -25,6 +25,8 @@ function fakeDeps(o: Partial<RemakeDeps> = {}): Partial<RemakeDeps> {
     readFile: vi.fn(() => Buffer.from('x')),
     renderPreview: vi.fn().mockResolvedValue('/m/preview.mp4'),
     imageRateMicro: vi.fn().mockResolvedValue(1_000_000n),
+    clipRateMicro: vi.fn().mockResolvedValue(1_000_000n),
+    musicRateMicro: vi.fn().mockResolvedValue(1_000_000n),
     ...o,
   }
 }
@@ -71,8 +73,9 @@ describe('video-remake workflow', () => {
     await resume(runId, 'plan', { decision: 'edit', edits: [{ ref: 'looks[1].outfit', action: 'swap', to: 'green kurta' }] })
     await resume(runId, 'plan', { decision: 'approve' })
     const done = await resume(runId, 'cast', { pick: 2 })
-    expect(done.status).toBe('success')
-    const out = (done as unknown as { result: Record<string, unknown> }).result
+    // 3b: the run now pauses at the preview review; the preview fields are in its pause payload.
+    expect(done.status).toBe('suspended')
+    const out = (done as unknown as Steps).steps.preview.suspendPayload!
     expect(out.previewFileId).toBeTruthy()
     expect((out.stills as unknown[]).length).toBe(3)
     const prompts = gen.mock.calls.map((c) => c[0].prompt as string)
@@ -86,7 +89,8 @@ describe('video-remake workflow', () => {
     const w = (await remakeMastra()).getWorkflow(REMAKE_WORKFLOW_ID); const run = await w.createRun()
     await run.start({ inputData: { tenantId: 't1', conversationId: 'c1', breakdown: b, brand }, requestContext: rc() })
     const done = await resume(run.runId, 'plan', { decision: 'approve' })
-    expect(done.status).toBe('success')
+    expect(done.status).toBe('suspended') // no cast step: straight to stills, then the preview review
+    expect((done as unknown as Steps).steps.preview.suspendPayload!.stage).toBe('preview_review')
   })
   it('a resume from another tenant fails without spending', async () => {
     const gen = vi.fn()

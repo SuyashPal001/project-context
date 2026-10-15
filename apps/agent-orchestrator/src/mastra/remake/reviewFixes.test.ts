@@ -30,6 +30,8 @@ function deps(o: Partial<RemakeDeps> = {}): Partial<RemakeDeps> {
     readFile: vi.fn(() => Buffer.from('x')),
     renderPreview: vi.fn().mockResolvedValue('/m/preview.mp4'),
     imageRateMicro: vi.fn().mockResolvedValue(1_000_000n),
+    clipRateMicro: vi.fn().mockResolvedValue(1_000_000n),
+    musicRateMicro: vi.fn().mockResolvedValue(1_000_000n),
     ...o,
   }
 }
@@ -62,8 +64,8 @@ describe('I1 one still failing does not kill the run', () => {
     const runId = await startRun(sameBody(), { ffmpeg: vi.fn().mockImplementation(async (args: string[]) => { if (args[0] === '-ss' && ++calls === 2) throw new Error('ENOENT') }) })
     await resume(runId, 'plan', { decision: 'approve' })
     const done = await resume(runId, 'cast', { pick: 1 })
-    expect(done.status).toBe('success')
-    const out = (done as unknown as { result: { stills: Array<{ status: string; reasons: string[] }>; previewFileId: string } }).result
+    expect(done.status).toBe('suspended') // 3b: paused at the preview review
+    const out = (done as unknown as Steps).steps.preview.suspendPayload! as unknown as { stills: Array<{ status: string; reasons: string[] }>; previewFileId: string }
     expect(out.stills.filter((s) => s.status === 'failed')).toHaveLength(1)
     expect(out.stills.find((s) => s.status === 'failed')!.reasons.join(' ')).not.toMatch(/ENOENT/)
     expect(out.previewFileId).toBeTruthy()
@@ -81,7 +83,7 @@ describe('I2 the cast step can be retried without paying for a new sheet', () =>
     expect(castPayload(again)).toMatchObject({ stage: 'cast_pick', sheetFileId: 'img-1' })
     expect(String(castPayload(again).error)).toMatch(/pick again/)
     expect(gen).toHaveBeenCalledTimes(1)
-    expect((await resume(runId, 'cast', { pick: 2 })).status).toBe('success')
+    expect((await resume(runId, 'cast', { pick: 2 })).status).toBe('suspended') // 3b: on to the preview review
   })
   it('a sheet that could not be made waits for a retry instead of ending the run', async () => {
     const gen = vi.fn().mockResolvedValueOnce({ insufficientCredits: true }).mockImplementation(async () => ({ fileId: `img-${++made}`, creditsUsedMicro: '100' }))
@@ -119,7 +121,7 @@ describe('I4 a look whose people were not measured is not paid for', () => {
     const runId = await startRun(b, { generateStill: gen })
     await resume(runId, 'plan', { decision: 'approve' })
     const done = await resume(runId, 'cast', { pick: 1 })
-    const out = (done as unknown as { result: { stills: Array<{ look: number; status: string }> } }).result
+    const out = (done as unknown as Steps).steps.preview.suspendPayload! as unknown as { stills: Array<{ look: number; status: string }> }
     expect(out.stills.filter((s) => s.look === 2).every((s) => s.status === 'blocked')).toBe(true)
     expect(gen.mock.calls.every((c) => !String(c[0].prompt).includes('Pose: sits'))).toBe(true)
   })
