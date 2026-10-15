@@ -30,13 +30,22 @@ function fakes() {
     read: vi.fn(async (id: string) => ({ conversationId: id, state: 'done', text: '', toolCalls: [], files: [], newEvents: 0 })),
     answer: vi.fn(async (id: string) => ({ conversationId: id, state: 'running', text: '', toolCalls: [], files: [], newEvents: 0 })),
   }
-  const traces = { listTraces: vi.fn(async () => ({ spans: [], pagination: {} } as any)), getTrace: vi.fn(async () => null) }
+  const traces = { listTraces: vi.fn(async (_args: any) => ({ spans: [], pagination: {} } as any)), getTrace: vi.fn(async () => null) }
   const probe = createTool({
     id: 'probe', description: 'echoes the context it ran under',
     inputSchema: z.object({ tenantId: z.string().optional() }),
     execute: async (_i, c: any) => ({ tenantId: c.requestContext.get('tenantId'), conversationId: c.requestContext.get('conversationId') }),
   })
-  return { identity, driver, traces, tools: { probe } }
+  // Fake API: only `c-own` belongs to the test user; only `f-ok` downloads.
+  const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+    const auth = (init?.headers as Record<string, string> | undefined)?.Authorization
+    if (auth !== 'Bearer tok') return new Response('no auth', { status: 401 })
+    const path = new URL(url).pathname
+    if (path === '/api/v1/conversations/c-own') return Response.json({ data: { id: 'c-own' } })
+    if (path === '/api/v1/files/f-ok/download') return Response.json({ data: { downloadUrl: 'https://s3.example/f-ok?sig=1' } })
+    return Response.json({ error: 'Not Found' }, { status: 404 })
+  })
+  return { identity, driver, traces, fetchImpl, tools: { probe } }
 }
 
 function parse(result: any): any {
@@ -108,10 +117,70 @@ describe('test MCP listener', () => {
     expect(status).toMatchObject({ tenantId: 'tenant-real', userId: 'user-1', agentId: 'agent-1', currentConversationId: 'conv-fresh', credits: { balanceMicro: '5000000', unlimited: false } })
   })
 
+  it('olmo_trace refuses a conversation the test user does not own and never reads spans', async () => {
+    const tools = await client.listTools()
+    const out: any = await tools.t_olmo_trace.execute!({ conversationId: 'other-tenant-conv' } as any, {} as any).catch((e: Error) => ({ thrown: e.message }))
+    expect(JSON.stringify(out)).toMatch(/not the test user's \(404\)/)
+    expect(f.traces.listTraces).not.toHaveBeenCalled()
+    await tools.t_olmo_trace.execute!({ conversationId: 'c-own' } as any, {} as any)
+    expect(f.traces.listTraces).toHaveBeenCalledTimes(1)
+    expect(f.traces.listTraces.mock.calls[0][0]).toMatchObject({ filters: { threadId: 'c-own' } })
+  })
+
+  it('olmo_send refuses a supplied conversation the test user does not own and never sends', async () => {
+    const tools = await client.listTools()
+    const out: any = await tools.t_olmo_send.execute!({ conversationId: 'other-tenant-conv', message: 'hi' } as any, {} as any).catch((e: Error) => ({ thrown: e.message }))
+    expect(JSON.stringify(out)).toMatch(/not the test user's \(404\)/)
+    expect(f.driver.send).not.toHaveBeenCalled()
+    await tools.t_olmo_send.execute!({ conversationId: 'c-own', message: 'hi' } as any, {} as any)
+    await tools.t_olmo_send.execute!({ message: 'new chat' } as any, {} as any)
+    expect(f.driver.send).toHaveBeenCalledTimes(2)
+  })
+
+  it('get_file returns the download URL, and refuses a file the API does not return', async () => {
+    const tools = await client.listTools()
+    const ok = parse(await tools.t_get_file.execute!({ fileId: 'f-ok' } as any, {} as any))
+    expect(ok).toEqual({ downloadUrl: 'https://s3.example/f-ok?sig=1' })
+    const missing: any = await tools.t_get_file.execute!({ fileId: 'f-missing' } as any, {} as any).catch((e: Error) => ({ thrown: e.message }))
+    expect(JSON.stringify(missing)).toMatch(/file download 404/)
+  })
+
   it('olmo_answer passes a kind-tagged answer to the driver', async () => {
     const tools = await client.listTools()
     await tools.t_olmo_answer.execute!({ conversationId: 'c9', answer: { kind: 'approval', decision: 'allow' } } as any, {} as any)
     expect(f.driver.answer).toHaveBeenCalledWith('c9', { kind: 'approval', decision: 'allow' }, undefined)
+  })
+})
+
+describe('route-1 conversation choice', () => {
+  it('an explicit test_new_conversation wins over a lazy creation that resolves later', async () => {
+    process.env.INTERNAL_SERVICE_KEY = KEY
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const f = fakes()
+    let resolveLazy!: (id: string) => void
+    f.driver.newConversation
+      .mockImplementationOnce(() => new Promise<string>((r) => { resolveLazy = r }))
+      .mockImplementationOnce(async () => 'conv-explicit')
+    const h = await startTestMcp({ cfg, ...(f as any) })
+    const c = new MCPClient({
+      id: `test-mcp-race-${Date.now()}`,
+      servers: { t: { url: new URL(`http://127.0.0.1:${h!.port}/mcp`), requestInit: { headers: { 'x-internal-service-key': KEY } } } },
+    })
+    try {
+      const tools = await c.listTools()
+      const lazyCall = tools.t_probe.execute!({} as any, {} as any)
+      await vi.waitFor(() => expect(f.driver.newConversation).toHaveBeenCalledTimes(1))
+      const explicit = parse(await tools.t_test_new_conversation.execute!({} as any, {} as any))
+      expect(explicit.conversationId).toBe('conv-explicit')
+      resolveLazy('conv-lazy')
+      await lazyCall
+      const after = parse(await tools.t_probe.execute!({} as any, {} as any))
+      expect(after.conversationId).toBe('conv-explicit')
+    } finally {
+      await c.disconnect()
+      await h?.close()
+      log.mockRestore()
+    }
   })
 })
 

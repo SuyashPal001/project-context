@@ -30,6 +30,8 @@ export type TestMcpDeps = {
   /** Product tools to expose on route 1. startTestMcp passes DIRECTOR_TOOLS. */
   tools: Record<string, any>
   checkBalance?: typeof checkCreditBalance
+  /** Used for the API calls this file makes (ownership check, get_file). */
+  fetchImpl?: typeof fetch
 }
 
 const waitSeconds = z.number().min(0).max(240).optional().describe('How long to wait for the turn to finish or stop at a card (max 240)')
@@ -55,15 +57,35 @@ const answerSchema = z.discriminatedUnion('kind', [
 export function buildTestMcpServer(deps: TestMcpDeps): MCPServer {
   const { identity, driver, cfg, traces } = deps
   const checkBalance = deps.checkBalance ?? checkCreditBalance
+  const fetchImpl = deps.fetchImpl ?? fetch
+
+  // A conversationId from tool arguments is untrusted. GET /conversations/:id is
+  // scoped to tenant + user server-side, so a 200 proves the test user owns it.
+  // olmo_trace needs this because the trace store is global (filtered only by
+  // threadId); olmo_send needs it because /api/chat lets a message through when
+  // ownership comes back 'unknown' (chat.ts), so we must not rely on that.
+  const assertOwnConversation = async (conversationId: string): Promise<void> => {
+    const token = await identity.idToken()
+    const r = await fetchImpl(`${cfg.apiBaseUrl}/api/v1/conversations/${encodeURIComponent(conversationId)}`, { headers: { Authorization: `Bearer ${token}` } })
+    if (r.status !== 200) throw new Error(`conversation ${conversationId} is not the test user's (${r.status})`)
+  }
 
   // The route-1 conversation. Shared by every direct tool call so outputs land
   // in one chat; created lazily once, even under concurrent first calls.
+  // `choice` counts explicit test_new_conversation calls: a lazy creation that
+  // resolves after an explicit choice must not overwrite it, and of two explicit
+  // calls the later one wins.
   let current: string | undefined
   let creating: Promise<string> | undefined
+  let choice = 0
   const currentConversation = (): Promise<string> => {
     if (current) return Promise.resolve(current)
+    const startedAt = choice
     creating ??= driver.newConversation()
-      .then((id) => { current = id; return id })
+      .then((id) => {
+        if (choice === startedAt && !current) current = id
+        return current ?? id
+      })
       .finally(() => { creating = undefined })
     return creating
   }
@@ -101,8 +123,10 @@ export function buildTestMcpServer(deps: TestMcpDeps): MCPServer {
       description: 'Start a new auto-mode conversation and make it the one route-1 product tools write into.',
       inputSchema: z.object({}),
       execute: async () => {
-        current = await driver.newConversation()
-        return { conversationId: current }
+        const mine = ++choice
+        const id = await driver.newConversation()
+        if (mine === choice) current = id
+        return { conversationId: id }
       },
     }),
     olmo_send: createTool({
@@ -114,7 +138,10 @@ export function buildTestMcpServer(deps: TestMcpDeps): MCPServer {
         fileIds: z.array(z.string()).optional(),
         waitSeconds,
       }),
-      execute: async (a) => driver.send(a),
+      execute: async (a) => {
+        if (a.conversationId) await assertOwnConversation(a.conversationId)
+        return driver.send(a)
+      },
     }),
     olmo_read: createTool({
       id: 'olmo_read',
@@ -134,7 +161,7 @@ export function buildTestMcpServer(deps: TestMcpDeps): MCPServer {
       inputSchema: z.object({ fileId: z.string() }),
       execute: async (a) => {
         const token = await identity.idToken()
-        const r = await fetch(`${cfg.apiBaseUrl}/api/v1/files/${encodeURIComponent(a.fileId)}/download`, { headers: { Authorization: `Bearer ${token}` } })
+        const r = await fetchImpl(`${cfg.apiBaseUrl}/api/v1/files/${encodeURIComponent(a.fileId)}/download`, { headers: { Authorization: `Bearer ${token}` } })
         if (!r.ok) throw new Error(`file download ${r.status}: ${await r.text().catch(() => '')}`)
         const json = await r.json() as { data?: { downloadUrl?: string } }
         if (!json.data?.downloadUrl) throw new Error('file download returned no downloadUrl')
@@ -145,7 +172,10 @@ export function buildTestMcpServer(deps: TestMcpDeps): MCPServer {
       id: 'olmo_trace',
       description: 'Tool and agent spans recorded for a conversation, oldest first: what Gemini decided to call, with inputs, outputs and errors.',
       inputSchema: z.object({ conversationId: z.string(), limit: z.number().int().min(1).max(200).optional() }),
-      execute: async (a) => ({ spans: await readToolSpans(traces, a.conversationId, a.limit) }),
+      execute: async (a) => {
+        await assertOwnConversation(a.conversationId)
+        return { spans: await readToolSpans(traces, a.conversationId, a.limit) }
+      },
     }),
   }
 
@@ -211,7 +241,7 @@ export async function startTestMcp(over: StartTestMcpOverrides = {}): Promise<{ 
       if (!traces) return disabled('no observability store on the mastra instance')
     }
 
-    const server = buildTestMcpServer({ identity, driver, cfg, traces, tools, checkBalance: over.checkBalance })
+    const server = buildTestMcpServer({ identity, driver, cfg, traces, tools, checkBalance: over.checkBalance, fetchImpl: over.fetchImpl })
     const httpServer = http.createServer(async (req, res) => {
       try {
         // Key first, path second: an unauthenticated caller learns nothing.
@@ -230,6 +260,9 @@ export async function startTestMcp(over: StartTestMcpOverrides = {}): Promise<{ 
       httpServer.once('error', reject)
       httpServer.listen(cfg.port, '127.0.0.1', () => { httpServer.off('error', reject); resolve() })
     })
+    // The listen-time reject is gone now; a later server error must only log,
+    // never become an unhandled 'error' event that takes the orchestrator down.
+    httpServer.on('error', (err) => console.warn('[test-mcp] server error:', err.message))
     const port = (httpServer.address() as AddressInfo).port
     console.log(`[test-mcp] listening on 127.0.0.1:${port}/mcp (tenant ${cfg.tenantId})`)
     return {
