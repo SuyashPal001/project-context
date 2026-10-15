@@ -104,3 +104,10 @@ it('a check that does not pass carries a side-by-side evidence image (review M8)
   expect(r.checks.find((c) => c.name === 'expression@1.75')?.evidenceFileIds).toBeUndefined()
   expect(upload).toHaveBeenCalledTimes(1)
 })
+
+it('uses a breakdown the caller already has (the remake) and never breaks the reference down again', async () => {
+  passAll(); bd.mockReset(); recent.mockReset()
+  await compareToReference({ fileId: 'ref' }, 'remake-file', ctx, 't1', ref)
+  expect(bd).not.toHaveBeenCalled()
+  expect(recent).not.toHaveBeenCalled()
+})
