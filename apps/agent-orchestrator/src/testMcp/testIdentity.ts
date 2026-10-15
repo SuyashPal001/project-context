@@ -37,7 +37,13 @@ export class TestIdentity {
 
   async idToken(): Promise<string> {
     if (this.now() >= this.expiresAt - REFRESH_MARGIN_MS) {
-      await this.auth('REFRESH_TOKEN_AUTH', { REFRESH_TOKEN: this.refresh })
+      try {
+        await this.auth('REFRESH_TOKEN_AUTH', { REFRESH_TOKEN: this.refresh })
+      } catch {
+        // A revoked or expired refresh token would otherwise break every call
+        // until the orchestrator restarts; sign in again once instead.
+        await this.auth('USER_PASSWORD_AUTH', { USERNAME: this.cfg.email, PASSWORD: this.cfg.password })
+      }
     }
     return this.token
   }

@@ -12,6 +12,8 @@ vi.mock('@serverless-saas/credits', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@serverless-saas/credits')>()),
   isUnlimited: (t: string) => unlimited.fn(t),
 }))
+const agentCheck = vi.hoisted(() => ({ fn: vi.fn(async (_a: string, _t: string) => true) }))
+vi.mock('../usage.js', () => ({ agentBelongsToTenant: (a: string, t: string) => agentCheck.fn(a, t) }))
 
 import { startTestMcp } from './server.js'
 import type { TestMcpConfig } from './config.js'
@@ -184,8 +186,51 @@ describe('route-1 conversation choice', () => {
   })
 })
 
+describe('tenant turned unlimited after startup', () => {
+  it('route-1 tools and olmo_send refuse once the tenant is unlimited', async () => {
+    process.env.INTERNAL_SERVICE_KEY = KEY
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    unlimited.fn.mockReset(); unlimited.fn.mockResolvedValue(false)
+    const f = fakes()
+    const h = await startTestMcp({ cfg, ...(f as any) })
+    const c = new MCPClient({
+      id: `test-mcp-unl-${Date.now()}`,
+      servers: { t: { url: new URL(`http://127.0.0.1:${h!.port}/mcp`), requestInit: { headers: { 'x-internal-service-key': KEY } } } },
+    })
+    try {
+      const tools = await c.listTools()
+      expect(parse(await tools.t_probe.execute!({} as any, {} as any)).tenantId).toBe('tenant-real')
+      unlimited.fn.mockResolvedValue(true)
+      const probe: any = await tools.t_probe.execute!({} as any, {} as any).catch((e: Error) => ({ thrown: e.message }))
+      expect(JSON.stringify(probe)).toMatch(/test tenant tenant-real is now unlimited/)
+      const send: any = await tools.t_olmo_send.execute!({ message: 'hi' } as any, {} as any).catch((e: Error) => ({ thrown: e.message }))
+      expect(JSON.stringify(send)).toMatch(/test tenant tenant-real is now unlimited/)
+      expect(f.driver.send).not.toHaveBeenCalled()
+    } finally {
+      unlimited.fn.mockResolvedValue(false)
+      await c.disconnect()
+      await h?.close()
+      log.mockRestore()
+    }
+  })
+})
+
 describe('startTestMcp guards', () => {
-  beforeEach(() => { unlimited.fn.mockReset(); unlimited.fn.mockResolvedValue(false) })
+  beforeEach(() => {
+    unlimited.fn.mockReset(); unlimited.fn.mockResolvedValue(false)
+    agentCheck.fn.mockReset(); agentCheck.fn.mockResolvedValue(true)
+  })
+
+  it('returns null when the configured agent is not in the test tenant', async () => {
+    agentCheck.fn.mockResolvedValue(false)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const f = fakes()
+    await expect(startTestMcp({ cfg, ...(f as any) })).resolves.toBeNull()
+    expect(agentCheck.fn).toHaveBeenCalledWith('agent-1', 'tenant-real')
+    expect(warn).toHaveBeenCalledWith('[test-mcp] disabled: agent not in test tenant')
+    expect(f.identity.init).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
 
   it('returns null without throwing when the test tenant is unlimited', async () => {
     unlimited.fn.mockResolvedValue(true)

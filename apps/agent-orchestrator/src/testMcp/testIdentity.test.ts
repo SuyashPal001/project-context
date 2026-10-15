@@ -45,4 +45,38 @@ describe('TestIdentity', () => {
     const authCalls = f.mock.calls.filter(([u]) => String(u).includes('cognito-idp'))
     expect(JSON.parse(String(authCalls[1][1]!.body)).AuthFlow).toBe('REFRESH_TOKEN_AUTH')
   })
+  it('falls back to a password sign-in once when the refresh is refused', async () => {
+    let t = Date.now()
+    const ok = fakeFetch('t1', 600)
+    const f = vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url).includes('cognito-idp') && JSON.parse(String(init!.body)).AuthFlow === 'REFRESH_TOKEN_AUTH') {
+        return new Response('{"__type":"NotAuthorizedException"}', { status: 400 })
+      }
+      return ok(url, init)
+    })
+    const id = new TestIdentity(cfg, f as any, () => t)
+    await id.init()
+    const first = await id.idToken()
+    t += 6 * 60 * 1000
+    const second = await id.idToken()
+    expect(second).not.toBe(first)
+    const flows = f.mock.calls.filter(([u]) => String(u).includes('cognito-idp')).map(([, i]) => JSON.parse(String(i!.body)).AuthFlow)
+    expect(flows).toEqual(['USER_PASSWORD_AUTH', 'REFRESH_TOKEN_AUTH', 'USER_PASSWORD_AUTH'])
+  })
+  it('throws when the password fallback fails too', async () => {
+    let t = Date.now()
+    let signIns = 0
+    const ok = fakeFetch('t1', 600)
+    const f = vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url).includes('cognito-idp')) {
+        const flow = JSON.parse(String(init!.body)).AuthFlow
+        if (flow === 'REFRESH_TOKEN_AUTH' || (flow === 'USER_PASSWORD_AUTH' && ++signIns > 1)) return new Response('{}', { status: 400 })
+      }
+      return ok(url, init)
+    })
+    const id = new TestIdentity(cfg, f as any, () => t)
+    await id.init()
+    t += 6 * 60 * 1000
+    await expect(id.idToken()).rejects.toBeInstanceOf(TestIdentityError)
+  })
 })

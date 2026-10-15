@@ -90,13 +90,22 @@ export function buildTestMcpServer(deps: TestMcpDeps): MCPServer {
     return creating
   }
 
-  const ctx = async () => ({
-    tenantId: cfg.tenantId,
-    userId: identity.internalUserId,
-    agentId: cfg.agentId,
-    conversationId: await currentConversation(),
-    idToken: await identity.idToken(),
-  })
+  // Startup refuses an unlimited tenant, but the plan can change while the
+  // server runs; the balance is the only cap, so check again before paid work.
+  const assertCapped = async (): Promise<void> => {
+    if (await isUnlimited(cfg.tenantId)) throw new Error(`test tenant ${cfg.tenantId} is now unlimited; refusing paid calls until it has a capped balance again`)
+  }
+
+  const ctx = async () => {
+    await assertCapped()
+    return {
+      tenantId: cfg.tenantId,
+      userId: identity.internalUserId,
+      agentId: cfg.agentId,
+      conversationId: await currentConversation(),
+      idToken: await identity.idToken(),
+    }
+  }
 
   const product: Record<string, any> = {}
   for (const [name, tool] of Object.entries(deps.tools)) product[name] = wrapForTest(name, tool, ctx)
@@ -139,13 +148,14 @@ export function buildTestMcpServer(deps: TestMcpDeps): MCPServer {
         waitSeconds,
       }),
       execute: async (a) => {
+        await assertCapped()
         if (a.conversationId) await assertOwnConversation(a.conversationId)
         return driver.send(a)
       },
     }),
     olmo_read: createTool({
       id: 'olmo_read',
-      description: 'Read the current state of an Olmo chat turn, optionally waiting for it to finish or stop at a card.',
+      description: "Read the current state of an Olmo chat turn, optionally waiting for it to finish or stop at a card. State 'not_tracked' means this server holds no live run for the conversation (it restarted, never drove it, or the stream had already closed when a card was answered); the text then comes from the saved messages.",
       inputSchema: z.object({ conversationId: z.string(), waitSeconds }),
       execute: async (a) => driver.read(a.conversationId, a.waitSeconds),
     }),
@@ -223,6 +233,11 @@ export async function startTestMcp(over: StartTestMcpOverrides = {}): Promise<{ 
       return disabled(`credit cap check failed: ${(err as Error).message}`)
     }
     if (unlimited) return disabled('test tenant must have a capped balance')
+
+    // Route 1 passes this agent id straight into tool context, so it must be
+    // the test tenant's own agent. Loaded lazily, like the agent graph below.
+    const { agentBelongsToTenant } = await import('../usage.js')
+    if (!await agentBelongsToTenant(cfg.agentId, cfg.tenantId)) return disabled('agent not in test tenant')
 
     const identity = over.identity ?? new TestIdentity(cfg)
     try {
