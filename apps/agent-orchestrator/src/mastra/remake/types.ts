@@ -17,6 +17,8 @@ export interface RemakeLook {
   measuredPeople: boolean
   start: BodyReading | null; end: BodyReading | null
   moves: number
+  moveLines: string[]     // "at 1.2s: upper body moves up and right" (times from the look's start)
+  cameraLines: string[]   // "at 0.5s: the camera pans right"
   guideStartS: number; guideEndS: number   // measured frames used as pose-only guides
   needsEndStill: boolean
 }

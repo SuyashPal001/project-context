@@ -20,7 +20,7 @@ export function breakdown(o: Partial<Breakdown> = {}): Breakdown {
       keep_for_clone: [], swap_for_clone: [], never_copy: [],
     },
     measured: true, cuts: { cuts: [4], fades: [], duration_s: 10 }, hidden_cuts: [], sound: null,
-    pose: { model: 'm', moves: [], camera_moves: [], looks: [
+    pose: { model: 'm', moves: [{ t_s: 5.3, from_s: 5.1, to_s: 5.6, area: 'upper', direction: 'image-up', strength: 0.05 }], camera_moves: [], looks: [
       { label: 'a', start_s: 0, end_s: 4.1, frames_used: 20, people: 1, people_max: 1, no_person: false, main_start: body(), main_end: body(), leg_side_start: 'center', leg_side_end: 'center', body_angle_end: 0, key_frames: [{ t_s: 0.2, people: [] }, { t_s: 3.9, people: [] }] },
       { label: 'b', start_s: 4.1, end_s: 10, frames_used: 30, people: 1, people_max: 1, no_person: false, main_start: body({ knees: 'bent' }), main_end: body(), leg_side_start: 'center', leg_side_end: 'center', body_angle_end: 0, key_frames: [] },
     ] },

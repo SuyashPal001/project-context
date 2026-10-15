@@ -3,6 +3,8 @@ import { lookSpans } from '../tools/videoBreakdown/breakDownVideo.js'
 import type { BodyReading } from '../tools/videoBreakdown/aiServiceClient.js'
 import type { RemakeLook } from './types.js'
 
+const AREA: Record<string, string> = { upper: 'upper body', lower: 'legs' }
+const CAMERA: Record<string, string> = { 'pan-left': 'pans left', 'pan-right': 'pans right', 'tilt-up': 'tilts up', 'tilt-down': 'tilts down' }
 const raised = (b: BodyReading) => `${b.arms.left === 'raised'}${b.arms.right === 'raised'}`
 
 /** The body visibly differs between a look's start and end (so an end still is needed). */
@@ -23,10 +25,20 @@ export function remakeLooks(b: Breakdown): RemakeLook[] {
     const kf = m?.key_frames ?? []
     const start = m?.main_start ?? null, end = m?.main_end ?? null
     const moves = (l.moves ?? []).length + (b.pose?.moves ?? []).filter((x) => x.t_s >= startS && x.t_s < endS).length
+    // Moves as plain lines with times from the look's start, for clip prompts (directions as the viewer sees the frame).
+    const rel = (t: number) => `at ${Math.max(0, t - startS).toFixed(1)}s`
+    const say = (d: string) => d.split(' + ').map((x) => x.replace('image-', '')).join(' and ')
+    const measuredMoves = (b.pose?.moves ?? []).filter((x) => x.t_s >= startS && x.t_s < endS)
+      .map((x) => `${rel(x.t_s)}: ${AREA[x.area] ?? x.area} moves ${say(x.direction)}`)
+    const describedMoves = (l.moves ?? []).filter((x) => x.t_s >= startS && x.t_s < endS)
+      .map((x) => `${rel(x.t_s)}: ${x.limb}: ${x.how} (${say(x.direction)})`)
+    const cameraLines = (b.pose?.camera_moves ?? []).filter((x) => x.t_s >= startS && x.t_s < endS)
+      .map((x) => `${rel(x.t_s)}: the camera ${CAMERA[x.direction] ?? x.direction}`)
     return [{
       n: i + 1, label: l.label, startS, endS,
       outfit: l.outfit ?? '', expression: l.expression ?? '', startPose: l.start_pose ?? '', endPose: l.end_pose ?? '',
       measured: l.measured ?? null, people: m?.people ?? null, noPerson: m?.no_person ?? null, start, end, moves,
+      moveLines: [...measuredMoves, ...describedMoves], cameraLines,
       measuredPeople: m?.people != null && !(m.people === 0 && (m.people_max ?? 0) > 0),
       guideStartS: kf[0]?.t_s ?? startS + pad,
       guideEndS: kf.length ? kf[kf.length - 1].t_s : endS - pad,
