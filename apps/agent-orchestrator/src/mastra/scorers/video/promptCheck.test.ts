@@ -27,3 +27,14 @@ it('a judge that is down gives unknown, never pass', async () => {
   const r = await runGate(promptCheckScorer, 'prompt', { ask, prompt: 'she holds still', planLine: 'hold', look, startFrameObjects: [], keyMoments: [] }, [])
   expect(r.status).toBe('unknown')
 })
+it('does not block a prompt that says the smile is absent (review I2)', () => {
+  expect(precheckPrompt('Mouth closed, no smile, poised gaze', look)).toEqual([])
+  expect(precheckPrompt('She does not smile; lips together', look)).toEqual([])
+  expect(precheckPrompt('calm face without smiling or showing teeth', look)).toEqual([])
+})
+it('still blocks a positive smile next to a negated one', () => {
+  expect(precheckPrompt('no grin at first, then she smiles', look)).not.toEqual([])
+})
+it('treats "poised" alone as not a no-smile expression (review I2)', () => {
+  expect(precheckPrompt('she smiles softly', { expression: 'poised, soft smile' })).toEqual([])
+})

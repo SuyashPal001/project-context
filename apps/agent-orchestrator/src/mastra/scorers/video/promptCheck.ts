@@ -2,14 +2,27 @@ import { createScorer } from '@mastra/core/evals'
 import { askChecked, gatewayAsk, CheckUnavailableError, type AskFn } from '../../tools/tvcChecks.js'
 import { checkModel } from '../../tools/videoBreakdown/models.js'
 
-const NO_SMILE = /mouth (gently )?closed|no smile|lips closed|poised|composed/i
+const NO_SMILE = /mouth (gently )?closed|no smile|not smiling|lips (closed|together)|serious|neutral/i
 const SMILE_WORDS = /\b(smil\w*|laugh\w*|grin\w*|teeth)\b/i
+const NEGATION = /\b(no|not|without|never|don'?t|doesn'?t|isn'?t|nor)\b/i
+const CLAUSES = /[.;,!?]|\bthen\b|\bbut\b/i
+
+// A smile word counts only in a clause that does not negate it first
+// ("mouth closed, no smile" is faithful, not a smile; review I2).
+function positiveSmile(prompt: string): string | null {
+  for (const clause of prompt.split(CLAUSES)) {
+    const m = clause.match(SMILE_WORDS)
+    if (m && !NEGATION.test(clause.slice(0, m.index))) return m[0]
+  }
+  return null
+}
 
 // Free, no model call: the exact mistake the spike paid for (spec §7.1).
 export function precheckPrompt(prompt: string, look: { expression?: string }): string[] {
   const issues: string[] = []
-  if (look.expression && NO_SMILE.test(look.expression) && SMILE_WORDS.test(prompt)) {
-    issues.push(`prompt asks for "${prompt.match(SMILE_WORDS)![0]}" but the reference expression is "${look.expression}"`)
+  const word = positiveSmile(prompt)
+  if (look.expression && NO_SMILE.test(look.expression) && word) {
+    issues.push(`prompt asks for "${word}" but the reference expression is "${look.expression}"`)
   }
   return issues
 }
