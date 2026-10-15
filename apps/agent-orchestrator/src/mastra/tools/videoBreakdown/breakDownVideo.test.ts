@@ -15,7 +15,7 @@ vi.mock('./refineMoments.js', () => ({ refineMoments: (...a: unknown[]) => refin
 vi.mock('./checkShortShots.js', () => ({ checkShortShots: (...a: unknown[]) => checkShort(...a) }))
 
 const ctx = { idToken: 't', scopeId: 's', conversationId: 'c' }
-const overview = (styles: string[], looks = 4) => ({ change_style: styles, looks: Array.from({ length: looks }, (_, i) => ({ label: `l${i}`, approx_start_s: i * 3, approx_end_s: i * 3 + 2 })), subject_box: null })
+const overview = (styles: string[], looks = 4) => ({ change_style: styles, looks: Array.from({ length: looks }, (_, i) => ({ label: `l${i}`, approx_start_s: i * 3, approx_end_s: i * 3 + 2 })), subject_box: null, moments: [] as Array<{ t_s: number; what: string; why_it_matters: string }> })
 
 beforeEach(() => {
   watch.mockReset(); ai.mockReset(); refine.mockClear(); describeShots.mockReset(); checkShort.mockReset()
@@ -101,5 +101,28 @@ describe('breakDownVideo', () => {
     expect(fetchVideo).not.toHaveBeenCalled()
     expect(b.video).toMatchObject({ durationS: 14.9, platform: 'local', youtubeUrl: null })
     expect(ai.mock.calls[0][1]).toMatchObject({ path: '/golden/fan_reel.mp4' })
+  })
+  it('does not refine when cuts were not measured — everything stays unmeasured (review I1)', async () => {
+    watch.mockResolvedValue({ ...overview(['hard_cuts']), moments: [{ t_s: 2, what: 'x', why_it_matters: '' }] })
+    ai.mockImplementation(async (route: string) => { if (route === '/media/cuts') throw new Error('ai-service 502'); return { curve_db: [], events: [], rhythm: [], silent_from_s: null, bpm: null, beats_s: [], has_audio: true } })
+    const b = await breakDownVideo({ url: 'https://x.com/a/status/1' }, ctx)
+    expect(refine).not.toHaveBeenCalled()
+    expect(b.overview.moments[0]).toMatchObject({ t_s: 2, measured: false })
+  })
+  it('does not refine a hidden-changes video when hidden cuts failed (review I1)', async () => {
+    watch.mockResolvedValue(overview(['hidden_changes']))
+    ai.mockImplementation(async (route: string) => {
+      if (route === '/media/cuts') return { cuts: [], fades: [], duration_s: 14.9 }
+      if (route === '/media/hidden-cuts') throw new Error('ai-service 502')
+      return { curve_db: [], events: [], rhythm: [], silent_from_s: null, bpm: null, beats_s: [], has_audio: true }
+    })
+    await breakDownVideo({ url: 'https://www.instagram.com/p/x/' }, ctx)
+    expect(refine).not.toHaveBeenCalled()
+  })
+  it('excludes fades from refinement (review I1)', async () => {
+    watch.mockResolvedValue(overview(['hard_cuts']))
+    ai.mockImplementation(async (route: string) => route === '/media/cuts' ? { cuts: [], fades: [[10, 11.5]], duration_s: 14.9 } : { curve_db: [], events: [], rhythm: [], silent_from_s: null, bpm: null, beats_s: [], has_audio: true })
+    await breakDownVideo({ url: 'https://x.com/a/status/1' }, ctx)
+    expect(refine.mock.calls[0][2]).toEqual([[10, 11.5]])
   })
 })

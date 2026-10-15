@@ -48,19 +48,33 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
     aiService<SoundResult>('/media/sound', { path: video.filePath }).catch((e: Error) => { warnings.push(`sound not measured (${e.message})`); return null }),
   ])
   let hidden: HiddenCutsResult['hidden_cuts'] = []
+  let hiddenFailed = false
   if (overview.change_style.includes('hidden_changes') && overview.looks.length > 1) {
     try {
       hidden = (await aiService<HiddenCutsResult>('/media/hidden-cuts', { path: video.filePath, looks: overview.looks.map((l) => ({ label: l.label, approx_start_s: l.approx_start_s, approx_end_s: l.approx_end_s })), subject_box: overview.subject_box ?? undefined })).hidden_cuts
-    } catch (e) { warnings.push(`hidden cuts not measured (${(e as Error).message})`) }
+    } catch (e) { hiddenFailed = true; warnings.push(`hidden cuts not measured (${(e as Error).message})`) }
   }
   const measured = cuts !== null && sound !== null
-  const exclude: Array<[number, number]> = [
-    ...(cuts?.cuts ?? []).map((c) => [Math.round((c - 0.1) * 100) / 100, Math.round((c + 0.1) * 100) / 100] as [number, number]),
-    ...hidden.map((h) => h.covered_s),
-  ]
-  const r = await refineMoments(video.filePath, overview, exclude)
-  const refinedOverview = r.overview
-  if (r.unmeasured) warnings.push(`${r.unmeasured} moment time(s) could not be measured and are Gemini's estimate`)
+  let refinedOverview: WatchOverview
+  // Refining without knowing every cut and covered span would snap moments onto
+  // a cut or the occluder and call them measured (review I1) — keep them unmeasured.
+  if (cuts === null || hiddenFailed) {
+    refinedOverview = {
+      ...overview,
+      moments: overview.moments.map((m) => ({ ...m, measured: false })),
+      looks: overview.looks.map((l) => ({ ...l, moves: (l.moves ?? []).map((v) => ({ ...v, measured: false })) })),
+    }
+    warnings.push("moment times not measured (cuts or hidden cuts unavailable); they are Gemini's estimate")
+  } else {
+    const exclude: Array<[number, number]> = [
+      ...cuts.cuts.map((c) => [Math.round((c - 0.1) * 100) / 100, Math.round((c + 0.1) * 100) / 100] as [number, number]),
+      ...cuts.fades,
+      ...hidden.map((h) => h.covered_s),
+    ]
+    const r = await refineMoments(video.filePath, overview, exclude)
+    refinedOverview = r.overview
+    if (r.unmeasured) warnings.push(`${r.unmeasured} moment time(s) could not be measured and are Gemini's estimate`)
+  }
   const bounds = mergeBounds(video.durationS, cuts?.cuts ?? [], hidden.map((h) => h.at_s), (cuts?.fades ?? []).map((f) => f[0]))
   let shots: Shot[]
   let soundArc = ''
