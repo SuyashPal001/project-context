@@ -29,3 +29,10 @@ Confirm with the user before restarting any PM2 process.
 3. Studio: the six video scorers appear after the orchestrator restart. (The local-file breakdown is deliberately not a Studio workflow: Studio has no auth.)
 4. Golden set before any prompt/model change: GOLDEN_DIR=<folder with fan_reel.mp4, sony.mp4> pnpm tsx scripts/video-golden-set.ts → must print "passed". Needs a reachable gateway and ai-service (INFERENCE_GATEWAY_URL, AI_SERVICE_URL, INTERNAL_SERVICE_KEY) and MEDIA_DIR covering GOLDEN_DIR. As of 2026-10-15 (after the review fixes) it prints "scored": gates pass (cuts, hidden cuts), but moments and leg sides score low because Gemini reads most looks' leg side as "center" and its moment hints vary run to run — a known reading gap, not a deploy blocker for the breakdown itself.
 5. compare_to_reference needs a tenant (refuses without one) and uploads a reference|remake evidence image for each difference into the conversation's generated files.
+
+# Pose measurement additions
+
+1. ai-service: `pip install -r requirements.txt` again (adds rtmlib, onnxruntime), then restart PM2 `ai-service`.
+2. Pre-download the pose model once so the first breakdown is not slow or blocked: `cd apps/ai-service && .venv/bin/python -c "from media.pose import _pose_model; _pose_model()"` (fetches RTMPose-s from download.openmmlab.com into ~/.cache/rtmlib).
+3. Time one `/media/pose` call on the VM (Mac: ~5s for a 15s reel) and note it.
+4. Orchestrator restart picks up the `measure_pose` tool (Olmo + Director) and the measured leg sides in `break_down_video` (`leg_side_source: "measured" | "gemini"`).
