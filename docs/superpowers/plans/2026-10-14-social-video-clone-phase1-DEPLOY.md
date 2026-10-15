@@ -36,3 +36,10 @@ Confirm with the user before restarting any PM2 process.
 2. Pre-download the person detector and pose models once so the first breakdown is not slow or blocked: `cd apps/ai-service && .venv/bin/python -c "from media.pose import _load; _load()"` (fetches YOLOX-tiny and RTMPose-s from download.openmmlab.com into ~/.cache/rtmlib).
 3. Time one `/media/pose` call on the VM (Mac: ~5s for a 15s reel; VM measured 15.5s for a 14.8s reel on 2026-10-15).
 4. Orchestrator restart picks up the `measure_pose` tool (Olmo + Director) and the measured leg sides in `break_down_video` (`leg_side_source: "measured" | "gemini"`).
+
+## Phase 3a (remake plan, casting, stills, free preview)
+
+1. Pull main; `pm2 restart ai-service` (adds `/media/pose-image`; no new packages). Check: `curl -s -o /dev/null -w '%{http_code}' -X POST localhost:3004/media/pose-image -H "x-internal-service-key: $INTERNAL_SERVICE_KEY" -H 'content-type: application/json' -d '{"path":"/nonexistent.jpg"}'` prints 400 or 403, not 404.
+2. Rebuild and restart the orchestrator (ask first). The remake workflow uses the existing Mastra Postgres store on its own private Mastra instance; no migration.
+3. Re-seed official skills (template-video step 8): `pnpm --filter @serverless-saas/agent-api db:seed:official-skills`.
+4. Check `/studio/api/workflows` does NOT list `video-remake` (it must never be on the Studio-mounted instance).
