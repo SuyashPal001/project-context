@@ -44,3 +44,11 @@ Confirm with the user before restarting any PM2 process.
 3. Re-seed official skills (template-video step 8): `pnpm --filter @serverless-saas/agent-api db:seed:official-skills`.
 4. Check `/studio/api/workflows` does NOT list `video-remake` (it must never be on the Studio-mounted instance).
 5. Restarting the orchestrator while a remake is making its stills loses that run (it stays "working" and cannot resume). Runs waiting on the plan review or the cast pick survive restarts. Avoid restarts while a remake is mid-stills.
+
+## Phase 3b (clips, music, final checks)
+
+1. Pull main. Restart the **inference-gateway** (`pm2 restart inference-gateway`; adds Veo 3.1 Fast first+last). Ask first.
+2. Seed the Veo 3.1 Fast rate: `cd packages/foundation/database && pnpm db:seed` (it versions rate changes). Check: `select subject, pricing_schema from credit_rates where subject = 'google/veo-3.1-fast-generate-001' and is_active` returns one row of 80 credits (80000000 micro).
+3. Check the VM's Vertex project can call `veo-3.1-fast-generate-001` in us-central1 (same service account as Omni). A 403 means the model isn't enabled for the project.
+4. Rebuild and restart the orchestrator (ask first). Re-seed official skills (template-video step 9): `pnpm --filter @serverless-saas/agent-api db:seed:official-skills`.
+5. A restart during "working" (stills or clips) loses that run; runs waiting at the plan, the cast pick or the preview survive.

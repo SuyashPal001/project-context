@@ -14,3 +14,12 @@ it('step 8 names no internals', () => {
   const step8 = skill.split(/^8\. /m)[1] ?? ''
   expect(step8).not.toMatch(/download|server|gemini|ai-service|gateway|yt-dlp/i)
 })
+
+it('step 9 covers the preview review, the clips approval and the delivery note, with no internals', () => {
+  const step9 = skill.split(/^9\. /m)[1] ?? ''
+  expect(step9).toMatch(/approve_preview/)
+  expect(step9).toMatch(/stop/)
+  expect(step9).toMatch(/AI-generated/)
+  expect(step9).not.toMatch(/veo|omni|lyria|gemini|download|server|gateway/i)
+  expect(skill).toMatch(/^8\. When the user wants that video remade/m) // append-only
+})
