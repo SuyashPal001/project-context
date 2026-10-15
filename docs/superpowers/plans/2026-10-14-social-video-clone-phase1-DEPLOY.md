@@ -33,6 +33,6 @@ Confirm with the user before restarting any PM2 process.
 # Pose measurement additions
 
 1. ai-service: `pip install -r requirements.txt` again (adds rtmlib, onnxruntime), then restart PM2 `ai-service`.
-2. Pre-download the pose model once so the first breakdown is not slow or blocked: `cd apps/ai-service && .venv/bin/python -c "from media.pose import _pose_model; _pose_model()"` (fetches RTMPose-s from download.openmmlab.com into ~/.cache/rtmlib).
+2. Pre-download the person detector and pose models once so the first breakdown is not slow or blocked: `cd apps/ai-service && .venv/bin/python -c "from media.pose import _load; _load()"` (fetches YOLOX-tiny and RTMPose-s from download.openmmlab.com into ~/.cache/rtmlib).
 3. Time one `/media/pose` call on the VM (Mac: ~5s for a 15s reel; VM measured 15.5s for a 14.8s reel on 2026-10-15).
 4. Orchestrator restart picks up the `measure_pose` tool (Olmo + Director) and the measured leg sides in `break_down_video` (`leg_side_source: "measured" | "gemini"`).
