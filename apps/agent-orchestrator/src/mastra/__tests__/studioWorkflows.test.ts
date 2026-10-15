@@ -8,3 +8,8 @@ it('does not register the local-file video breakdown workflow on the Mastra inst
   const src = readFileSync(join(import.meta.dirname, '..', 'index.ts'), 'utf8')
   expect(src).not.toMatch(/video-breakdown-local|videoBreakdownWorkflow/)
 })
+
+it('does not register the paid remake workflow on the Studio-mounted Mastra instance', () => {
+  const src = readFileSync(join(import.meta.dirname, '..', 'index.ts'), 'utf8')
+  expect(src).not.toMatch(/video-remake|videoRemakeWorkflow|remake\/workflow/)
+})
