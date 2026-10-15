@@ -29,7 +29,7 @@ const STYLES = new Set(['hard_cuts', 'hidden_changes', 'fades', 'near_still'])
 
 export interface WatchOverview {
   format: string; layout: string; change_style: Array<'hard_cuts' | 'hidden_changes' | 'fades' | 'near_still'>
-  looks: Array<{ label: string; approx_start_s: number; approx_end_s: number; outfit?: string; expression?: string; start_pose?: string; end_pose?: string; moves?: Array<{ t_s: number; limb: string; direction: string; how: string; measured?: boolean }>; leg_side?: string }>
+  looks: Array<{ label: string; approx_start_s: number; approx_end_s: number; outfit?: string; expression?: string; start_pose?: string; end_pose?: string; moves?: Array<{ t_s: number; limb: string; direction: string; how: string; measured?: boolean }>; leg_side?: string; leg_side_start?: string; leg_side_source?: 'measured' | 'gemini'; body_angle?: number | null }>
   subject_box: [number, number, number, number] | null
   story: { setup: string; cause: string; payoff: string }
   moments: Array<{ t_s: number; what: string; why_it_matters: string; measured?: boolean }>

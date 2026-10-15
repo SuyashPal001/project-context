@@ -2,7 +2,7 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { fetchVideo, probe, type FetchedVideo } from './fetchVideo.js'
 import { watchVideo, type WatchOverview } from './watchVideo.js'
-import { aiService, type CutsResult, type HiddenCutsResult, type SoundResult } from './aiServiceClient.js'
+import { aiService, type CutsResult, type HiddenCutsResult, type SoundResult, type PoseResult } from './aiServiceClient.js'
 import { describeShots, type Shot } from './describeShots.js'
 import { checkShortShots } from './checkShortShots.js'
 import { refineMoments } from './refineMoments.js'
@@ -10,6 +10,7 @@ import { refineMoments } from './refineMoments.js'
 export interface Breakdown {
   video: Omit<FetchedVideo, 'filePath'>; overview: WatchOverview; measured: boolean
   cuts: CutsResult | null; hidden_cuts: HiddenCutsResult['hidden_cuts']; sound: Omit<SoundResult, 'curve_db'> | null
+  pose: PoseResult | null
   shots: Shot[]; sound_arc: string; short_shot_check: { checked: number; status: 'ok' | 'unknown' }; warnings: string[]
 }
 
@@ -26,6 +27,19 @@ export function fillMissingShots(bounds: number[], shots: Shot[]): Shot[] {
   const byN = new Map(shots.map((s) => [s.n, s]))
   // Measured boundaries always win over the model's own shot times (review I1).
   return bounds.slice(0, -1).map((b, i) => ({ ...(byN.get(i + 1) ?? { subject: 'unclear', action: 'unclear' }), n: i + 1, start_s: b, end_s: bounds[i + 1] }))
+}
+
+// Each look's span: from the hidden cuts and their labels when there are any,
+// else the looks' own rough bounds (empty ones dropped).
+export function lookSpans(overview: Pick<WatchOverview, 'looks'>, hidden: HiddenCutsResult['hidden_cuts'], durationS: number): Array<{ label: string; start_s: number; end_s: number }> {
+  const hc = [...hidden].sort((a, b) => a.at_s - b.at_s)
+  if (hc.length && hc.every((h) => h.from && h.to)) {
+    const bounds = [0, ...hc.map((h) => h.at_s), durationS]
+    return bounds.slice(0, -1).map((b, i) => ({ label: i === 0 ? hc[0].from : hc[i - 1].to, start_s: b, end_s: bounds[i + 1] }))
+  }
+  return overview.looks
+    .map((l) => ({ label: l.label, start_s: Math.max(0, l.approx_start_s), end_s: Math.min(durationS, l.approx_end_s) }))
+    .filter((l) => Number.isFinite(l.start_s) && Number.isFinite(l.end_s) && l.end_s > l.start_s)
 }
 
 // The latest breakdown per tenant scope and link, so a later comparison checks the
@@ -70,6 +84,7 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
   }
   const measured = cuts !== null && sound !== null
   let refinedOverview: WatchOverview
+  let pose: PoseResult | null = null
   // Refining without knowing every cut and covered span would snap moments onto
   // a cut or the occluder and call them measured (review I1) — keep them unmeasured.
   if (cuts === null || hiddenFailed) {
@@ -88,6 +103,24 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
     const r = await refineMoments(video.filePath, overview, exclude)
     refinedOverview = r.overview
     if (r.unmeasured) warnings.push(`${r.unmeasured} moment time(s) could not be measured and are Gemini's estimate`)
+    // Leg side and body angle are MEASURED from the frames; Gemini's reading was wrong
+    // for most looks on the golden set (spec §8a: no paid step from a model's guess).
+    const spans = lookSpans(overview, hidden, video.durationS)
+    if (spans.length) {
+      try {
+        pose = await aiService<PoseResult>('/media/pose', { path: video.filePath, looks: spans, subject_box: overview.subject_box ?? undefined, exclude })
+      } catch (e) { warnings.push(`pose not measured (${(e as Error).message}); leg sides are Gemini's reading`) }
+    }
+  }
+  const measuredLooks = new Map((pose?.looks ?? []).map((l) => [l.label, l]))
+  refinedOverview = {
+    ...refinedOverview,
+    looks: refinedOverview.looks.map((l) => {
+      const m = measuredLooks.get(l.label)
+      return m && m.leg_side_end !== 'unknown'
+        ? { ...l, leg_side: m.leg_side_end, leg_side_start: m.leg_side_start, leg_side_source: 'measured' as const, body_angle: m.body_angle_end }
+        : { ...l, leg_side_source: 'gemini' as const }
+    }),
   }
   const bounds = mergeBounds(video.durationS, cuts?.cuts ?? [], hidden.map((h) => h.at_s), (cuts?.fades ?? []).map((f) => f[0]))
   let shots: Shot[]
@@ -115,7 +148,7 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
   if (check.status === 'unknown') warnings.push('short-shot picture check unavailable')
   const { filePath: _fp, ...videoOut } = video
   const soundOut = sound ? (({ curve_db: _c, ...rest }) => rest)(sound) : null
-  return { video: videoOut, overview: refinedOverview, measured, cuts, hidden_cuts: hidden, sound: soundOut, shots, sound_arc: soundArc, short_shot_check: { checked: check.checked, status: check.status }, warnings }
+  return { video: videoOut, overview: refinedOverview, measured, pose, cuts, hidden_cuts: hidden, sound: soundOut, shots, sound_arc: soundArc, short_shot_check: { checked: check.checked, status: check.status }, warnings }
 }
 
 export const breakDownVideoTool = createTool({

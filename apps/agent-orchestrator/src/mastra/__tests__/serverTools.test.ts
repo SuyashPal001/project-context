@@ -80,6 +80,7 @@ describe('SERVER_TOOLS', () => {
       'internet_search',
       'list_casting_assets',
       'list_folder',
+      'measure_pose',
       'read_file',
       'render_canvas',
       'request_upload',

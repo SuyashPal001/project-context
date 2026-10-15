@@ -1,5 +1,5 @@
 export { fetchVideoTool } from './fetchVideo.js'
 export { watchVideoTool } from './watchVideo.js'
-export { findCutsTool, findHiddenCutsTool, soundTimelineTool } from './measureTools.js'
+export { findCutsTool, findHiddenCutsTool, soundTimelineTool, measurePoseTool } from './measureTools.js'
 export { breakDownVideoTool } from './breakDownVideo.js'
 export { compareToReferenceTool } from './compareToReference.js'

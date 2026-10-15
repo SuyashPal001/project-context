@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mergeBounds, fillMissingShots, breakDownVideo, breakDownLocalFile, recentBreakdown } from './breakDownVideo.js'
+import { mergeBounds, fillMissingShots, breakDownVideo, breakDownLocalFile, recentBreakdown, lookSpans } from './breakDownVideo.js'
 import { fetchVideo } from './fetchVideo.js'
 
 const watch = vi.fn()
@@ -131,5 +131,45 @@ describe('breakDownVideo', () => {
     const b = await breakDownVideo({ url: 'https://x.com/a/status/9' }, ctx)
     expect(recentBreakdown({ url: 'https://x.com/a/status/9' }, ctx)).toBe(b)
     expect(recentBreakdown({ url: 'https://x.com/a/status/9' }, { ...ctx, scopeId: 'other-tenant' })).toBeUndefined()
+  })
+  it('measures leg side per look and replaces Gemini\'s reading with it', async () => {
+    watch.mockResolvedValue({ ...overview(['hidden_changes'], 2), subject_box: [0.1, 0.05, 0.9, 0.95], looks: [{ label: 'l0', approx_start_s: 0, approx_end_s: 5, leg_side: 'center' }, { label: 'l1', approx_start_s: 6, approx_end_s: 14, leg_side: 'center' }] })
+    ai.mockImplementation(async (route: string) => {
+      if (route === '/media/cuts') return { cuts: [], fades: [], duration_s: 14.9 }
+      if (route === '/media/hidden-cuts') return { hidden_cuts: [{ from: 'l0', to: 'l1', at_s: 5.4, covered_s: [4.6, 6.2] }], cover_threshold: 0.6 }
+      if (route === '/media/pose') return { model: 'rtmpose-s', moves: [{ t_s: 3.2, from_s: 3, to_s: 3.6, part: 'legs', direction: 'image-right', strength: 0.2 }], looks: [
+        { label: 'l0', start_s: 0, end_s: 5.4, leg_side_start: 'center', leg_side_end: 'image-right', body_angle_end: 4.1, frames_used: 30 },
+        { label: 'l1', start_s: 5.4, end_s: 14.9, leg_side_start: 'unknown', leg_side_end: 'unknown', body_angle_end: null, frames_used: 1 },
+      ] }
+      return { curve_db: [], events: [], rhythm: [], silent_from_s: null, bpm: null, beats_s: [], has_audio: true }
+    })
+    const b = await breakDownVideo({ url: 'https://www.instagram.com/p/x/' }, ctx)
+    const poseCall = ai.mock.calls.find((c) => c[0] === '/media/pose')!
+    expect(poseCall[1]).toMatchObject({ looks: [{ label: 'l0', start_s: 0, end_s: 5.4 }, { label: 'l1', start_s: 5.4, end_s: 14.9 }], subject_box: [0.1, 0.05, 0.9, 0.95], exclude: [[4.6, 6.2]] })
+    expect(b.overview.looks[0]).toMatchObject({ leg_side: 'image-right', leg_side_start: 'center', leg_side_source: 'measured', body_angle: 4.1 })
+    expect(b.overview.looks[1]).toMatchObject({ leg_side: 'center', leg_side_source: 'gemini' })
+    expect(b.pose?.moves[0]).toMatchObject({ direction: 'image-right' })
+  })
+  it('keeps Gemini\'s leg sides, marked as such, when pose cannot be measured', async () => {
+    watch.mockResolvedValue({ ...overview(['hard_cuts'], 1), looks: [{ label: 'l0', approx_start_s: 0, approx_end_s: 14, leg_side: 'image-left' }] })
+    ai.mockImplementation(async (route: string) => {
+      if (route === '/media/cuts') return { cuts: [], fades: [], duration_s: 14.9 }
+      if (route === '/media/pose') throw new Error('ai-service 502')
+      return { curve_db: [], events: [], rhythm: [], silent_from_s: null, bpm: null, beats_s: [], has_audio: true }
+    })
+    const b = await breakDownVideo({ url: 'https://x.com/a/status/1' }, ctx)
+    expect(b.overview.looks[0]).toMatchObject({ leg_side: 'image-left', leg_side_source: 'gemini' })
+    expect(b.warnings.join(' ')).toMatch(/pose not measured/)
+  })
+})
+
+describe('lookSpans', () => {
+  it('uses the hidden cuts and their labels when there are any', () => {
+    const o = { looks: [{ label: 'a', approx_start_s: 0, approx_end_s: 4 }, { label: 'b', approx_start_s: 6, approx_end_s: 9 }] } as any
+    expect(lookSpans(o, [{ from: 'a', to: 'b', at_s: 5.4, covered_s: [4.6, 6.2] }], 10)).toEqual([{ label: 'a', start_s: 0, end_s: 5.4 }, { label: 'b', start_s: 5.4, end_s: 10 }])
+  })
+  it('falls back to the looks\' own rough bounds, dropping empty ones', () => {
+    const o = { looks: [{ label: 'a', approx_start_s: 0, approx_end_s: 4 }, { label: 'b', approx_start_s: 9, approx_end_s: 9 }] } as any
+    expect(lookSpans(o, [], 10)).toEqual([{ label: 'a', start_s: 0, end_s: 4 }])
   })
 })

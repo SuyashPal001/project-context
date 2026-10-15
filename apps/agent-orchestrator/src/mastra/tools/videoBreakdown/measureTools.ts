@@ -1,7 +1,7 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { fetchVideo } from './fetchVideo.js'
-import { aiService, type CutsResult, type HiddenCutsResult, type SoundResult } from './aiServiceClient.js'
+import { aiService, type CutsResult, type HiddenCutsResult, type SoundResult, type PoseResult } from './aiServiceClient.js'
 
 type Ctx = { idToken: string; scopeId: string; conversationId: string }
 
@@ -55,5 +55,24 @@ export const soundTimelineTool = createTool({
   execute: async (input, ec) => {
     const ctx = ctxOf(ec); if (!ctx) return { success: false, error: 'no_active_session' }
     return wrap(async () => aiService<SoundResult>('/media/sound', { path: (await shortVideo(input, ctx)).filePath }))
+  },
+})
+
+export const measurePoseTool = createTool({
+  id: 'measure_pose',
+  description: 'Free: MEASURED body position from the video frames (pose joints + optical flow), never a model guess. Per look: leg side at the start and end (image-left / image-right / center / unknown) and body angle (slant); plus each leg move with its exact time and direction. Trust this over watch_video\'s leg_side. Give the looks (label, start_s, end_s) — e.g. from break_down_video — or leave them out to measure the whole video as one look. Pass subject_box and covered spans (exclude) when known.',
+  inputSchema: src.extend({
+    looks: z.array(z.object({ label: z.string(), start_s: z.number(), end_s: z.number() })).optional(),
+    subject_box: z.array(z.number()).length(4).optional(),
+    exclude: z.array(z.array(z.number()).length(2)).optional(),
+  }),
+  outputSchema: out,
+  execute: async (input, ec) => {
+    const ctx = ctxOf(ec); if (!ctx) return { success: false, error: 'no_active_session' }
+    return wrap(async () => {
+      const v = await shortVideo(input, ctx)
+      const looks = input.looks?.length ? input.looks : [{ label: 'whole video', start_s: 0, end_s: v.durationS }]
+      return aiService<PoseResult>('/media/pose', { path: v.filePath, looks, subject_box: input.subject_box, exclude: input.exclude ?? [] })
+    })
   },
 })
