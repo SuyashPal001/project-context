@@ -52,7 +52,7 @@ describe('makeClip', () => {
     const r = await makeClip(specs[1], ctx, deps)
     // M12: the plainer-wording Veo retry comes first (also refused here), then one Omni attempt.
     expect(deps.generateVeoClip).toHaveBeenCalledTimes(2)
-    expect(deps.generateOmniClip).toHaveBeenCalledWith(expect.objectContaining({ startImageFileId: 's2', durationSeconds: 6 }), expect.anything(), clipSlot(2, 0, 'fallback'))
+    expect(deps.generateOmniClip).toHaveBeenCalledWith(expect.objectContaining({ startImageFileId: 's2', durationSeconds: 7 }), expect.anything(), clipSlot(2, 0, 'fallback')) // Omni's own length: 5.9s + warm-up + margin
     expect(deps.promptGate).toHaveBeenCalledTimes(3)
     expect(r.result).toMatchObject({ engine: 'omni', fallback: true, status: 'passed' })
     expect(r.ledger.map((e) => e.outcome)).toEqual(['retried', 'retried', 'kept'])
@@ -89,4 +89,21 @@ it('clip slots never collide with each other or with still slots (< 1000)', () =
   const all = [1, 2, 3, 40].flatMap((n) => [0, 1].flatMap((a) => (['normal', 'plain', 'fallback'] as const).map((v) => clipSlot(n, a, v))))
   expect(new Set(all).size).toBe(all.length)
   expect(Math.min(...all)).toBeGreaterThanOrEqual(1000)
+})
+
+// Shared clip timing (tools/clipTiming, 2026-10-16): the fit decided per engine reaches the prompt and the trim.
+describe('makeClip keeps real speed', () => {
+  it('a short look: the Veo clip is cut at real speed and its prompt holds the pose after the look', async () => {
+    const { plan, deps, ctx } = await setup()
+    plan.looks[0] = { ...plan.looks[0], endS: 1.3 }; plan.looks[1] = { ...plan.looks[1], startS: 1.3 }
+    const [s1] = clipSpecs(plan, [{ look: 1, kind: 'start', fileId: 's1', status: 'passed', reasons: [] }, { look: 1, kind: 'end', fileId: 'e1', status: 'passed', reasons: [] }])
+    await makeClip(s1, ctx, deps)
+    expect(deps.fitToFrames).toHaveBeenCalledWith('/m/veo-1', s1.frames, expect.any(String), { width: 720, height: 1280 }, 30, { startS: 0 })
+    expect((deps.generateVeoClip as any).mock.calls[0][0].prompt).toMatch(/Finish every move by 1\.3s/)
+  })
+  it('a Veo refusal falls back to Omni at Omni\'s own length, trimmed past its warm-up', async () => {
+    const { specs, deps, ctx } = await setup({ generateVeoClip: vi.fn(async () => ({ refused: true, refusalReason: 'CONTENT_BLOCKED' })) } as never)
+    await makeClip(specs[1], ctx, deps)
+    expect(deps.fitToFrames).toHaveBeenCalledWith('/m/omni-1', specs[1].frames, expect.any(String), { width: 720, height: 1280 }, 30, { startS: 0.4 })
+  })
 })

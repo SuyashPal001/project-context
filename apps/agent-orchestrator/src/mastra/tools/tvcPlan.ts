@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { LEGAL_MAX_LINES, countLegalWords, escapeAssText, firstWords, legalHoldSeconds, legalLineCount, nominalFrame, tooWideWord } from './legalText.js'
 import { MOTIONS, priceError, priceSchema, priceTooShort, priceTooShortReason } from './textMotion.js'
 import { MAX_VOICEOVER_BLOCKS } from './mixVoiceover.js'
+import { generateSeconds } from './clipTiming.js'
 
 // The TVC ad's plan and its craft rules, checked in code so a long skill text
 // is not the only thing holding them (spec 2026-10-05-tvc-ad-design.md §4-5).
@@ -199,7 +200,7 @@ export function minShotSeconds(plan: TvcPlan, shot: TvcShot): number {
 }
 /** P1: the 0.4s warm-up plus a margin, or the line's length; a continuing shot is trimmed from 0. */
 export function generateSecondsFor(shot: TvcShot): number {
-  const base = shot.continuesFrom ? Math.ceil(shot.durationSeconds + 0.3) : Math.ceil(shot.durationSeconds + 0.4 + 0.3)
+  const base = generateSeconds(shot.durationSeconds, { continuing: !!shot.continuesFrom })!
   const line = shot.audio === 'line' && shot.line ? Math.ceil(countWords(shot.line) / WORDS_PER_SECOND + 1) : 0
   return clamp(Math.max(base, line), 3, 10)
 }

@@ -25,7 +25,7 @@ describe('clipSpecs', () => {
   it('Omni from the start still when there is no usable end still', async () => {
     const s = clipSpecs(await plan(), [ok(1, 'start'), ok(2, 'start'), ok(2, 'end', 'failed')])
     expect(s[0]).toMatchObject({ engine: 'omni', seconds: 5 })
-    expect(s[1]).toMatchObject({ engine: 'omni', seconds: 6, end: null })
+    expect(s[1]).toMatchObject({ engine: 'omni', seconds: 7, end: null }) // 5.9s + warm-up + margin (tools/clipTiming)
   })
   it('no usable start still keeps the part as a still, with a plain reason', async () => {
     const s = clipSpecs(await plan(), [ok(1, 'start', 'blocked'), ok(2, 'start'), ok(2, 'end')])
@@ -62,5 +62,42 @@ describe('clipPrompt', () => {
     const p = await plan()
     expect(clipGateInput(p, p.looks[1], 'X').keyMoments).toEqual(['stands up'])
     expect(clipGateInput(p, p.looks[0], 'X').keyMoments).toEqual([])
+  })
+})
+
+// Shared clip timing (user, 2026-10-16): the fan reel's 1.3s look was a 4s clip played 3x fast. A clip is
+// now generated long enough and trimmed at real speed; it is retimed only when the speed-up is unnoticeable.
+describe('clips keep real speed (tools/clipTiming)', () => {
+  it('a short look gets the smallest Veo length that covers it and is trimmed, not sped up', async () => {
+    const p = await plan()
+    p.looks[0] = { ...p.looks[0], endS: 1.3 }; p.looks[1] = { ...p.looks[1], startS: 1.3 }
+    const s = clipSpecs(p, [ok(1, 'start'), ok(1, 'end'), ok(2, 'start'), ok(2, 'end')])
+    expect(s[0]).toMatchObject({ engine: 'veo', seconds: 4, fit: { mode: 'trim', startS: 0 } })
+  })
+  it('a Veo clip within the unnoticeable speed-up is retimed so its last frame stays the end still', async () => {
+    const s = clipSpecs(await plan(), [ok(1, 'start'), ok(2, 'start'), ok(2, 'end')])
+    expect(s[1]).toMatchObject({ engine: 'veo', seconds: 6, fit: { mode: 'retime' } })
+  })
+  it('a look of 4.8s gets a 6s Veo clip cut at real speed (4s would be 1.2x slow)', async () => {
+    const p = await plan()
+    p.looks[1] = { ...p.looks[1], endS: p.looks[1].startS + 4.8 }
+    const s = clipSpecs(p, [ok(1, 'start'), ok(2, 'start'), ok(2, 'end')])
+    expect(s[1]).toMatchObject({ engine: 'veo', seconds: 6, fit: { mode: 'trim', startS: 0 } })
+  })
+  it('an Omni clip covers its warm-up and is trimmed past it; a continuing part starts at 0', async () => {
+    const p = await plan()
+    const s = clipSpecs(p, [ok(1, 'start'), ok(2, 'start'), ok(2, 'end', 'failed')])
+    expect(s[0]).toMatchObject({ engine: 'omni', seconds: 5, fit: { mode: 'trim', startS: 0.4 } })
+    p.looks[1] = { ...p.looks[1], continues: true }
+    const c = clipSpecs(p, [ok(1, 'start'), ok(1, 'end'), ok(2, 'start'), ok(2, 'end', 'failed')])
+    expect(c[1].fit).toEqual({ mode: 'trim', startS: 0 })
+  })
+  it('a trimmed clip prompt keeps real move times and holds the end pose after the look', async () => {
+    const p = await plan()
+    const s = clipPrompt(p, p.looks[1], brand, 'veo', 8, false, { mode: 'trim', startS: 0 })
+    expect(s).toMatch(/at 1\.9s: legs/)
+    expect(s).toMatch(/Finish every move by 5\.9s, then hold that last pose/)
+    const o = clipPrompt(p, p.looks[1], brand, 'omni', 7, false, { mode: 'trim', startS: 0.4 })
+    expect(o).toMatch(/at 2\.3s: legs/)
   })
 })

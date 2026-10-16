@@ -5,11 +5,14 @@ import { personIn, refOf } from './looks.js'
 import { CAST_BY_IMAGE } from './prompts.js'
 import type { Brand, PlanLine, RemakeLook, RemakePlan, StillResult } from './types.js'
 import { usableStill } from './preview.js'
+import { generateSeconds, clipFit, pickLength, WARM_UP_S, type ClipFit } from '../tools/clipTiming.js'
 
 export const CLIP_FPS = 30
 const VEO_SECONDS = [4, 6, 8] as const
 
-export interface ClipSpec { look: RemakeLook; engine: 'veo' | 'omni' | 'none'; seconds: number; frames: number; start: string | null; end: string | null; reason?: string }
+export interface ClipSpec { look: RemakeLook; engine: 'veo' | 'omni' | 'none'; seconds: number; frames: number; start: string | null; end: string | null; reason?: string
+  /** How the clip becomes its look (tools/clipTiming): retimed when the speed-up can't be seen, else trimmed at real speed. */
+  fit?: ClipFit }
 
 /** Frames per look from cumulative end edges, so the total is exactly round(total × 30)
  *  and any gap or overlap between measured spans is absorbed by the following look. */
@@ -34,13 +37,22 @@ export function clipSpecs(plan: RemakePlan, stills: StillResult[]): ClipSpec[] {
     const end = usable(stills.find((s) => s.look === look.n && s.kind === 'end'))
     const base = { look, frames: frames.get(look.n) ?? Math.round(len * CLIP_FPS), start, end }
     if (!start) return { ...base, engine: 'none', seconds: 0, end: null, reason: 'its still wasn’t made, so this part stays a still' }
-    // The Veo length nearest the look (the clip is retimed to the look, so the end still is
-    // always its last frame); a look over 8s can't be one Veo clip.
-    const veo = len <= 8 + 1e-9 ? [...VEO_SECONDS].sort((x, y) => Math.abs(x - len) - Math.abs(y - len) || y - x)[0] : undefined
-    if (end && veo) return { ...base, engine: 'veo', seconds: veo }
-    if (len <= 10 + 1e-9) return { ...base, engine: 'omni', seconds: Math.min(10, Math.max(3, Math.ceil(len - 1e-9))), end: null }
+    // Shared clip timing: a Veo length retimed only when the change can't be seen (the end still stays
+    // the last frame), else the smallest covering length cut at real speed. No warm-up: frame 1 is the still.
+    const veo = pickLength(len, VEO_SECONDS)
+    if (end && veo) return { ...base, engine: 'veo', ...veo }
+    if (len <= 10 + 1e-9) return { ...base, engine: 'omni', end: null, ...omniTiming(look) }
     return { ...base, engine: 'none', seconds: 0, end: null, reason: 'this part is too long to animate yet, so it stays a still' }
   })
+}
+
+/** An Omni clip's length and fit (also used when Veo refuses and Omni takes over): it covers its
+ *  warm-up, which is trimmed off unless the look continues the previous part. */
+export function omniTiming(look: RemakeLook): { seconds: number; fit: ClipFit } {
+  const len = look.endS - look.startS
+  const continuing = !!look.continues
+  const seconds = Math.max(generateSeconds(len, { continuing })!, Math.ceil(len - 1e-9))
+  return { seconds, fit: clipFit(seconds, len, continuing ? 0 : WARM_UP_S) }
 }
 
 const lineOf = (plan: RemakePlan, ref: string): PlanLine | undefined => plan.lines.find((l) => l.ref === ref)
@@ -50,16 +62,18 @@ const shown = (plan: RemakePlan, ref: string, original: string): string | null =
   return l.action === 'swap' ? l.to?.trim() || null : null
 }
 
-/** Move times are look-relative; the clip is `clipSeconds` long and is retimed to the look,
- *  so the model must place each move at its scaled time. */
-const scaleTimes = (lines: string[], factor: number) =>
-  lines.map((l) => l.replace(/^at (\d+(?:\.\d+)?)s/, (_m, t) => `at ${(Number(t) * factor).toFixed(1)}s`))
+/** Move times are look-relative. A retimed clip places each move at its scaled time; a trimmed clip
+ *  keeps real times, shifted past the part trimmed off its start. */
+const scaleTimes = (lines: string[], factor: number, shift = 0) =>
+  lines.map((l) => l.replace(/^at (\d+(?:\.\d+)?)s/, (_m, t) => `at ${(Number(t) * factor + shift).toFixed(1)}s`))
 
 /** `plain`: the plainer wording tried once after a content block (spec rule 11) — frames, moves
  *  and camera only; no person, body or expression description. */
-export function clipPrompt(plan: RemakePlan, look: RemakeLook, _brand: Brand, engine: 'veo' | 'omni', clipSeconds?: number, plain = false): string {
+export function clipPrompt(plan: RemakePlan, look: RemakeLook, _brand: Brand, engine: 'veo' | 'omni', clipSeconds?: number, plain = false, fit?: ClipFit): string {
   const len = look.endS - look.startS
-  const factor = clipSeconds && len > 0 ? clipSeconds / len : 1
+  const trim = fit?.mode === 'trim' ? fit : null
+  const factor = trim ? 1 : clipSeconds && len > 0 ? clipSeconds / len : 1
+  const shift = trim?.startS ?? 0
   const i = refOf(look)
   const parts: string[] = [engine === 'veo'
     ? 'The first image is the first frame and the second image is the last frame; move naturally from one to the other.'
@@ -71,8 +85,9 @@ export function clipPrompt(plan: RemakePlan, look: RemakeLook, _brand: Brand, en
     const expression = shown(plan, `looks[${i}].expression`, look.expression)
     if (expression) parts.push(`Expression: ${expression}.`)
   }
-  parts.push(look.moveLines.length ? `Movement (directions as the viewer sees the frame): ${scaleTimes(look.moveLines, factor).join('; ')}.` : 'Hold the pose with only small natural motion.')
-  parts.push(look.cameraLines.length ? `Camera: ${scaleTimes(look.cameraLines, factor).join('; ')}.` : 'The camera stays still.')
+  parts.push(look.moveLines.length ? `Movement (directions as the viewer sees the frame): ${scaleTimes(look.moveLines, factor, shift).join('; ')}.` : 'Hold the pose with only small natural motion.')
+  parts.push(look.cameraLines.length ? `Camera: ${scaleTimes(look.cameraLines, factor, shift).join('; ')}.` : 'The camera stays still.')
+  if (trim && clipSeconds && clipSeconds > shift + len + 0.05) parts.push(`Finish every move by ${(shift + len).toFixed(1)}s, then hold that last pose with only small natural motion until the end.`)
   parts.push('Add nothing that is not described here: no extra people, objects, effects, text, logos or flicker; no change of lighting.')
   return parts.join(' ')
 }

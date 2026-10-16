@@ -79,3 +79,16 @@ it('cuts a board of photos on its white gaps into 9:16 panels; no gaps found, no
   const plain = join(dir, 'plain.png'); ff(['-f', 'lavfi', '-i', 'color=c=gray:s=1600x900', '-frames:v', '1', plain])
   expect(await cutPanels(plain, 3, 9 / 16, join(dir, 'p2'))).toBeNull()
 }, 60_000)
+
+// Shared clip timing (tools/clipTiming): a clip much longer than its look is cut at real speed, past any
+// warm-up, never squeezed (the fan reel's 1.3s look played a 4s clip 3x fast).
+it('trims a long clip at real speed from a start time instead of speeding it up', async () => {
+  const src = join(dir, 'rb.mp4')
+  ff(['-f', 'lavfi', '-i', 'color=c=red:s=720x1280:r=30:d=1', '-f', 'lavfi', '-i', 'color=c=blue:s=720x1280:r=30:d=3', '-filter_complex', '[0][1]concat=n=2:v=1', src])
+  const red = (p: string, t: number) => execFileSync('ffmpeg', ['-v', 'error', '-ss', String(t), '-i', p, '-frames:v', '1', '-vf', 'crop=1:1,format=rgb24', '-f', 'rawvideo', '-'])[0] > 128
+  const t = await fitToFrames(src, 39, join(dir, 't.mp4'), size, 30, { startS: 0 })
+  expect(frames(t)).toBe(39)
+  expect([red(t, 0.8), red(t, 1.2)]).toEqual([true, false]) // red lasts 1s, as in the source
+  const w = await fitToFrames(src, 30, join(dir, 'w.mp4'), size, 30, { startS: 0.5 })
+  expect([red(w, 0.3), red(w, 0.7)]).toEqual([true, false]) // starts 0.5s in: red for its first 0.5s
+}, 60_000)

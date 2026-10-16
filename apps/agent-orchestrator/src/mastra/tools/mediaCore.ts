@@ -89,7 +89,12 @@ export type Size = { width: number; height: number }
  *  then exactly `frames` frames, cover-scaled to `size`; a clone pad only covers rounding.
  *  Unlike stretch's slow mode it shortens too and never cuts the ending (a first+last-frame clip
  *  must end on its end frame). */
-export async function fitClipToFrames(input: string, frames: number, out: string, size: Size, fps = 30): Promise<string> {
+export async function fitClipToFrames(input: string, frames: number, out: string, size: Size, fps = 30, trim?: { startS: number }): Promise<string> {
+  // trim: cut `frames` at real speed from startS (tools/clipTiming); otherwise retime the whole clip.
+  if (trim) {
+    await runFfmpeg(['-ss', trim.startS.toFixed(3), '-i', input, '-an', '-vf', `${cover(size.width, size.height)},fps=${fps},tpad=stop_mode=clone:stop_duration=1`, '-frames:v', String(frames), ...x264(fps), out])
+    return out
+  }
   const dur = await probeSeconds(input)
   const target = frames / fps
   const retime = dur > 0 ? `setpts=PTS*${(target / dur).toFixed(6)},` : ''

@@ -5,7 +5,7 @@ import type { MediaExecContext } from '../tools/batchRunner.js'
 import type { Img } from '../tools/tvcChecks.js'
 import type { CheckResult } from '../scorers/video/gate.js'
 import type { RemakeDeps } from './deps.js'
-import { clipPrompt, clipGateInput, type ClipSpec } from './clipSpec.js'
+import { clipPrompt, clipGateInput, omniTiming, type ClipSpec } from './clipSpec.js'
 import type { Brand, LedgerEntry, RemakePlan } from './types.js'
 
 // One charge-key slot per (look, attempt, variant); all above the still slots (< 1000).
@@ -34,7 +34,9 @@ export async function makeClip(spec: ClipSpec, ctx: ClipCtx, deps: RemakeDeps, l
   const base = () => ({ look: n, engine: spec.engine === 'none' ? 'none' as const : engine, fallback })
   if (spec.engine === 'none' || !spec.start) return { result: { ...base(), fileId: null, localPath: null, status: 'still', reasons: [spec.reason ?? 'this part stays a still'] }, ledger }
 
-  const promptFor = (e: 'veo' | 'omni', plain = false) => clipPrompt(ctx.plan, spec.look, ctx.brand, e, spec.seconds, plain)
+  // Length and fit per engine (tools/clipTiming): Omni taking over from Veo gets its own.
+  const timing = (e: 'veo' | 'omni') => (e === spec.engine ? { seconds: spec.seconds, fit: spec.fit } : omniTiming(spec.look))
+  const promptFor = (e: 'veo' | 'omni', plain = false) => clipPrompt(ctx.plan, spec.look, ctx.brand, e, timing(e).seconds, plain, timing(e).fit)
   let prompt = promptFor(engine)
   let last: { fileId: string; localPath: string; reasons: string[] } | null = null
   let triedPlain = false
@@ -54,7 +56,7 @@ export async function makeClip(spec: ClipSpec, ctx: ClipCtx, deps: RemakeDeps, l
     const title = `Remake look ${n} clip`
     const call = (e: 'veo' | 'omni', p: string, variant: ClipVariant) => (e === 'veo'
       ? deps.generateVeoClip({ prompt: p, startImageFileId: spec.start!, endImageFileId: spec.end ?? undefined, durationSeconds: spec.seconds as 4 | 6 | 8, aspectRatio: aspect(ctx.size), title }, ctx.exec(clipSlot(n, attempt, variant)), clipSlot(n, attempt, variant))
-      : deps.generateOmniClip({ prompt: p, startImageFileId: spec.start!, durationSeconds: spec.seconds, aspectRatio: aspect(ctx.size), title }, ctx.exec(clipSlot(n, attempt, variant)), clipSlot(n, attempt, variant)))
+      : deps.generateOmniClip({ prompt: p, startImageFileId: spec.start!, durationSeconds: timing('omni').seconds, aspectRatio: aspect(ctx.size), title }, ctx.exec(clipSlot(n, attempt, variant)), clipSlot(n, attempt, variant)))
     const blockedByVeo = (r: { fileId?: string; refusalReason?: string }) => engine === 'veo' && !r.fileId && r.refusalReason === 'CONTENT_BLOCKED'
     let g = await call(engine, prompt, fallback ? 'fallback' : 'normal')
     // The person may read as under 18: rewording or another model won't help (free: blocked clips are
@@ -95,7 +97,9 @@ export async function makeClip(spec: ClipSpec, ctx: ClipCtx, deps: RemakeDeps, l
     let trimmed: string, c: Awaited<ReturnType<ClipCtx['check']>>
     try {
       const local = await deps.localFile(g.fileId, ctx.idToken, ctx.scopeId)
-      trimmed = await deps.fitToFrames(local, spec.frames, join(ctx.workDir, `look-${n}-a${attempt}.mp4`), ctx.size)
+      const fit = timing(engine).fit
+      const out = join(ctx.workDir, `look-${n}-a${attempt}.mp4`)
+      trimmed = fit?.mode === 'trim' ? await deps.fitToFrames(local, spec.frames, out, ctx.size, 30, { startS: fit.startS }) : await deps.fitToFrames(local, spec.frames, out, ctx.size)
       c = await ctx.check(trimmed, spec, engine)
     } catch (err) {
       console.error(`[remake] ${item} could not be prepared:`, err instanceof Error ? err.message : String(err))
