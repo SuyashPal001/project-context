@@ -278,6 +278,67 @@ Section headings with shimmer rows and "Reading yourbrand.com…". Polls
 
 Every field saves on blur via `PATCH /brand`; no Done buttons.
 
+### Mockups (approved 2026-10-16)
+
+Sidebar:
+
+```text
+  Chat
+  Drive
+  Brand        ← new
+  Skills
+  Settings ›   ("Branding" renamed "Workspace look")
+```
+
+Empty:
+
+```text
+  Brand
+  How your brand sounds and looks. Every ad Olmo makes follows it.
+  ─────────────────────────────────────────────────────────────
+        Paste your website or Instagram handle
+        [ yourbrand.com  or  @yourbrand          ]  [ Fill in ]
+        No website?  Tell Olmo about your brand →
+```
+
+Filled (sample values are illustrative):
+
+```text
+  Brand                                                    [↻ Refresh]
+  Olmo needs three things to write like Mamaearth:
+  ✓ Name   ✓ Audience   ✓ Voice
+
+  Basics
+  ─────────────────────────────────────────────────────────────
+  Brand name        Mamaearth
+  One-liner         Toxin-free skincare and haircare made with natural ingredients.
+  Audience          Women 22–35 in Indian cities who want safe, natural products.
+  Region            (●India) (US) (UK) (UAE) (Singapore) (Global)
+
+  Voice
+  ─────────────────────────────────────────────────────────────
+  Tone words        [warm ×] [caring ×] [honest ×] [upbeat ×]  + add
+  Emoji             (None) (●Minimal) (Moderate) (Expressive)
+  Signature phrases Goodness inside / Made safe
+  Banned phrases    (empty — the AI never guesses these)
+  CTAs              Shop now / Comment 'GLOW' for the link
+  Voice notes       ## What we say … ## What we avoid …
+
+  Visual identity
+  ─────────────────────────────────────────────────────────────
+  Logo / Favicon    [img] Replace · Remove
+  Mascot            Not set   Upload
+  Colours           Primary #00A651  Secondary #0B3D2E  Accent #F7B500
+                    Text #1A1A1A     Background #FFFFFF Muted #6B7280
+  Font              Poppins ▾
+  ─────────────────────────────────────────────────────────────
+  Filled from mamaearth.in · 2 days ago · Change source
+```
+
+Chat interview (no website): Olmo asks name, who it is for, how it should
+sound, then "Send your logo if you have one", saves each answer with
+`update_brand`, and ends with "Saved … See it on the Brand page →".
+
 ### Style
 
 No boxed containers: sections are a heading and rows with hairline dividers.
