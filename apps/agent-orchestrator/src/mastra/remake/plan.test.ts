@@ -30,7 +30,7 @@ describe('enforceRules', () => {
     ], refs, ctx)
     expect(lines.find((l) => l.ref === 'sound.music')).toMatchObject({ action: 'swap', to: 'new music, same mood: upbeat, pop' })
     expect(lines.find((l) => l.ref === 'onScreenText[0]')).toMatchObject({ action: 'drop' })
-    expect(lines.find((l) => l.ref === 'cast')).toMatchObject({ action: 'swap', to: 'a new person who fits college students' })
+    expect(lines.find((l) => l.ref === 'cast')).toMatchObject({ action: 'swap', to: 'a new person who fits college students, clearly an adult, mid-20s or older' })
     expect(warnings).toHaveLength(3)
   })
   it('drops unknown refs and turns a swap with no replacement into keep, with warnings', () => {

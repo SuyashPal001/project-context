@@ -14,6 +14,18 @@ const REMAKE_GLITCH_QUESTION = GLITCH_QUESTION.replace(' Reply ONLY JSON {', ', 
 // that IS in view must still be the chosen person (metro A/B: the original man's face passed in profile).
 export const VISIBLE_FACE_QUESTION = 'Image L is the lead actor. Image F is a still from the ad. Is any part of the person\'s face or hair visible in Image F (profile and side views count; the back of a head shows hair)? If so, is it CLEARLY a different person from Image L, judged by face and hair only? If you cannot tell (too little shows), answer false. Reply ONLY JSON {"face_visible":true|false,"clearly_different":true|false,"why":"short"}'
 
+/** The picked person could pass for under 18 (video of them would be blocked). A failed check never
+ *  blocks the pick: the clip step still refuses in plain words if the video model does. */
+export async function looksUnder18(ask: AskFn, person: Img): Promise<boolean> {
+  try {
+    const v = await ask([{ image: person }, { text: 'Could the person in this image pass for under 18 to a careful viewer (face, build, styling)? Reply ONLY JSON {"could_be_under_18":true|false}' }])
+    return v.could_be_under_18 === true
+  } catch (err) {
+    console.error('[remake] age check failed:', err instanceof Error ? err.message : String(err))
+    return false
+  }
+}
+
 export interface StillVerdict { passed: boolean; reasons: string[]; warnings: string[] }
 
 export async function remakeStillChecks(ask: AskFn, still: Img, opts: { lead?: Img; leadInShot?: boolean; faceMayHide?: boolean }): Promise<StillVerdict> {

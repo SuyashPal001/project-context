@@ -57,7 +57,7 @@ export function usesProduct(plan: RemakePlan, brand: Brand): boolean {
 }
 
 export function castSheetPrompt(castTo: string): string {
-  return `One photo split into three equal side-by-side panels, numbered 1, 2 and 3 in small grey corner numbers. Each panel shows a different new person who fits: ${castTo}. Each is full body, standing, facing the camera, neutral expression, plain light-grey background, soft natural light. Three clearly different faces. Not any real or famous person. No other text.`
+  return `One photo split into three equal side-by-side panels, numbered 1, 2 and 3 in small grey corner numbers. Each panel shows a different new person who fits: ${castTo}. Each is clearly an adult, mid-20s or older. Each is full body, standing, facing the camera, neutral expression, plain light-grey background, soft natural light. Three clearly different faces. Not any real or famous person. No other text.`
 }
 
 /** The chosen person's continuity bible: what every still is anchored to (face consistency is hard).
@@ -123,7 +123,7 @@ export function stillPrompt(plan: RemakePlan, look: RemakeLook, kind: 'start' | 
  *  "missing: A charismatic man…" blocked a correct still). */
 /** One portrait of another character, made after the lead is picked (gated like every paid image). */
 export const characterPortraitPrompt = (to: string): string =>
-  `One photo of one new person who fits: ${to}. Head and shoulders, facing the camera, neutral expression, plain light-grey background, soft natural light, photoreal. Not any real or famous person. No text.`
+  `One photo of one new person who fits: ${to}; clearly an adult, mid-20s or older. Head and shoulders, facing the camera, neutral expression, plain light-grey background, soft natural light, photoreal. Not any real or famous person. No text.`
 
 export const CAST_BY_IMAGE = 'the person: a new person, given by the first reference image (not described in words)'
 

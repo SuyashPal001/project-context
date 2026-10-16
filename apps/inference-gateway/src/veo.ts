@@ -67,7 +67,12 @@ export async function callVeoTransition(o: { prompt: string; startUri: string; l
     if (op.done) {
       if (op.error) throw new Error(`Veo operation error: ${op.error.message}`)
       const v = op.response?.videos?.[0]
-      if (!v?.bytesBase64Encoded) return { refused: true, reason: 'CONTENT_BLOCKED' }
+      if (!v?.bytesBase64Encoded) {
+        // Google's "Child" support codes (58061214 on the input, 17301594 on the output): the person may
+        // read as under 18. Said apart so the caller can ask for an older-looking person, not reword.
+        const why = JSON.stringify((op.response as { raiMediaFilteredReasons?: unknown } | undefined)?.raiMediaFilteredReasons ?? '')
+        return { refused: true, reason: /\b(17301594|58061214)\b/.test(why) ? 'MINOR_BLOCKED' : 'CONTENT_BLOCKED' }
+      }
       return { videoBase64: v.bytesBase64Encoded, mimeType: v.mimeType ?? 'video/mp4' }
     }
     await new Promise((r) => setTimeout(r, Math.min(POLL_MS, Math.max(0, deadline - Date.now()))))

@@ -38,6 +38,15 @@ describe('makeClip', () => {
     expect(deps.fitToFrames).toHaveBeenCalledWith('/m/veo-1', specs[1].frames, expect.any(String), { width: 720, height: 1280 })
     expect(r.ledger).toEqual([{ item: 'look 2 clip', attempt: 0, creditsMicro: '160', outcome: 'kept' }])
   })
+  it('a person who may read as under 18: no reworded retry, no other model; the user is told in plain words', async () => {
+    const { specs, deps, ctx } = await setup({ generateVeoClip: vi.fn(async () => ({ refused: true, refusalReason: 'MINOR_BLOCKED' })) } as never)
+    const r = await makeClip(specs[1], ctx, deps)
+    expect(deps.generateVeoClip).toHaveBeenCalledTimes(1)
+    expect(deps.generateOmniClip).not.toHaveBeenCalled()
+    expect(r.result).toMatchObject({ status: 'blocked', fileId: null })
+    expect(r.result.reasons.join(' ')).toMatch(/looks too young/)
+    expect(r.result.reasons.join(' ')).not.toMatch(/MINOR_BLOCKED|Veo|Vertex|17301594/)
+  })
   it('Veo refused → exactly one Omni attempt from the start still, gated, marked fallback (Review Focus 3)', async () => {
     const { specs, deps, ctx } = await setup({ generateVeoClip: vi.fn(async () => ({ refused: true, refusalReason: 'CONTENT_BLOCKED' })) } as never)
     const r = await makeClip(specs[1], ctx, deps)

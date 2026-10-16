@@ -63,6 +63,18 @@ describe('generateVideo with veo-3.1-fast-generate-001', () => {
     expect(r).toEqual({ refused: true, reason: 'CONTENT_BLOCKED' })
   })
 
+  // Metro lip-sync test (2026-10-16): support code 17301594 is Google's "Child" filter on the output
+  // (58061214 on the input). Saying so lets the caller tell the user the person reads too young.
+  it('a block for a person who may be a minor says so', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.startsWith('https://s3/')) return img('x')
+      if (url.endsWith(':predictLongRunning')) return Response.json({ name: 'op' })
+      return Response.json({ done: true, response: { raiMediaFilteredCount: 1, raiMediaFilteredReasons: ["1 videos were filtered out because they violated Vertex AI's usage guidelines. Support codes: 17301594"] } })
+    }))
+    const r = await generateVideo({ model: VEO_31_MODEL, prompt: 'P', task: 'image_to_video', aspectRatio: '9:16', durationSeconds: 4, imageUri: 'https://s3/a.jpg' })
+    expect(r).toEqual({ refused: true, reason: 'MINOR_BLOCKED' })
+  })
+
   it('rejects durations Veo 3.1 does not take and a missing start image', async () => {
     await expect(generateVideo({ model: VEO_31_MODEL, prompt: 'P', task: 'image_to_video', aspectRatio: '9:16', durationSeconds: 5, imageUri: 'https://s3/a.jpg' })).rejects.toThrow(/4, 6 or 8/)
     await expect(generateVideo({ model: VEO_31_MODEL, prompt: 'P', task: 'image_to_video', aspectRatio: '9:16', durationSeconds: 4 })).rejects.toThrow(/start image/)

@@ -57,6 +57,12 @@ export async function makeClip(spec: ClipSpec, ctx: ClipCtx, deps: RemakeDeps, l
       : deps.generateOmniClip({ prompt: p, startImageFileId: spec.start!, durationSeconds: spec.seconds, aspectRatio: aspect(ctx.size), title }, ctx.exec(clipSlot(n, attempt, variant)), clipSlot(n, attempt, variant)))
     const blockedByVeo = (r: { fileId?: string; refusalReason?: string }) => engine === 'veo' && !r.fileId && r.refusalReason === 'CONTENT_BLOCKED'
     let g = await call(engine, prompt, fallback ? 'fallback' : 'normal')
+    // The person may read as under 18: rewording or another model won't help (free: blocked clips are
+    // not charged); the user needs an older-looking person (metro lip-sync test, 2026-10-16).
+    if (!g.fileId && g.refusalReason === 'MINOR_BLOCKED') {
+      ledger.push({ item, attempt, creditsMicro: '0', outcome: 'blocked' })
+      return { result: { ...base(), fileId: null, localPath: null, status: 'blocked', reasons: ['the person looks too young for video to be made of them; pick an older-looking person and try again'] }, ledger }
+    }
     // Spec rule 11: a content block is retried once with plainer wording (free: blocked clips
     // are not charged), then once with the other model from the start still.
     if (blockedByVeo(g) && !fallback && !triedPlain) {

@@ -26,6 +26,12 @@ export function planRefs(b: Breakdown, looks: RemakeLook[]): Ref[] {
   return out
 }
 
+export const ADULT = 'clearly an adult, mid-20s or older'
+const adultWords = (to: string): string => {
+  const t = to.replace(/\b(early|late)[ -]?(20s|twenties)\b/gi, 'mid-20s').replace(/\b(teen(age)?(er)?s?|kids?|child(ren)?)\b/gi, 'adult')
+  return t.includes(ADULT) ? t : `${t.replace(/[.\s]+$/, '')}, ${ADULT}`
+}
+
 /** Code-owned rules (spec §1 non-goals, §9a): no copied music, voice script, reference text or person. */
 export function enforceRules(lines: PlanLine[], refs: Ref[], ctx: { brand: Brand; musicMood: string }): { lines: PlanLine[]; warnings: string[] } {
   const known = new Set(refs.map((r) => r.ref))
@@ -59,6 +65,9 @@ export function enforceRules(lines: PlanLine[], refs: Ref[], ctx: { brand: Brand
       if (!l.auto) warnings.push('cast: the person is always a new person')
       l = { ref, action: 'swap', to: `a new person who fits ${ctx.brand.audience ?? ctx.brand.name}` }
     }
+    // Video is never made of anyone who may read as under 18 (Google's filter blocked a cast "early 20s"
+    // lead after every still had passed), so every person is described as clearly an adult.
+    if ((ref === 'cast' || ref.startsWith('characters[')) && l.action === 'swap' && l.to) l = { ...l, to: adultWords(l.to) }
     return l
   })
   return { lines: out, warnings }

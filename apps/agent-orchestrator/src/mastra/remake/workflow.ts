@@ -13,6 +13,7 @@ import { writePlan, applyEdits } from './plan.js'
 import { estimateCost, estimateClipsCost, ledgerSummary } from './cost.js'
 import { castSheetPrompt, stillPrompt, stillGateInput, usesProduct, REFERENCE_SHEET_PROMPT, CAST_BY_IMAGE, charactersAt, characterPortraitPrompt, stillTime, type CharacterImages } from './prompts.js'
 import { makeStill, type StillCtx, type StillJob } from './paidStill.js'
+import { looksUnder18 } from './stillChecks.js'
 import { boardUnits, boardPrompt, boardGateInput, boardAspect, BOARD_SLOT } from './board.js'
 import { previewSegments, previewSize, usableStill } from './preview.js'
 import { personIn } from './looks.js'
@@ -109,6 +110,10 @@ const castStep = createStep({
       await deps.ffmpeg(['-i', sheetPath, '-vf', `crop=iw/3:ih:(${resumeData.pick}-1)*iw/3:0`, '-frames:v', '1', '-q:v', '2', out])
       const id = await deps.upload(a.idToken, generatedFileKey(a.conversationId, `remake ${runId} cast ${resumeData.pick}`, 'jpg'), `Remake cast ${resumeData.pick}.jpg`, deps.readFile(out), 'image/jpeg')
       if (!id) throw new Error('upload returned no file')
+      // Free check before any still is paid: video is never made of anyone who may read as under 18.
+      if (await looksUnder18(deps.ask(a.tenantId), await deps.fetchImage(id, a.idToken))) {
+        return await suspend({ stage: 'cast_pick', sheetFileId: sheetId, sheetCreditsMicro: spentSoFar, error: `person ${resumeData.pick} could pass for under 18, and video can't be made of them; please pick another` })
+      }
       const sheet: LedgerEntry = { item: 'casting sheet', attempt: 0, creditsMicro: spentSoFar, outcome: 'kept' }
       const ref = await referenceSheet(id, a, deps, execFor(requestContext as Rc, runId, a.idToken)(1))
       const chars = await characterPortraits(plan, a, deps, execFor(requestContext as Rc, runId, a.idToken))
