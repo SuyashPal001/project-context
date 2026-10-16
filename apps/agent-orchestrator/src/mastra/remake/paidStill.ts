@@ -38,6 +38,10 @@ const FIXES: Array<[RegExp, string]> = [
   [/looks like the lead/i, 'no one else looks like the person in the first image'],
   [/back to the camera|facing the camera|side-on/i, 'the person faces the camera exactly as in the second image'],
 ]
+const NEEDS_FRESH = /back to the camera|facing the camera|side-on|no person found|appears where the reference has none/i
+export const editPrompt = (fix: string): string =>
+  `Edit the first image. Change only this: ${fix}. Keep everything else exactly: the pose, framing, setting, outfit, objects and light. No text or logos.`
+
 export function fixLine(reasons: string[]): string {
   return [...new Set(reasons.map((r) => FIXES.find(([re]) => re.test(r))?.[1] ?? r))].join('; ')
 }
@@ -82,11 +86,13 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
   const base = { look: job.look.n, kind: job.kind }
   const ledger: LedgerEntry[] = []
   let prompt = job.prompt
+  let references = job.references
+  let retryNote = ''
   let last: { fileId: string; reasons: string[] } | null = null
   const tries: StillTry[] = []
   const withTries = (r: { result: StillResult; ledger: LedgerEntry[] }) => (tries.length ? { ...r, result: { ...r.result, tries } } : r)
   for (let attempt = 0; attempt < 2; attempt++) {
-    const gate = await deps.promptGate({ ...job.gate, prompt, tenantId: ctx.tenantId, ...(attempt > 0 ? { planLine: `${job.gate.planLine}; retry: the prompt ends with a "Fix:" sentence saying what the previous try got wrong, in plan words (not new content)` } : {}) })
+    const gate = await deps.promptGate({ ...job.gate, prompt, tenantId: ctx.tenantId, ...(attempt > 0 ? { planLine: `${job.gate.planLine}; ${retryNote}` } : {}) })
     if (gate.status !== 'pass') {
       // A blocked retry after a failed attempt: the item failed (the paid attempt was wasted),
       // so the ledger says failed too, never "blocked" next to a failed result (M6).
@@ -107,7 +113,7 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
     // skipAvatarExpansion: images are placed by role (portrait, then pose guide); an avatar's
     // reference sheet would push the guide out of second place and change the gated prompt.
     const g = await deps.generateStill(
-      { prompt, aspectRatio: job.aspectRatio, referenceFileIds: job.references, engine: 'gemini', skipAvatarExpansion: true, title: `Remake look ${job.look.n} ${job.kind} still` },
+      { prompt, aspectRatio: job.aspectRatio, referenceFileIds: references, engine: 'gemini', skipAvatarExpansion: true, title: `Remake look ${job.look.n} ${job.kind} still` },
       ctx.exec(slot), slot)
     const spent = g.creditsUsedMicro ?? '0'
     if (!g.fileId) {
@@ -128,7 +134,19 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
     ledger.push({ item, attempt, creditsMicro: spent, outcome: attempt === 0 ? 'retried' : 'failed' })
     last = { fileId: g.fileId, reasons: [c.reason] }
     tries.push({ fileId: g.fileId, kept: false, why: c.hard, creditsMicro: spent })
-    prompt = `${job.prompt} Fix: ${fixLine(c.hard)}.`
+    // Edit, never regenerate (user rule): a wrong face, a lookalike or a duplicate object is fixed by
+    // editing the failed still (it first, the chosen person second), so the pose and scene that
+    // passed are kept. Only a wrong pose (facing, nobody in shot) needs a fresh image.
+    if (c.hard.some((r) => NEEDS_FRESH.test(r))) {
+      prompt = `${job.prompt} Fix: ${fixLine(c.hard)}.`
+      references = job.references
+      retryNote = 'retry: the prompt ends with a "Fix:" sentence saying what the previous try got wrong, in plan words (not new content)'
+    } else {
+      const identity = personIn(job.look) && ctx.portrait ? [job.references[0]] : []
+      prompt = editPrompt(fixLine(c.hard).replace(/the first image/g, 'the second image'))
+      references = [g.fileId, ...identity]
+      retryNote = 'retry as an EDIT of the previous try (the first image); only the named fix changes, everything else is kept from it'
+    }
   }
   return withTries({ result: { ...base, fileId: last!.fileId, status: 'failed', reasons: last!.reasons }, ledger })
 }

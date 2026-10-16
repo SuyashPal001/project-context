@@ -75,7 +75,7 @@ describe('our own blocks found on the real rerun', () => {
     const look = remakeLooks(breakdown())[0]
     await makeStill({ look, kind: 'start', prompt: 'P', references: ['portrait', 'guide'], aspectRatio: '9:16', gate: { prompt: 'P', planLine: 'x', look: {}, startFrameObjects: [], keyMoments: [] } } as StillJob, ctx, d)
     const second = (d.promptGate as ReturnType<typeof vi.fn>).mock.calls[1][0]
-    expect(second.prompt).toBe('P Fix: the face must be exactly the person in the first image.')
-    expect(second.planLine).toMatch(/retry/)
+    expect(second.prompt).toMatch(/^Edit the first image\. Change only this: the face must be exactly the person in the second image\./) // an edit, in plan words
+    expect(second.planLine).toMatch(/retry as an EDIT/)
   })
 })

@@ -47,7 +47,7 @@ describe('a warning keeps the still without paying again', () => {
     const d = deps({ stillChecks: vi.fn().mockResolvedValueOnce({ passed: false, reasons: ['two remotes'], warnings: ['face may differ'] }).mockResolvedValue({ passed: true, reasons: [], warnings: ['face may differ'] }) })
     const r = await makeStill(job, ctx, d)
     expect(d.generateStill).toHaveBeenCalledTimes(2)
-    expect((d.generateStill as ReturnType<typeof vi.fn>).mock.calls[1][0].prompt).toMatch(/Fix: two remotes\.$/)
+    expect((d.generateStill as ReturnType<typeof vi.fn>).mock.calls[1][0].prompt).toMatch(/Change only this: two remotes\./)
     expect(r.result).toMatchObject({ status: 'warned', fileId: 'still-2' })
   })
   it('an extra person is hard', () => {
