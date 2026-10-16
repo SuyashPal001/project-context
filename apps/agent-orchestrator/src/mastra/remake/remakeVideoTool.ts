@@ -37,6 +37,13 @@ const plainSummary = (v: unknown) => {
   return { spentCredits: credits(s.spentMicro), wastedCredits: credits(s.wastedMicro), failed: s.failed, blocked: s.blocked }
 }
 
+// Every paid try at a still, in credits, so the user sees each picture, failed or kept, and its cost.
+function withTryCredits(stills: unknown): unknown {
+  if (!Array.isArray(stills)) return stills
+  return stills.map((s: { tries?: Array<{ fileId: string; kept: boolean; why: string[]; creditsMicro: string }> }) =>
+    s.tries ? { ...s, tries: s.tries.map((t) => ({ fileId: t.fileId, kept: t.kept, why: t.why, credits: credits(t.creditsMicro) })) } : s)
+}
+
 export function shapeRun(runId: string, r: RunResult): Out {
   // Stills run inside one long tool call; a status check meanwhile must not read as a failure.
   if (r.status === 'running' || r.status === 'pending') return { success: true, runId, stage: 'working' }
@@ -50,7 +57,7 @@ export function shapeRun(runId: string, r: RunResult): Out {
     }
     if (p.stage === 'preview_review') {
       const e = p.clipsEstimate as { clips: number; firstPassMicro: string | null; maxMicro: string | null } | undefined
-      return { success: true, runId, stage: 'preview_review', previewFileId: p.previewFileId, stills: p.stills, summary: plainSummary(p.summary), ...(e ? { clipsEstimate: { clips: e.clips, firstPassCredits: credits(e.firstPassMicro), maxCredits: credits(e.maxMicro) } } : {}), ...(p.cantAnimate ? { cantAnimate: p.cantAnimate } : {}) }
+      return { success: true, runId, stage: 'preview_review', previewFileId: p.previewFileId, stills: withTryCredits(p.stills), summary: plainSummary(p.summary), ...(e ? { clipsEstimate: { clips: e.clips, firstPassCredits: credits(e.firstPassMicro), maxCredits: credits(e.maxMicro) } } : {}), ...(p.cantAnimate ? { cantAnimate: p.cantAnimate } : {}) }
     }
     return { success: true, runId, stage: 'cast_pick', sheetFileId: p.sheetFileId, ...(p.error ? { error: p.error } : {}) }
   }
@@ -59,7 +66,7 @@ export function shapeRun(runId: string, r: RunResult): Out {
     if (result.finalFileId) return { success: true, runId, stage: 'final_ready', finalFileId: result.finalFileId, note: result.note, clips: result.clips, summary: plainSummary(result.summary) }
     // Clips were paid but no final video came out: show the clips, never "preview ready".
     if (result.stopped === false) return { success: false, runId, stage: 'final_failed', clips: result.clips, note: result.note, summary: plainSummary(result.summary), error: result.nothingToShow ? 'no part of the video could be made; the note says why for each part' : 'the final video couldn’t be put together this time; the animated parts are listed' }
-    return { success: true, runId, stage: 'preview_ready', previewFileId: result.previewFileId, stills: result.stills, summary: plainSummary(result.summary), ...(result.note ? { note: result.note } : {}) }
+    return { success: true, runId, stage: 'preview_ready', previewFileId: result.previewFileId, stills: withTryCredits(result.stills), summary: plainSummary(result.summary), ...(result.note ? { note: result.note } : {}) }
   }
   const stepErr = Object.values(r.steps ?? {}).map((s) => s.error).find(Boolean) ?? r.error
   console.error('[remake] run ended', r.status, stepErr)
@@ -92,7 +99,7 @@ export const remakeVideoTool = createTool({
     + 'start (link or fileId + brand: name, product, optional productPhotoFileId/audience/notes; optional castFileId when the user brings their own person): returns the remake plan (each part of the video kept, swapped or dropped) and the cost of the stills. Show the plan in plain words and ask for changes. '
     + 'edit_plan (runId + edits) for changes; approve_plan (runId) when the user agrees. If the video has a person, approve_plan returns a casting sheet of 3 new people: show it and ask which one (pick_cast, runId + pick 1-3). '
     + 'If cast_pick comes back with an error and no sheetFileId, tell the user the error; once fixed, call pick_cast with no pick to make the sheet again. If it has an error and a sheet, ask the user to pick again. '
-    + 'Then every look gets checked stills and a free preview video (stage preview_review): share the preview, say which stills failed or were held back, the credits spent, and the cost to animate it (clipsEstimate). If it has cantAnimate, say so and stop there. If the user wants it animated, call approve_preview (runId); if they only wanted the preview, call stop. '
+    + 'Then every look gets checked stills and a free preview video (stage preview_review): share the preview, say which stills failed or were held back, the credits spent, and the cost to animate it (clipsEstimate). When a still has more than one try (tries), show every try\'s picture, the failed ones too, each with why it failed in plain words and its credits, so the user sees what was paid for; a still with status warned is kept and used, so say in one line what may be off. If it has cantAnimate, say so and stop there. If the user wants it animated, call approve_preview (runId); if they only wanted the preview, call stop. '
     + 'If stage final_failed comes back, share its note and say the animated parts were made but could not be joined; never start again on your own. '
     + 'When it is done (stage final_ready), share the video and its note exactly as given (what changed on purpose, what stayed a still, anything that did not pass), the credits spent, and remind the user to label it as AI-generated when they post it. '
     + 'stage working means it is still making the stills or the clips: wait and use status; never call start again while a remake for this video exists (that pays twice). '

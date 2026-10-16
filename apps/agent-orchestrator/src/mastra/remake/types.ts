@@ -40,4 +40,6 @@ export interface RemakePlan {
 }
 
 export interface LedgerEntry { item: string; attempt: number; creditsMicro: string; outcome: 'kept' | 'retried' | 'failed' | 'blocked' }
-export interface StillResult { look: number; kind: 'start' | 'end'; fileId: string | null; status: 'passed' | 'warned' | 'failed' | 'unchecked' | 'blocked'; reasons: string[] }
+/** One paid try at a still: the user sees every one, failed or kept, with why and what it cost. */
+export interface StillTry { fileId: string; kept: boolean; why: string[]; creditsMicro: string }
+export interface StillResult { look: number; kind: 'start' | 'end'; fileId: string | null; status: 'passed' | 'warned' | 'failed' | 'unchecked' | 'blocked'; reasons: string[]; tries?: StillTry[] }

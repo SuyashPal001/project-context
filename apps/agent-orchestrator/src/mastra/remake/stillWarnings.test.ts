@@ -83,3 +83,22 @@ describe('remakeStillChecks sorts each finding', () => {
     expect(await remakeStillChecks(ask({}, {}) as never, img, { lead: img, leadInShot: true })).toEqual({ passed: true, reasons: [], warnings: [] })
   })
 })
+
+// User (2026-10-16): on a retry the user never saw the failed picture or what it cost. Every paid
+// try is now kept on the still with its reason and cost, and the preview stage hands them over.
+describe('every paid try is visible with its reason and cost', () => {
+  it('a retried still lists the failed try and the kept one', async () => {
+    const d = deps({ stillChecks: vi.fn().mockResolvedValueOnce({ passed: false, reasons: ['two remotes'] }).mockResolvedValue({ passed: true, reasons: [] }) })
+    const r = await makeStill(job, ctx, d)
+    expect(r.result.tries).toEqual([
+      { fileId: 'still-1', kept: false, why: ['two remotes'], creditsMicro: '100' },
+      { fileId: 'still-2', kept: true, why: [], creditsMicro: '100' },
+    ])
+  })
+  it('the preview stage gives the agent each try in credits', async () => {
+    const { shapeRun } = await import('./remakeVideoTool.js')
+    const stills = [{ look: 1, kind: 'start', fileId: 'still-2', status: 'passed', reasons: [], tries: [{ fileId: 'still-1', kept: false, why: ['two remotes'], creditsMicro: '13400000' }, { fileId: 'still-2', kept: true, why: [], creditsMicro: '13400000' }] }]
+    const out = shapeRun('r', { status: 'suspended', steps: { preview: { suspendPayload: { stage: 'preview_review', previewFileId: 'p', stills, summary: { spentMicro: '26800000', wastedMicro: '13400000', failed: [], blocked: [] } } } } }) as unknown as { stills: Array<{ tries: unknown[] }> }
+    expect(out.stills[0].tries).toEqual([{ fileId: 'still-1', kept: false, why: ['two remotes'], credits: '13.40' }, { fileId: 'still-2', kept: true, why: [], credits: '13.40' }])
+  })
+})

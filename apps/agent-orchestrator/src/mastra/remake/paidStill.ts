@@ -8,7 +8,7 @@ import type { RemakeDeps } from './deps.js'
 import { comparePose } from './poseCompare.js'
 import { personIn } from './looks.js'
 import type { stillGateInput } from './prompts.js'
-import type { LedgerEntry, RemakeLook, StillResult } from './types.js'
+import type { LedgerEntry, RemakeLook, StillResult, StillTry } from './types.js'
 
 export interface StillCtx {
   tenantId: string; idToken: string; scopeId: string; runId: string
@@ -51,6 +51,8 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
   const ledger: LedgerEntry[] = []
   let prompt = job.prompt
   let last: { fileId: string; reasons: string[] } | null = null
+  const tries: StillTry[] = []
+  const withTries = (r: { result: StillResult; ledger: LedgerEntry[] }) => (tries.length ? { ...r, result: { ...r.result, tries } } : r)
   for (let attempt = 0; attempt < 2; attempt++) {
     const gate = await deps.promptGate({ ...job.gate, prompt, tenantId: ctx.tenantId })
     if (gate.status !== 'pass') {
@@ -61,13 +63,13 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
       // An unknown gate is an outage: log the raw reason, tell the user plain words (no internals).
       if (gate.status === 'unknown') console.error(`[remake] ${item} prompt check unavailable: ${gate.reason}`)
       const why = gate.status === 'unknown' ? 'the still couldn’t be checked before making it, so it wasn’t made' : gate.reason
-      return last
+      return withTries(last
         ? { result: { ...base, fileId: last.fileId, status: 'failed', reasons: last.reasons }, ledger }
-        : { result: { ...base, fileId: null, status: 'blocked', reasons: [why] }, ledger }
+        : { result: { ...base, fileId: null, status: 'blocked', reasons: [why] }, ledger })
     }
     if (ctx.outOfCredits?.()) {
       if (last) ledger[ledger.length - 1].outcome = 'failed'
-      return { result: { ...base, fileId: last?.fileId ?? null, status: 'failed', reasons: last ? [...last.reasons, 'no second try: not enough credits'] : ['not enough credits'] }, ledger }
+      return withTries({ result: { ...base, fileId: last?.fileId ?? null, status: 'failed', reasons: last ? [...last.reasons, 'no second try: not enough credits'] : ['not enough credits'] }, ledger })
     }
     const slot = slotFor(job.look.n, job.kind, attempt)
     // skipAvatarExpansion: images are placed by role (portrait, then pose guide); an avatar's
@@ -81,17 +83,19 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
       ledger.push({ item, attempt, creditsMicro: spent, outcome: 'failed' })
       const why = g.insufficientCredits ? 'not enough credits' : 'the image could not be made'
       // A retry that couldn't be made keeps the first try's reason (M9).
-      return { result: { ...base, fileId: last?.fileId ?? null, status: 'failed', reasons: last ? [...last.reasons, `no second try: ${why}`] : [why] }, ledger }
+      return withTries({ result: { ...base, fileId: last?.fileId ?? null, status: 'failed', reasons: last ? [...last.reasons, `no second try: ${why}`] : [why] }, ledger })
     }
     const c = await checkStill(g.fileId, job, ctx, deps)
     if (c.status === 'pass' || c.status === 'unknown') {
       ledger.push({ item, attempt, creditsMicro: spent, outcome: 'kept' })
       const status = c.status === 'unknown' ? 'unchecked' : c.warnings.length ? 'warned' : 'passed'
-      return { result: { ...base, fileId: g.fileId, status, reasons: status === 'passed' ? [] : status === 'warned' ? c.warnings : [c.reason] }, ledger }
+      tries.push({ fileId: g.fileId, kept: true, why: status === 'passed' ? [] : status === 'warned' ? c.warnings : [c.reason], creditsMicro: spent })
+      return withTries({ result: { ...base, fileId: g.fileId, status, reasons: status === 'passed' ? [] : status === 'warned' ? c.warnings : [c.reason] }, ledger })
     }
     ledger.push({ item, attempt, creditsMicro: spent, outcome: attempt === 0 ? 'retried' : 'failed' })
     last = { fileId: g.fileId, reasons: [c.reason] }
+    tries.push({ fileId: g.fileId, kept: false, why: c.hard, creditsMicro: spent })
     prompt = `${job.prompt} Fix: ${c.reason}`
   }
-  return { result: { ...base, fileId: last!.fileId, status: 'failed', reasons: last!.reasons }, ledger }
+  return withTries({ result: { ...base, fileId: last!.fileId, status: 'failed', reasons: last!.reasons }, ledger })
 }
