@@ -1,5 +1,7 @@
 const HANDLE = /^[a-z0-9._]{1,30}$/;
 const IG_HOST = /^(www\.)?instagram\.com$/i;
+// Instagram's own routes, not a profile — e.g. a post/reel/story link's first segment.
+const RESERVED_PATHS = new Set(['p', 'reel', 'reels', 'explore', 'accounts', 'stories', 'tv', 'direct']);
 
 export type BrandSource = { type: 'website'; url: string } | { type: 'instagram'; handle: string };
 
@@ -19,6 +21,7 @@ export function parseBrandSource(raw: string): BrandSource | null {
 
   if (url && IG_HOST.test(url.hostname)) {
     const handle = url.pathname.split('/').filter(Boolean)[0]?.toLowerCase() ?? '';
+    if (RESERVED_PATHS.has(handle)) return null;
     return HANDLE.test(handle) ? { type: 'instagram', handle } : null;
   }
 
