@@ -19,6 +19,7 @@ function fakeDeps(o: Partial<RemakeDeps> = {}): Partial<RemakeDeps> {
     localFile: vi.fn().mockImplementation(async (id: string) => `/m/${id}`),
     upload: vi.fn().mockImplementation(async (_t: string, key: string) => `up:${key.split('/').pop()}`),
     poseImage: vi.fn().mockResolvedValue({ model: 'm', people: 1, no_person: false, main: breakdown().pose!.looks[0].main_start }),
+    cutBoard: vi.fn(async (_f: string, n: number) => Array.from({ length: n }, (_, k) => `panel-${k + 1}`)),
     promptGate: vi.fn().mockResolvedValue({ name: 'prompt', status: 'pass', reason: '', evidenceTimes: [] }),
     stillChecks: vi.fn().mockResolvedValue({ passed: true, reasons: [] }),
     ffmpeg: vi.fn().mockResolvedValue(undefined),
@@ -81,7 +82,7 @@ describe('video-remake workflow', () => {
     const prompts = gen.mock.calls.map((c) => c[0].prompt as string)
     expect(prompts.some((p) => p.includes('green kurta'))).toBe(true)
     expect(gen.mock.calls[1][0].referenceFileIds[0]).toMatch(/^up:/) // the cropped portrait comes first
-    expect(out.summary).toMatchObject({ spentMicro: '500', wastedMicro: '0' }) // casting sheet + reference sheet + 3 stills
+    expect(out.summary).toMatchObject({ spentMicro: '400', wastedMicro: '0' }) // casting sheet + reference sheet + look 1 still + one board for look 2's two stills
   })
   it('skips casting for a reel with nobody in it', async () => {
     const b = breakdown(); b.pose!.looks = b.pose!.looks.map((l) => ({ ...l, people: 0, no_person: true, main_start: null, main_end: null }))

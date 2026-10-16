@@ -54,37 +54,49 @@ export function castSheetPrompt(castTo: string): string {
  *  into every still. No profile box either (no guessed text about the person). */
 export const REFERENCE_SHEET_PROMPT = "A professional CHARACTER REFERENCE SHEET — a continuity bible for AI video production — of this exact person, on a clean white page with thin grey panel borders and small, neat, correctly spelled uppercase section labels. No personal name anywhere on the page. Numbered sections: 1. FULL-BODY TURNAROUND — the largest panel: front, 3/4 view, side view and back view, head to feet, on a light-grey studio background. 2. FACE & IDENTITY DETAILS — front, 3/4 view and profile close-ups. 3. EXPRESSION SHEET — eight head-and-shoulders crops in two rows: neutral, happy, angry, sad, surprised, worried, confident, determined, each labelled. Every expression is subtle and believable, the way a real actor plays it to camera in a live-action commercial: real skin creasing around the eyes and mouth, natural asymmetry, the same real-camera skin texture as the image — never exaggerated, theatrical or cartoonish. 4. POSE & BODY LANGUAGE — six full-body poses: neutral standing, walking, sitting on a white cube, relaxed, tense, action-ready, each labelled. 5. DO NOT CHANGE — a bordered lock panel with a small padlock icon reading: Face · Identity · Skin tone · Age · Hair · Body shape · Proportions. No redesign, no beautifying, no aging, no stylizing, no simplifying. The same face, hair and body in every panel, in the same plain clothes as the image, photoreal, even soft studio light, tasteful and ad-appropriate, crisp legible text, no other people, no watermark."
 
-export function stillPrompt(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', brand: Brand, hasProductPhoto: boolean): string {
+/** The words of one still, shared by a single still and a photo of a board: the person lines (pose,
+ *  body, others, outfit, expression), the setting, the props in view and what not to draw. */
+export function stillBits(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end') {
   const i = refOf(look)
-  const person = personIn(look)
   const body = kind === 'start' ? look.start : look.end
   const pose = poseOf(look, kind)
   const outfit = shown(plan, `looks[${i}].outfit`, look.outfit)
   const expression = shown(plan, `looks[${i}].expression`, look.expression)
+  const person: string[] = []
+  if (pose) person.push(`Pose: ${pose}.`)
+  const words = body ? personWords(body, null) : []
+  if (words.length) person.push(`Body: ${words.join(', ')}.`)
+  if (look.people && look.people > 1) person.push(`${look.people - 1} other people are in the shot as in the guide, each a different new person.`)
+  if (outfit) person.push(`Outfit: ${outfit}.`)
+  if (expression) person.push(`Expression: ${expression}.`)
   const setting = shown(plan, 'setting', plan.reference.setting)
-  const props = propsAt(plan, stillTime(look, kind))
+  return {
+    person,
+    setting: setting ? `Setting: ${setting}.` : '',
+    // A kept setting IS the guide frame's setting; excluding it contradicted the plan (real checker, 2026-10-16).
+    settingKept: (lineOf(plan, 'setting')?.action ?? 'keep') === 'keep',
+    props: propsAt(plan, stillTime(look, kind)),
+    trick: trickProps(plan),
+  }
+}
+
+export function stillPrompt(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', brand: Brand, hasProductPhoto: boolean): string {
+  const person = personIn(look)
+  const b = stillBits(plan, look, kind)
   const parts: string[] = []
   if (person) {
     parts.push('The person is the person in the first image: same face, hair and body.')
-    // A kept setting IS the guide frame's setting; excluding it contradicted the plan (real checker, 2026-10-16).
-    const settingKept = (lineOf(plan, 'setting')?.action ?? 'keep') === 'keep'
-    parts.push(settingKept
+    parts.push(b.settingKept
       ? 'Copy ONLY the body pose, camera framing, setting and where objects sit from the second image; not its person, face, outfit, accessories or any text.'
       : 'Copy ONLY the body pose, camera framing and where objects sit from the second image; not its person, face, outfit, accessories, setting or any text.')
-    if (pose) parts.push(`Pose: ${pose}.`)
-    const words = body ? personWords(body, null) : []
-    if (words.length) parts.push(`Body: ${words.join(', ')}.`)
-    if (look.people && look.people > 1) parts.push(`${look.people - 1} other people are in the shot as in the guide, each a different new person.`)
-    if (outfit) parts.push(`Outfit: ${outfit}.`)
-    if (expression) parts.push(`Expression: ${expression}.`)
+    parts.push(...b.person)
   } else {
     parts.push('No person in this image.')
     parts.push('Copy ONLY the layout and camera angle from the first image; not its objects, text or logos.')
   }
-  if (setting) parts.push(`Setting: ${setting}.`)
-  if (props.length) parts.push(`Objects: ${props.join('; ')}.`)
-  const trick = trickProps(plan)
-  if (trick.length) parts.push(`Do not draw: ${trick.join('; ')}.`)
+  if (b.setting) parts.push(b.setting)
+  if (b.props.length) parts.push(`Objects: ${b.props.join('; ')}.`)
+  if (b.trick.length) parts.push(`Do not draw: ${b.trick.join('; ')}.`)
   if (hasProductPhoto && usesProduct(plan, brand)) parts.push(`The ${person ? 'third' : 'second'} image is the brand's product: show it exactly as it is, same shape, colour and label.`)
   parts.push('Add nothing that is not described here: no extra people, effects, text or logos.')
   return parts.join(' ')

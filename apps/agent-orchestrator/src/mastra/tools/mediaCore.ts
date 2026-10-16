@@ -136,3 +136,48 @@ export async function setOnlyAudio(video: string, audio: string, out: string): P
   return out
 }
 
+
+// ---- photo boards: several photos side by side in one image, separated by white gaps.
+const WHITE = 235
+const GAP_SHARE = 0.9 // a column (row) this white across is a gap
+const INSET = 0.03 // shaved off each photo: a thin white frame line sometimes sits just inside a gap
+
+function runs(mask: boolean[]): Array<[number, number]> {
+  const out: Array<[number, number]> = []
+  let s = -1
+  mask.forEach((m, i) => { if (m && s < 0) s = i; if (!m && s >= 0) { out.push([s, i]); s = -1 } })
+  if (s >= 0) out.push([s, mask.length])
+  return out
+}
+
+/** Where each photo sits on a board (from a grayscale frame), cropped to `aspect` (width/height).
+ *  Null when the board does not show exactly `n` photos between white gaps. */
+export function panelBoxes(gray: Uint8Array, width: number, height: number, n: number, aspect: number): Array<{ x: number; y: number; w: number; h: number }> | null {
+  const colWhite = new Array<number>(width).fill(0), rowWhite = new Array<number>(height).fill(0)
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) if (gray[y * width + x] > WHITE) { colWhite[x]++; rowWhite[y]++ }
+  const cols = runs(colWhite.map((c) => c < height * GAP_SHARE)).filter(([a, b]) => b - a > width / (n * 3))
+  const rows = runs(rowWhite.map((r) => r < width * GAP_SHARE)).filter(([a, b]) => b - a > height / 3)
+  if (cols.length !== n || !rows.length) return null
+  const top = rows[0][0], bottom = rows[rows.length - 1][1]
+  return cols.map(([x0, x1]) => {
+    const ins = Math.round(Math.min(x1 - x0, bottom - top) * INSET)
+    const w0 = x1 - x0 - 2 * ins, h0 = bottom - top - 2 * ins
+    const w = Math.min(w0, Math.floor(h0 * aspect)), h = Math.min(h0, Math.floor(w / aspect))
+    return { x: x0 + ins + Math.floor((w0 - w) / 2), y: top + ins + Math.floor((h0 - h) / 2), w, h }
+  })
+}
+
+/** Cuts a board into its photos (`<outPrefix>-<i>.png`); null when it can't find them. */
+export async function cutPanels(input: string, n: number, aspect: number, outPrefix: string): Promise<string[] | null> {
+  const { stdout: dims } = await execFile('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', input], { timeout: 30_000 })
+  const [width, height] = dims.trim().split(',').map(Number)
+  if (!width || !height) return null
+  const { stdout } = await execFile('ffmpeg', ['-v', 'error', '-i', input, '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { timeout: FFMPEG_TIMEOUT_MS, encoding: 'buffer', maxBuffer: width * height + 1024 })
+  const boxes = panelBoxes(new Uint8Array(stdout), width, height, n, aspect)
+  if (!boxes) return null
+  return Promise.all(boxes.map(async (b, i) => {
+    const out = `${outPrefix}-${i}.png`
+    await runFfmpeg(['-i', input, '-vf', `crop=${b.w}:${b.h}:${b.x}:${b.y}`, '-frames:v', '1', out])
+    return out
+  }))
+}

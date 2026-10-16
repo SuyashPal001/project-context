@@ -19,6 +19,7 @@ function deps(o: Partial<RemakeDeps> = {}): Partial<RemakeDeps> {
     localFile: vi.fn(async (id: string) => `/m/${id}`),
     upload: vi.fn(async (_t: string, key: string) => `up:${key.split('/').pop()}`),
     poseImage: vi.fn(async () => ({ model: 'm', people: 1, no_person: false, main: body })),
+    cutBoard: vi.fn(async (_f: string, n: number) => Array.from({ length: n }, (_, k) => `panel-${k + 1}`)),
     promptGate: vi.fn(async () => pass),
     stillChecks: vi.fn(async () => ({ passed: true, reasons: [] })),
     ffmpeg: vi.fn(async () => undefined), readFile: vi.fn(() => Buffer.from('x')),
@@ -72,7 +73,7 @@ describe('3b workflow', () => {
     const out = (done as unknown as { result: Record<string, unknown> }).result
     expect(out.finalFileId).toMatch(/^up:/)
     expect(String(out.note)).toMatch(/AI-generated/)
-    expect((out.summary as { spentMicro: string }).spentMicro).toBe(String(10 + 10 + 30 + 100 + 160 + 8)) // casting sheet + reference sheet + 3 stills + clips + music
+    expect((out.summary as { spentMicro: string }).spentMicro).toBe(String(10 + 10 + 20 + 100 + 160 + 8)) // casting sheet + reference sheet + look 1 still + one board for look 2's two stills + clips + music
   })
   it('stop ends with the preview only, no clip spend', async () => {
     const omni = vi.fn()

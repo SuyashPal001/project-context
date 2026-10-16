@@ -60,3 +60,22 @@ it('I5: muxing music keeps every video frame', async () => {
   const out = await muxMusic(v, m, join(dir, 'v91m.mp4'))
   expect(frames(out)).toBe(91)
 }, 120_000)
+
+// A board of photos side by side (remake stills, 2026-10-16) is cut on its real white gaps, not equal
+// widths: an equal cut kept a strip of the white border in a panel in the A/B.
+it('cuts a board of photos on its white gaps into 9:16 panels; no gaps found, no cut', async () => {
+  const { cutPanels } = await import('./mediaCore.js')
+  const board = join(dir, 'board.png')
+  // 1600x900 white, three photos of uneven widths with uneven gaps.
+  ff(['-f', 'lavfi', '-i', 'color=c=white:s=1600x900', '-f', 'lavfi', '-i', 'color=c=red:s=480x860', '-f', 'lavfi', '-i', 'color=c=green:s=470x860', '-f', 'lavfi', '-i', 'color=c=blue:s=490x860',
+    '-filter_complex', '[0][1]overlay=20:20[a];[a][2]overlay=560:20[b];[b][3]overlay=1090:20', '-frames:v', '1', board])
+  const out = await cutPanels(board, 3, 9 / 16, join(dir, 'panel'))
+  expect(out).toHaveLength(3)
+  const px = (p: string) => execFileSync('ffmpeg', ['-v', 'error', '-i', p, '-vf', 'scale=1:1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-']).toJSON().data
+  const [r, g, b] = out!.map(px)
+  expect(r[0]).toBeGreaterThan(200); expect(g[1]).toBeGreaterThan(100); expect(b[2]).toBeGreaterThan(200)
+  const wh = probe(out![0], ['-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0']).split(',').map(Number)
+  expect(Math.abs(wh[0] / wh[1] - 9 / 16)).toBeLessThan(0.01)
+  const plain = join(dir, 'plain.png'); ff(['-f', 'lavfi', '-i', 'color=c=gray:s=1600x900', '-frames:v', '1', plain])
+  expect(await cutPanels(plain, 3, 9 / 16, join(dir, 'p2'))).toBeNull()
+}, 60_000)

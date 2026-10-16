@@ -24,6 +24,7 @@ function deps(o: Partial<RemakeDeps> = {}): Partial<RemakeDeps> {
     localFile: vi.fn().mockImplementation(async (id: string) => `/m/${id}`),
     upload: vi.fn().mockImplementation(async (_t: string, key: string) => `up:${key.split('/').pop()}`),
     poseImage: vi.fn().mockResolvedValue({ model: 'm', people: 1, no_person: false, main: breakdown().pose!.looks[0].main_start }),
+    cutBoard: vi.fn(async (_f: string, n: number) => Array.from({ length: n }, (_, k) => `panel-${k + 1}`)),
     promptGate: vi.fn().mockResolvedValue(pass),
     stillChecks: vi.fn().mockResolvedValue({ passed: true, reasons: [] }),
     ffmpeg: vi.fn().mockResolvedValue(undefined),
@@ -65,7 +66,7 @@ describe('C1 approval card', () => {
 describe('I1 one still failing does not kill the run', () => {
   it('a guide frame that cannot be made fails only that still; the rest and the preview go on', async () => {
     let calls = 0
-    const runId = await startRun(sameBody(), { ffmpeg: vi.fn().mockImplementation(async (args: string[]) => { if (args[0] === '-ss' && ++calls === 2) throw new Error('ENOENT') }) })
+    const runId = await startRun(sameBody(), { ffmpeg: vi.fn().mockImplementation(async (args: string[]) => { if (args[0] === '-ss' && ++calls === 1) throw new Error('ENOENT') }) })
     await resume(runId, 'plan', { decision: 'approve' })
     const done = await resume(runId, 'cast', { pick: 1 })
     expect(done.status).toBe('suspended') // 3b: paused at the preview review

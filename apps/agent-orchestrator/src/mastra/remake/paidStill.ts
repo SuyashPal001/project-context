@@ -82,7 +82,9 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
   }
 }
 
-export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps): Promise<{ result: StillResult; ledger: LedgerEntry[] }> {
+/** `firstTry`: a photo cut from a board (board.ts) is this still's first try: no gate or call of its own
+ *  (the board was gated and paid once); its try shows its share of the board. */
+export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps, firstTry?: { fileId: string; creditsMicro: string }): Promise<{ result: StillResult; ledger: LedgerEntry[] }> {
   const item = `look ${job.look.n} ${job.kind} still`
   const base = { look: job.look.n, kind: job.kind }
   const ledger: LedgerEntry[] = []
@@ -94,9 +96,10 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
   const tries: StillTry[] = []
   const withTries = (r: { result: StillResult; ledger: LedgerEntry[] }) => (tries.length ? { ...r, result: { ...r.result, tries } } : r)
   for (let attempt = 0; attempt < 2; attempt++) {
+    const given = attempt === 0 ? firstTry : undefined
     // An edit is checked as an edit: the one fix, not the still's plan (which an edit prompt, "keep
     // everything else", read as contradicting: every edit retry was stopped, metro A/B 2026-10-16).
-    const gate = await deps.promptGate(editGate
+    const gate = given ? { status: 'pass' as const, reason: '' } : await deps.promptGate(editGate
       ? { prompt, planLine: editGate, look: {}, startFrameObjects: [], keyMoments: [], tenantId: ctx.tenantId }
       : { ...job.gate, prompt, tenantId: ctx.tenantId, ...(attempt > 0 ? { planLine: `${job.gate.planLine}; ${retryNote}` } : {}) })
     if (gate.status !== 'pass') {
@@ -112,14 +115,14 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
         ? { result: { ...base, fileId: last.fileId, status: 'failed', reasons: last.reasons }, ledger }
         : { result: { ...base, fileId: null, status: 'blocked', reasons: [why] }, ledger })
     }
-    if (ctx.outOfCredits?.()) {
+    if (!given && ctx.outOfCredits?.()) {
       if (last) ledger[ledger.length - 1].outcome = 'failed'
       return withTries({ result: { ...base, fileId: last?.fileId ?? null, status: 'failed', reasons: last ? [...last.reasons, 'no second try: not enough credits'] : ['not enough credits'] }, ledger })
     }
     const slot = slotFor(job.look.n, job.kind, attempt)
     // skipAvatarExpansion: images are placed by role (portrait, then pose guide); an avatar's
     // reference sheet would push the guide out of second place and change the gated prompt.
-    const g = await deps.generateStill(
+    const g = given ? { fileId: given.fileId, creditsUsedMicro: '0' } as Awaited<ReturnType<RemakeDeps['generateStill']>> : await deps.generateStill(
       { prompt, aspectRatio: job.aspectRatio, referenceFileIds: references, engine: 'gemini', skipAvatarExpansion: true, title: `Remake look ${job.look.n} ${job.kind} still` },
       ctx.exec(slot), slot)
     const spent = g.creditsUsedMicro ?? '0'
@@ -135,12 +138,12 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
       ledger.push({ item, attempt, creditsMicro: spent, outcome: 'kept' })
       const status = c.status === 'unknown' ? 'unchecked' : c.warnings.length ? 'warned' : 'passed'
       const kept = c.fileId ?? g.fileId
-      tries.push({ fileId: kept, kept: true, why: status === 'passed' ? [] : status === 'warned' ? c.warnings : [c.reason], creditsMicro: spent })
+      tries.push({ fileId: kept, kept: true, why: status === 'passed' ? [] : status === 'warned' ? c.warnings : [c.reason], creditsMicro: given?.creditsMicro ?? spent })
       return withTries({ result: { ...base, fileId: kept, status, reasons: status === 'passed' ? [] : status === 'warned' ? c.warnings : [c.reason] }, ledger })
     }
     ledger.push({ item, attempt, creditsMicro: spent, outcome: attempt === 0 ? 'retried' : 'failed' })
     last = { fileId: g.fileId, reasons: [c.reason] }
-    tries.push({ fileId: g.fileId, kept: false, why: c.hard, creditsMicro: spent })
+    tries.push({ fileId: g.fileId, kept: false, why: c.hard, creditsMicro: given?.creditsMicro ?? spent })
     // Edit, never regenerate (user rule): a wrong face, a lookalike or a duplicate object is fixed by
     // editing the failed still (it first, the chosen person second), so the pose and scene that
     // passed are kept. Only a wrong pose (facing, nobody in shot) needs a fresh image.

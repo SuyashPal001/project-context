@@ -31,6 +31,7 @@ function deps(o: Partial<RemakeDeps> = {}): Partial<RemakeDeps> {
     localFile: vi.fn(async (id: string) => `/m/${id}`),
     upload: vi.fn(async (_t: string, key: string) => `up:${key.split('/').pop()}`),
     poseImage: vi.fn(async () => ({ model: 'm', people: 1, no_person: false, main })),
+    cutBoard: vi.fn(async (_f: string, n: number) => Array.from({ length: n }, (_, k) => `panel-${k + 1}`)),
     promptGate: vi.fn(async () => pass), stillChecks: vi.fn(async () => ({ passed: true, reasons: [] })),
     ffmpeg: vi.fn(async () => undefined), readFile: vi.fn(() => Buffer.from('x')),
     renderPreview: vi.fn(async () => '/m/preview.mp4'), imageRateMicro: vi.fn(async () => 10n),
@@ -106,7 +107,7 @@ describe('M3/M4 stills step', () => {
     await (await wf()).w.createRun({ runId: run.runId }).then((r) => r.resume({ step: 'plan', resumeData: { decision: 'approve' }, requestContext: rc() }))
     await (await wf()).w.createRun({ runId: run.runId }).then((r) => r.resume({ step: 'cast', resumeData: { pick: 1 }, requestContext: rc() }))
     const deleted = del.mock.calls.map((c) => String((c as unknown[])[1]))
-    expect(deleted.sort()).toEqual(['id:Remake look 1 start guide.jpg', 'id:Remake look 2 end guide.jpg', 'id:Remake look 2 start guide.jpg'])
+    expect(deleted.sort()).toEqual(['id:Remake board 1 guides.jpg', 'id:Remake look 1 start guide.jpg', 'id:Remake look 2 end guide.jpg', 'id:Remake look 2 start guide.jpg'])
     expect(del.mock.calls.every((c) => (c as unknown[])[0] === 'JWT-SECRET-123')).toBe(true)
   })
 })

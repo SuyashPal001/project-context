@@ -19,7 +19,7 @@ import { generateVeoClipItem, VEO_CLIP_MODEL } from '../tools/veoClip.js'
 import { generateSongItem } from '../tools/generateSong.js'
 import { compareToReference } from '../tools/videoBreakdown/compareToReference.js'
 import type { Breakdown } from '../tools/videoBreakdown/breakDownVideo.js'
-import { fitClipToFrames, stillToFrames, joinClips, fitMusicToLength, setOnlyAudio } from '../tools/mediaCore.js'
+import { fitClipToFrames, stillToFrames, joinClips, fitMusicToLength, setOnlyAudio, cutPanels } from '../tools/mediaCore.js'
 import { cropImageLocal, findHead, type CropFraming } from '../tools/cropImage.js'
 import { checkModel } from '../tools/videoBreakdown/models.js'
 import { imageModelFor } from '../tools/imageEngine.js'
@@ -41,7 +41,9 @@ export interface RemakeDeps {
   poseImage: (path: string) => Promise<ImagePose>
   /** A kept still cropped around the face to a tighter framing (free; crop_image's core); the new file's id. */
   cropStill?: (fileId: string, framing: CropFraming, aspectRatio: '9:16' | '16:9' | '1:1', ctx: { idToken: string; scopeId: string; tenantId: string; runId: string; conversationId?: string }) => Promise<string>
-  promptGate: (input: ReturnType<typeof stillGateInput> & { tenantId: string }) => Promise<CheckResult>
+  /** A board of photos cut apart on its white gaps (mediaCore's cutPanels); the photos' file ids, or null. */
+  cutBoard: (fileId: string, n: number, aspectRatio: '9:16' | '16:9' | '1:1', ctx: { idToken: string; scopeId: string; tenantId: string; runId: string; conversationId?: string }) => Promise<string[] | null>
+  promptGate: (input: Omit<ReturnType<typeof stillGateInput>, 'look'> & { look: Record<string, unknown>; tenantId: string }) => Promise<CheckResult>
   stillChecks: (ask: AskFn, still: Img, opts: { lead?: Img; leadInShot?: boolean; faceMayHide?: boolean }) => Promise<{ passed: boolean; reasons: string[]; warnings?: string[] }>
   ffmpeg: (args: string[]) => Promise<void>
   readFile: (path: string) => Buffer
@@ -84,6 +86,19 @@ const real: RemakeDeps = {
       const id = await uploadFileWithKey(ctx.idToken, { key: generatedFileKey(ctx.conversationId ?? ctx.runId, `remake ${ctx.runId} still crop ${framing}`, 'jpg'), name: 'Remake still (closer).jpg', content: readFileSync(out), contentType: 'image/jpeg' })
       if (!id?.fileId) throw new Error('crop upload returned no file')
       return id.fileId
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  },
+  cutBoard: async (fileId, n, aspectRatio, ctx) => {
+    const src = (await downloadToSessionCache(ctx.scopeId, fileId, await fetchPresignedUrl(fileId, ctx.idToken), MAX_LOCAL_BYTES)).filePath
+    const dir = mkdtempSync(join(tmpdir(), 'remake-board-'))
+    try {
+      const [w, h] = aspectRatio.split(':').map(Number)
+      const parts = await cutPanels(src, n, w / h, join(dir, 'photo'))
+      if (!parts) return null
+      const ids = await Promise.all(parts.map(async (p, i) => (await uploadFileWithKey(ctx.idToken, { key: generatedFileKey(ctx.conversationId ?? ctx.runId, `remake ${ctx.runId} board photo ${i + 1}`, 'png'), name: `Remake still ${i + 1}.png`, content: readFileSync(p), contentType: 'image/png' }))?.fileId ?? null))
+      return ids.every(Boolean) ? (ids as string[]) : null
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

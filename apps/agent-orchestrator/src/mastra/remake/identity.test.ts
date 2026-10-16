@@ -20,6 +20,7 @@ function fakeDeps(o: Partial<RemakeDeps> = {}): Partial<RemakeDeps> {
     localFile: vi.fn().mockImplementation(async (id: string) => `/m/${id}`),
     upload: vi.fn().mockImplementation(async (_t: string, key: string) => `up:${key.split('/').pop()}`),
     poseImage: vi.fn().mockResolvedValue({ model: 'm', people: 1, no_person: false, main: breakdown().pose!.looks[0].main_start }),
+    cutBoard: vi.fn(async (_f: string, n: number) => Array.from({ length: n }, (_, k) => `panel-${k + 1}`)),
     promptGate: vi.fn().mockResolvedValue({ name: 'prompt', status: 'pass', reason: '', evidenceTimes: [] }),
     stillChecks: vi.fn().mockResolvedValue({ passed: true, reasons: [] }),
     ffmpeg: vi.fn().mockResolvedValue(undefined),
@@ -67,14 +68,21 @@ describe('identity: reference sheet + anchor still', () => {
     expect(input.prompt).toMatch(/reference sheet/i)
     expect(input.referenceFileIds).toEqual([expect.stringMatching(/^up:/)])
     expect(slot).toBe(1)
-    expect(out.summary).toMatchObject({ spentMicro: '500' }) // casting sheet + reference sheet + 3 stills
+    expect(out.summary).toMatchObject({ spentMicro: '400' }) // casting sheet + reference sheet + look 1 still + one board for look 2's two stills
   })
-  it('every still leads with the reference sheet; the first still is the anchor for the rest', async () => {
+  it('every still and board leads with the reference sheet; the first still is the anchor for single stills', async () => {
+    // Look 1's still is made alone (the anchor); look 2's two stills are one board, which holds the
+    // person across its own photos. A single still after the anchor gets it as image 3.
     const { g } = await toPreview()
-    const stills = g.mock.calls.slice(2).map((c) => c[0].referenceFileIds as string[])
-    expect(stills.every((r) => r[0] === 'img-2')).toBe(true)
-    expect(stills[0]).toHaveLength(2)                     // the anchor is made alone
-    expect(stills.slice(1).every((r) => r[2] === 'img-3')).toBe(true)
+    const calls = g.mock.calls.slice(2).map((c) => c[0] as { prompt: string; referenceFileIds: string[] })
+    expect(calls.every((c) => c.referenceFileIds[0] === 'img-2')).toBe(true)
+    expect(calls[0].referenceFileIds).toHaveLength(2)   // the anchor is made alone
+    expect(calls[1].prompt).toMatch(/real photographs side by side/)
+  })
+  it('a single still after the anchor gets it as the third image', async () => {
+    const { g } = await toPreview({ cutBoard: vi.fn().mockResolvedValue(null) })
+    const singles = g.mock.calls.slice(2).map((c) => c[0] as { prompt: string; referenceFileIds: string[] }).filter((c) => !/side by side/.test(c.prompt))
+    expect(singles.slice(1).every((c) => c.referenceFileIds[2] === 'img-3')).toBe(true)
   })
   it('the face is checked against the reference sheet', async () => {
     const fetchImage = vi.fn().mockImplementation(async (id: string) => ({ data: id, mime: 'image/jpeg' }))

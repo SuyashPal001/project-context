@@ -13,6 +13,7 @@ import { writePlan, applyEdits } from './plan.js'
 import { estimateCost, estimateClipsCost, ledgerSummary } from './cost.js'
 import { castSheetPrompt, stillPrompt, stillGateInput, usesProduct, REFERENCE_SHEET_PROMPT, CAST_BY_IMAGE } from './prompts.js'
 import { makeStill, type StillCtx, type StillJob } from './paidStill.js'
+import { boardUnits, boardPrompt, boardGateInput, boardAspect, BOARD_SLOT } from './board.js'
 import { previewSegments, previewSize, usableStill } from './preview.js'
 import { personIn } from './looks.js'
 import { clipSpecs, lookFrames, CLIP_FPS, type ClipSpec } from './clipSpec.js'
@@ -164,7 +165,8 @@ const stillsStep = createStep({
     const guide = async (n: number, kind: 'start' | 'end', t: number) => {
       const out = join(dir, `guide-${n}-${kind}.jpg`)
       await deps.ffmpeg(['-ss', String(Math.max(0, t)), '-i', source, '-frames:v', '1', '-q:v', '2', out])
-      return deps.upload(a.idToken, generatedFileKey(a.conversationId, `remake ${runId} look ${n} ${kind} guide`, 'jpg'), `Remake look ${n} ${kind} guide.jpg`, deps.readFile(out), 'image/jpeg')
+      const id = await deps.upload(a.idToken, generatedFileKey(a.conversationId, `remake ${runId} look ${n} ${kind} guide`, 'jpg'), `Remake look ${n} ${kind} guide.jpg`, deps.readFile(out), 'image/jpeg')
+      return id ? { id, path: out } : null
     }
     // Identity: the reference sheet when there is one, else the cropped portrait.
     const portraitId = (inputData.referenceSheetFileId as string | null | undefined) ?? inputData.portraitFileId
@@ -175,54 +177,122 @@ const stillsStep = createStep({
     // The anchor: the first kept person still, passed to the rest (same person, same light). Not when a
     // product photo needs the third reference slot (the product must show exactly).
     let anchor: string | null = null
-    const jobs: Array<{ person: boolean; run: () => Promise<{ result: StillResult; ledger: LedgerEntry[] }> }> = []
     // Once credits run out, the remaining stills stop before any guide, gate or call (M3).
     let outOfCredits = false
-    const noCredits = (look: number, kind: 'start' | 'end') => ({ result: { look, kind, fileId: null, status: 'failed' as const, reasons: ['not enough credits'] }, ledger: [] })
+    type Made = { result: StillResult; ledger: LedgerEntry[] }
+    const noCredits = (look: number, kind: 'start' | 'end'): Made => ({ result: { look, kind, fileId: null, status: 'failed' as const, reasons: ['not enough credits'] }, ledger: [] })
     // Pose-guide frames show the original person: deleted from the user's files after use (M4).
     const guideIds: string[] = []
-    for (const look of plan.looks) {
-      // A continuing part of a long shot starts from the previous part's end still (never paid twice).
-      for (const kind of ((look.needsEndStill ? ['start', 'end'] : ['start']) as Array<'start' | 'end'>).filter((k) => !(k === 'start' && look.continues))) {
-        jobs.push({ person: personIn(look), run: async () => {
-          // Never paid: a look whose people were not measured (spec §8a).
-          if (!look.measuredPeople) return { result: { look: look.n, kind, fileId: null, status: 'blocked', reasons: ['this part of the video couldn’t be measured, so its still wasn’t made'] }, ledger: [] }
-          // One still failing never ends the run: earlier stills are paid for and must reach the ledger and the preview.
-          if (outOfCredits) return noCredits(look.n, kind)
-          try {
-            const g = await guide(look.n, kind, kind === 'start' ? look.guideStartS : look.guideEndS)
-            if (g) guideIds.push(g)
-            if (outOfCredits) return noCredits(look.n, kind)
-            if (!g) return { result: { look: look.n, kind, fileId: null, status: 'blocked', reasons: ['the pose guide could not be saved'] }, ledger: [] }
-            const person = personIn(look)
-            const references = [...(person && portrait ? [portrait.fileId] : []), g, ...(product ? [product] : person && anchor ? [anchor] : [])]
-            const prompt = stillPrompt(plan, look, kind, brand, !!product)
-            const job: StillJob = { look, kind, prompt, references, aspectRatio: plan.aspectRatio, gate: stillGateInput(plan, look, kind, prompt) }
-            if (outOfCredits) return noCredits(look.n, kind)
-            const made = await makeStill(job, ctx, deps)
-            if (made.result.reasons.some((r) => r.includes('not enough credits'))) outOfCredits = true
-            return made
-          } catch (err) {
-            console.error(`[remake] look ${look.n} ${kind} still failed:`, err instanceof Error ? err.message : String(err))
-            return { result: { look: look.n, kind, fileId: null, status: 'failed', reasons: ['this still could not be made this time'] }, ledger: [] }
-          }
-        } })
+    const guides = new Map<string, { id: string; path: string } | null>()
+    const guideFor = async (look: RemakeLook, kind: 'start' | 'end') => {
+      const key = `${look.n}-${kind}`
+      if (!guides.has(key)) {
+        const g = await guide(look.n, kind, kind === 'start' ? look.guideStartS : look.guideEndS)
+        if (g) guideIds.push(g.id)
+        guides.set(key, g)
+      }
+      return guides.get(key)!
+    }
+    const jobFor = (look: RemakeLook, kind: 'start' | 'end', g: string): StillJob => {
+      const person = personIn(look)
+      const references = [...(person && portrait ? [portrait.fileId] : []), g, ...(product ? [product] : person && anchor ? [anchor] : [])]
+      const prompt = stillPrompt(plan, look, kind, brand, !!product)
+      return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, gate: stillGateInput(plan, look, kind, prompt) }
+    }
+    const single = async (look: RemakeLook, kind: 'start' | 'end', firstTry?: { fileId: string; creditsMicro: string }): Promise<Made> => {
+      // Never paid: a look whose people were not measured (spec §8a).
+      if (!look.measuredPeople) return { result: { look: look.n, kind, fileId: null, status: 'blocked', reasons: ['this part of the video couldn’t be measured, so its still wasn’t made'] }, ledger: [] }
+      // One still failing never ends the run: earlier stills are paid for and must reach the ledger and the preview.
+      if (outOfCredits && !firstTry) return noCredits(look.n, kind)
+      try {
+        const g = await guideFor(look, kind)
+        if (outOfCredits && !firstTry) return noCredits(look.n, kind)
+        if (!g) return { result: { look: look.n, kind, fileId: null, status: 'blocked', reasons: ['the pose guide could not be saved'] }, ledger: [] }
+        const made = await makeStill(jobFor(look, kind, g.id), ctx, deps, firstTry)
+        if (made.result.reasons.some((r) => r.includes('not enough credits'))) outOfCredits = true
+        return made
+      } catch (err) {
+        console.error(`[remake] look ${look.n} ${kind} still failed:`, err instanceof Error ? err.message : String(err))
+        return { result: { look: look.n, kind, fileId: null, status: 'failed', reasons: ['this still could not be made this time'] }, ledger: [] }
       }
     }
-    const done: Array<{ result: StillResult; ledger: LedgerEntry[] }> = []
+    // A board: 2-3 stills of one outfit look made as one image, cut apart free, each photo then checked
+    // and retried like a single still. Anything short of usable photos falls back to single stills.
+    let boards = 0
+    const board = async (unit: Item[]): Promise<Made[]> => {
+      const singles = () => Promise.all(unit.map((u) => single(u.look, u.kind)))
+      if (outOfCredits || !portrait || unit.some((u) => !u.look.measuredPeople)) return singles()
+      const i = boards++
+      const label = `${unit.map((u) => `look ${u.look.n} ${u.kind}`).join(', ')} stills (one image)`
+      let made: Awaited<ReturnType<RemakeDeps['generateStill']>> | null = null
+      try {
+        const gs = await Promise.all(unit.map((u) => guideFor(u.look, u.kind)))
+        if (gs.some((g) => !g)) return singles()
+        const stripPath = join(dir, `board-${i}-guides.jpg`)
+        await deps.ffmpeg([...gs.flatMap((g) => ['-i', g!.path]), '-filter_complex', `${gs.map((_, k) => `[${k}]scale=540:960,setsar=1[v${k}]`).join(';')};${gs.map((_, k) => `[v${k}]`).join('')}hstack=${gs.length}`, '-q:v', '2', stripPath])
+        const strip = await deps.upload(a.idToken, generatedFileKey(a.conversationId, `remake ${runId} board ${i} guides`, 'jpg'), `Remake board ${i + 1} guides.jpg`, deps.readFile(stripPath), 'image/jpeg')
+        if (!strip) return singles()
+        guideIds.push(strip)
+        const prompt = boardPrompt(plan, unit)
+        const gate = await deps.promptGate({ ...boardGateInput(plan, unit, prompt), tenantId: a.tenantId })
+        if (gate.status !== 'pass') {
+          console.error(`[remake] board of ${label} stopped by the prompt check (single stills instead): ${gate.reason}`)
+          return singles()
+        }
+        if (outOfCredits) return singles()
+        const slot = BOARD_SLOT + i
+        made = await deps.generateStill({ prompt, aspectRatio: boardAspect(unit.length), imageSize: '2K', referenceFileIds: [portrait.fileId, strip], engine: 'gemini', skipAvatarExpansion: true, title: `Remake board ${i + 1}` }, ctx.exec(slot), slot)
+        if (!made.fileId) {
+          if (made.insufficientCredits) outOfCredits = true
+          else console.error(`[remake] board of ${label} not made: ${made.refusalReason ?? 'unknown'}`)
+          const spent = made.creditsUsedMicro ?? '0'
+          const rest = await singles()
+          return spent === '0' ? rest : [{ ...rest[0], ledger: [{ item: label, attempt: 0, creditsMicro: spent, outcome: 'failed' }, ...rest[0].ledger] }, ...rest.slice(1)]
+        }
+        const panels = await deps.cutBoard(made.fileId, unit.length, plan.aspectRatio, { idToken: a.idToken, scopeId: a.scopeId, tenantId: a.tenantId, runId, conversationId: a.conversationId }).catch((err) => {
+          console.error(`[remake] board of ${label} could not be cut:`, err instanceof Error ? err.message : String(err))
+          return null
+        })
+        const spent = made.creditsUsedMicro ?? '0'
+        if (!panels || panels.length !== unit.length) {
+          const rest = await singles()
+          return [{ ...rest[0], ledger: [{ item: label, attempt: 0, creditsMicro: spent, outcome: 'failed' }, ...rest[0].ledger] }, ...rest.slice(1)]
+        }
+        const share = String(BigInt(spent) / BigInt(unit.length))
+        const out = await Promise.all(unit.map((u, k) => single(u.look, u.kind, { fileId: panels[k], creditsMicro: share })))
+        const kept = out.some((o) => usableStill(o.result))
+        return [{ ...out[0], ledger: [{ item: label, attempt: 0, creditsMicro: spent, outcome: kept ? 'kept' : 'failed' }, ...out[0].ledger] }, ...out.slice(1)]
+      } catch (err) {
+        console.error(`[remake] board of ${label} failed (single stills instead):`, err instanceof Error ? err.message : String(err))
+        return made?.fileId ? singles().then((rest) => [{ ...rest[0], ledger: [{ item: label, attempt: 0, creditsMicro: made!.creditsUsedMicro ?? '0', outcome: 'failed' as const }, ...rest[0].ledger] }, ...rest.slice(1)]) : singles()
+      }
+    }
+    type Item = { look: RemakeLook; kind: 'start' | 'end'; person: boolean }
+    const items: Item[] = plan.looks.flatMap((look) =>
+      // A continuing part of a long shot starts from the previous part's end still (never paid twice).
+      ((look.needsEndStill ? ['start', 'end'] : ['start']) as Array<'start' | 'end'>).filter((k) => !(k === 'start' && look.continues)).map((kind) => ({ look, kind, person: personIn(look) })))
+    const units = boardUnits(items, { aspectRatio: plan.aspectRatio, product: !!product })
+    const runUnit = (u: Item[]): Promise<Made[]> => (u.length > 1 ? board(u) : single(u[0].look, u[0].kind).then((m) => [m]))
+    const byItem = new Map<Item, Made>()
     try {
-      const first = jobs.findIndex((j) => j.person)
-      const firstDone = first >= 0 ? await jobs[first].run() : null
-      if (firstDone && !product) anchor = usableStill(firstDone.result)
-      const rest = jobs.filter((_, i) => i !== first)
-      const restDone: typeof done = []
-      for (let i = 0; i < rest.length; i += MAX_PARALLEL) restDone.push(...await Promise.all(rest.slice(i, i + MAX_PARALLEL).map((j) => j.run())))
-      // Back in plan order.
-      done.push(...jobs.map((j, i) => (i === first ? firstDone! : restDone[rest.indexOf(j)])))
+      const first = units.findIndex((u) => u.some((j) => j.person))
+      if (first >= 0) {
+        const firstDone = await runUnit(units[first])
+        units[first].forEach((it, k) => byItem.set(it, firstDone[k]))
+        if (!product) anchor = firstDone.map((d, k) => (units[first][k].person ? usableStill(d.result) : null)).find(Boolean) ?? null
+      }
+      const rest = units.filter((_, i) => i !== first)
+      for (let i = 0; i < rest.length; i += MAX_PARALLEL) {
+        const batch = rest.slice(i, i + MAX_PARALLEL)
+        const res = await Promise.all(batch.map(runUnit))
+        batch.forEach((u, k) => u.forEach((it, m) => byItem.set(it, res[k][m])))
+      }
     } finally {
       deps.removeDir(dir)
       await Promise.all(guideIds.map((id) => deps.deleteFile(a.idToken, id)))
     }
+    // Back in plan order.
+    const done = items.map((it) => byItem.get(it)!)
     return { ...inputData, stills: continueParts(plan.looks, done.map((d) => d.result)), ledger: [...(inputData.ledger as LedgerEntry[]), ...done.flatMap((d) => d.ledger)] }
   },
 })
