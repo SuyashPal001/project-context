@@ -6,12 +6,14 @@ import type { Img } from '../tools/tvcChecks.js'
 import type { CheckResult } from '../scorers/video/gate.js'
 import type { RemakeDeps } from './deps.js'
 import { comparePose } from './poseCompare.js'
+import { cropFramingFor } from './tightShots.js'
 import { personIn } from './looks.js'
 import type { stillGateInput } from './prompts.js'
 import type { LedgerEntry, RemakeLook, StillResult, StillTry } from './types.js'
 
 export interface StillCtx {
   tenantId: string; idToken: string; scopeId: string; runId: string
+  conversationId?: string
   exec: (slot: number) => MediaExecContext
   portrait: { fileId: string; img: Img } | null
   /** True once the run has run out of credits: checked right before each paid call. */
@@ -22,7 +24,8 @@ export interface StillJob { look: RemakeLook; kind: 'start' | 'end'; prompt: str
 export const slotFor = (n: number, kind: 'start' | 'end', attempt: number): number => n * 4 + (kind === 'end' ? 2 : 0) + attempt
 
 // hard: one paid retry. warnings: the still is kept and the user sees what may be off (user's call).
-type StillCheck = { status: CheckResult['status']; hard: string[]; warnings: string[]; reason: string }
+// fileId: set when the still was cropped to a tighter original (the crop is what is kept).
+type StillCheck = { status: CheckResult['status']; hard: string[]; warnings: string[]; reason: string; fileId?: string }
 
 async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: RemakeDeps): Promise<StillCheck> {
   try {
@@ -33,12 +36,25 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
       deps.localFile(fileId, ctx.idToken, ctx.scopeId).then((p) => deps.poseImage(p)),
     ])
     const body = job.kind === 'start' ? job.look.start : job.look.end
-    const p = comparePose(body, job.look.people, pose)
+    let p = comparePose(body, job.look.people, pose)
+    // A tighter original (selfie, close-up): crop the still around the face, free, and keep the crop
+    // when it matches. A crop that can't be made keeps the still with its framing warning.
+    let cropped: string | undefined
+    const crop = body && pose.main ? cropFramingFor(body.framing, pose.main.framing) : null
+    if (crop && p.status !== 'pass' && !p.hard && deps.cropStill) {
+      try {
+        const id = await deps.cropStill(fileId, crop, job.aspectRatio, ctx)
+        const q = comparePose(body, job.look.people, await deps.poseImage(await deps.localFile(id, ctx.idToken, ctx.scopeId)))
+        if (q.status !== 'fail') { p = q; cropped = id }
+      } catch (err) {
+        console.error('[remake] crop to the original framing failed:', err instanceof Error ? err.message : String(err))
+      }
+    }
     const hard = [...looks.reasons, ...(p.status === 'fail' && p.hard ? [p.reason] : [])]
     const warnings = [...(looks.warnings ?? []), ...(p.status === 'fail' && !p.hard ? [p.reason] : [])]
     if (hard.length) return { status: 'fail', hard, warnings, reason: hard.join('; ') }
-    if (p.status === 'unknown' && !warnings.length) return { status: 'unknown', hard, warnings, reason: p.reason }
-    return { status: 'pass', hard, warnings, reason: warnings.join('; ') || 'passed every check' }
+    if (p.status === 'unknown' && !warnings.length) return { status: 'unknown', hard, warnings, reason: p.reason, fileId: cropped }
+    return { status: 'pass', hard, warnings, reason: warnings.join('; ') || 'passed every check', fileId: cropped }
   } catch (err) {
     console.error('[remake] still check failed:', err instanceof Error ? err.message : String(err))
     return { status: 'unknown', hard: [], warnings: [], reason: 'the still could not be checked this time' }
@@ -89,8 +105,9 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
     if (c.status === 'pass' || c.status === 'unknown') {
       ledger.push({ item, attempt, creditsMicro: spent, outcome: 'kept' })
       const status = c.status === 'unknown' ? 'unchecked' : c.warnings.length ? 'warned' : 'passed'
-      tries.push({ fileId: g.fileId, kept: true, why: status === 'passed' ? [] : status === 'warned' ? c.warnings : [c.reason], creditsMicro: spent })
-      return withTries({ result: { ...base, fileId: g.fileId, status, reasons: status === 'passed' ? [] : status === 'warned' ? c.warnings : [c.reason] }, ledger })
+      const kept = c.fileId ?? g.fileId
+      tries.push({ fileId: kept, kept: true, why: status === 'passed' ? [] : status === 'warned' ? c.warnings : [c.reason], creditsMicro: spent })
+      return withTries({ result: { ...base, fileId: kept, status, reasons: status === 'passed' ? [] : status === 'warned' ? c.warnings : [c.reason] }, ledger })
     }
     ledger.push({ item, attempt, creditsMicro: spent, outcome: attempt === 0 ? 'retried' : 'failed' })
     last = { fileId: g.fileId, reasons: [c.reason] }

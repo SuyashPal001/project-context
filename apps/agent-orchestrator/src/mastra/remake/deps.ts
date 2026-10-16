@@ -12,7 +12,7 @@ import { gatewayAsk, sampleFrames, type AskFn, type Img } from '../tools/tvcChec
 import { remakeStillChecks } from './stillChecks.js'
 import { fetchBase64 } from '../tools/checkClip.js'
 import { fetchPresignedUrl, downloadToSessionCache } from '../tools/mediaCache.js'
-import { uploadFileWithKey, deleteFile } from '../../persistence.js'
+import { uploadFileWithKey, deleteFile, generatedFileKey } from '../../persistence.js'
 import { aiService, type ImagePose, type PoseResult } from '../tools/videoBreakdown/aiServiceClient.js'
 import { generateVideoItem, VIDEO_MODEL } from '../tools/generateVideo.js'
 import { generateVeoClipItem, VEO_CLIP_MODEL } from '../tools/veoClip.js'
@@ -20,6 +20,7 @@ import { generateSongItem } from '../tools/generateSong.js'
 import { compareToReference } from '../tools/videoBreakdown/compareToReference.js'
 import type { Breakdown } from '../tools/videoBreakdown/breakDownVideo.js'
 import { fitClipToFrames, stillToFrames, joinClips, fitMusicToLength, setOnlyAudio } from '../tools/mediaCore.js'
+import { cropImageLocal, findHead, type CropFraming } from '../tools/cropImage.js'
 import { checkModel } from '../tools/videoBreakdown/models.js'
 import { imageModelFor } from '../tools/imageEngine.js'
 import { runGate, type CheckResult } from '../scorers/video/gate.js'
@@ -38,6 +39,8 @@ export interface RemakeDeps {
   localFile: (fileId: string, idToken: string, scopeId: string) => Promise<string>
   upload: (idToken: string, key: string, name: string, content: Buffer, contentType: string) => Promise<string | null>
   poseImage: (path: string) => Promise<ImagePose>
+  /** A kept still cropped around the face to a tighter framing (free; crop_image's core); the new file's id. */
+  cropStill?: (fileId: string, framing: CropFraming, aspectRatio: '9:16' | '16:9' | '1:1', ctx: { idToken: string; scopeId: string; tenantId: string; runId: string; conversationId?: string }) => Promise<string>
   promptGate: (input: ReturnType<typeof stillGateInput> & { tenantId: string }) => Promise<CheckResult>
   stillChecks: (ask: AskFn, still: Img, opts: { lead?: Img; leadInShot?: boolean }) => Promise<{ passed: boolean; reasons: string[]; warnings?: string[] }>
   ffmpeg: (args: string[]) => Promise<void>
@@ -71,6 +74,20 @@ const real: RemakeDeps = {
   localFile: async (fileId, idToken, scopeId) => (await downloadToSessionCache(scopeId, fileId, await fetchPresignedUrl(fileId, idToken), MAX_LOCAL_BYTES)).filePath,
   upload: async (idToken, key, name, content, contentType) => (await uploadFileWithKey(idToken, { key, name, content, contentType }))?.fileId ?? null,
   poseImage: (path) => aiService<ImagePose>('/media/pose-image', { path }),
+  cropStill: async (fileId, framing, aspectRatio, ctx) => {
+    const src = (await downloadToSessionCache(ctx.scopeId, fileId, await fetchPresignedUrl(fileId, ctx.idToken), MAX_LOCAL_BYTES)).filePath
+    const head = await findHead(readFileSync(src).toString('base64'), 'image/png', ctx.tenantId, AbortSignal.timeout(60_000))
+    const dir = mkdtempSync(join(tmpdir(), 'remake-crop-'))
+    try {
+      const [w, h] = aspectRatio.split(':').map(Number)
+      const out = await cropImageLocal(src, join(dir, 'crop.jpg'), framing, head, { aspect: w / h, scaleBack: true })
+      const id = await uploadFileWithKey(ctx.idToken, { key: generatedFileKey(ctx.conversationId ?? ctx.runId, `remake ${ctx.runId} still crop ${framing}`, 'jpg'), name: 'Remake still (closer).jpg', content: readFileSync(out), contentType: 'image/jpeg' })
+      if (!id?.fileId) throw new Error('crop upload returned no file')
+      return id.fileId
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  },
   promptGate: ({ tenantId, ...input }) => runGate(promptCheckScorer, 'prompt', { ...input, tenantId }, []),
   stillChecks: (ask, still, opts) => remakeStillChecks(ask, still, opts),
   ffmpeg: async (args) => { await execFile('ffmpeg', ['-y', '-v', 'error', ...args], { timeout: 120_000 }) },

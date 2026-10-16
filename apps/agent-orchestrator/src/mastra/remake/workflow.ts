@@ -156,7 +156,7 @@ const stillsStep = createStep({
     const portraitId = (inputData.referenceSheetFileId as string | null | undefined) ?? inputData.portraitFileId
     const portrait = portraitId ? { fileId: portraitId, img: await deps.fetchImage(portraitId, a.idToken) } : null
     const product = brand.productPhotoFileId && usesProduct(plan, brand) ? brand.productPhotoFileId : null
-    const ctx: StillCtx = { tenantId: a.tenantId, idToken: a.idToken, scopeId: a.scopeId, runId, exec: execFor(requestContext as Rc, runId, a.idToken), portrait }
+    const ctx: StillCtx = { tenantId: a.tenantId, idToken: a.idToken, scopeId: a.scopeId, runId, conversationId: a.conversationId, exec: execFor(requestContext as Rc, runId, a.idToken), portrait }
     ctx.outOfCredits = () => outOfCredits
     // The anchor: the first kept person still, passed to the rest (same person, same light). Not when a
     // product photo needs the third reference slot (the product must show exactly).
