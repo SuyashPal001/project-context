@@ -49,7 +49,7 @@ const execFor = (rc: Rc, runId: string, idToken: string) => (_slot: number): Med
   agent: { toolCallId: `remake:${runId}` },
 })
 
-const inputSchema = z.object({ tenantId: z.string(), conversationId: z.string(), breakdown: any, brand: any, castFileId: z.string().optional() })
+const inputSchema = z.object({ tenantId: z.string(), conversationId: z.string(), breakdown: any, brand: any, castFileId: z.string().optional(), /** the user approves the person sheet before any still (the chat tool always sets it) */ reviewPerson: z.boolean().optional() })
 const planned = inputSchema.extend({ plan: any })
 
 const planStep = createStep({
@@ -73,19 +73,38 @@ const casted = planned.extend({ portraitFileId: z.string().nullable(), reference
 const castStep = createStep({
   id: 'cast', inputSchema: planned, outputSchema: casted,
   // sheetFileId null = no sheet yet (it was blocked or could not be made); `error` is plain words.
-  suspendSchema: z.object({ stage: z.literal('cast_pick'), sheetFileId: z.string().nullable(), sheetCreditsMicro: z.string(), error: z.string().optional() }),
+  // cast_pick: choose one of three; person_review: approve the chosen person's sheet (or ask for a change)
+  suspendSchema: z.object({ stage: z.enum(['cast_pick', 'person_review']), sheetFileId: z.string().nullable(), sheetCreditsMicro: z.string().optional(), error: z.string().optional(), out: any.optional() }),
   // no pick = make the sheet again (only when there is none); a pick crops that panel
-  resumeSchema: z.object({ pick: z.number().int().min(1).max(3).optional() }),
+  resumeSchema: z.object({ pick: z.number().int().min(1).max(3).optional(), decision: z.enum(['approve', 'edit']).optional(), change: z.string().optional() }),
   execute: async ({ inputData, resumeData, suspendData, suspend, requestContext, runId }) => {
     const a = access(requestContext as Rc, inputData.tenantId, runId)
     const plan = inputData.plan as RemakePlan
     if (!plan.needsCasting) return { ...inputData, portraitFileId: null, ledger: [] }
+    // The person is approved before any still (user, 2026-10-16, the Higgsfield way); a change is an edit
+    // of the sheet, so the person stays the same.
+    type CastOut = { portraitFileId: string | null; referenceSheetFileId?: string | null; characterFileIds?: Record<string, string>; ledger: LedgerEntry[] }
+    const review = async (o: CastOut, error?: string) => {
+      if (!inputData.reviewPerson || !o.referenceSheetFileId) return { ...inputData, ...o }
+      return await suspend({ stage: 'person_review', sheetFileId: o.referenceSheetFileId, out: o, ...(error ? { error } : {}) })
+    }
+    if (suspendData?.stage === 'person_review' && suspendData.out) {
+      const o = suspendData.out as CastOut
+      if (resumeData?.decision === 'approve') return { ...inputData, ...o }
+      if (resumeData?.decision === 'edit' && resumeData.change?.trim() && o.referenceSheetFileId) {
+        const slot = SHEET_EDIT_SLOT + o.ledger.filter((l) => l.item === 'reference sheet change').length
+        const e = await editSheet(o.referenceSheetFileId, resumeData.change.trim(), a, remakeDeps(), execFor(requestContext as Rc, runId, a.idToken)(slot), slot)
+        const next = { ...o, ...(e.fileId ? { referenceSheetFileId: e.fileId } : {}), ledger: [...o.ledger, ...e.ledger] }
+        return await review(next, e.fileId ? undefined : 'that change could not be made this time; the person is unchanged')
+      }
+      return await review(o)
+    }
     if (inputData.castFileId) {
       // A person the customer brings gets the same reference sheet as a picked one (fan reel 2026-10-16:
       // without it their face held less well across stills and clips).
       const exec = execFor(requestContext as Rc, runId, a.idToken)
       const [ref, chars] = await Promise.all([referenceSheet(inputData.castFileId, a, remakeDeps(), exec(1), reelStyling(plan)), characterPortraits(plan, a, remakeDeps(), exec)])
-      return { ...inputData, portraitFileId: inputData.castFileId, referenceSheetFileId: ref.fileId, characterFileIds: chars.fileIds, ledger: [...ref.ledger, ...chars.ledger] }
+      return await review({ portraitFileId: inputData.castFileId, referenceSheetFileId: ref.fileId, characterFileIds: chars.fileIds, ledger: [...ref.ledger, ...chars.ledger] })
     }
     const deps = remakeDeps()
     const sheetId = (suspendData?.sheetFileId as string | null | undefined) ?? null
@@ -122,7 +141,7 @@ const castStep = createStep({
       const sheet: LedgerEntry = { item: 'casting sheet', attempt: 0, creditsMicro: spentSoFar, outcome: 'kept' }
       const exec = execFor(requestContext as Rc, runId, a.idToken)
       const [ref, chars] = await Promise.all([referenceSheet(id, a, deps, exec(1), reelStyling(plan)), characterPortraits(plan, a, deps, exec)])
-      return { ...inputData, portraitFileId: id, referenceSheetFileId: ref.fileId, characterFileIds: chars.fileIds, ledger: [sheet, ...ref.ledger, ...chars.ledger] }
+      return await review({ portraitFileId: id, referenceSheetFileId: ref.fileId, characterFileIds: chars.fileIds, ledger: [sheet, ...ref.ledger, ...chars.ledger] })
     } catch (err) {
       console.error('[remake] saving the chosen person failed:', err instanceof Error ? err.message : String(err))
       return await suspend({ stage: 'cast_pick', sheetFileId: sheetId, sheetCreditsMicro: spentSoFar, error: 'the chosen person could not be saved; please pick again' })
@@ -138,6 +157,26 @@ const castStep = createStep({
 const MAX_CHARACTERS = 2
 // One picture per distinct look styling (hair, jewellery, makeup), each an EDIT of the chosen person so
 // the face stays theirs; that look's stills use it as the person. Checks stay on the base person.
+// A change the user asks for on the person sheet: an EDIT of it, so the face stays the same person.
+const SHEET_EDIT_SLOT = 700
+async function editSheet(sheetId: string, change: string, a: { tenantId: string }, deps: RemakeDeps, exec: ReturnType<ReturnType<typeof execFor>>, slot: number): Promise<{ fileId: string | null; ledger: LedgerEntry[] }> {
+  const item = 'reference sheet change'
+  try {
+    const prompt = `Edit this character reference sheet. Change only: ${change}. Keep exactly the same face, identity, skin tone, age and body in every panel, and the same layout and labels. Photoreal.`
+    const gate = await deps.promptGate({ prompt, planLine: `edit of the chosen person's reference sheet (the image, not described in words): only the change the user asked for, ${change}; ${CAST_BY_IMAGE}`, look: {}, startFrameObjects: [], keyMoments: [], tenantId: a.tenantId })
+    if (gate.status !== 'pass') {
+      console.error('[remake] sheet change not checked/passed:', gate.status, gate.reason)
+      return { fileId: null, ledger: [{ item, attempt: 0, creditsMicro: '0', outcome: 'blocked' }] }
+    }
+    const g = await deps.generateStill({ prompt, aspectRatio: '3:4', imageSize: '2K', referenceFileIds: [sheetId], engine: 'gemini', skipAvatarExpansion: true, title: 'Remake reference sheet (changed)' }, exec, slot)
+    if (!g.fileId) console.error('[remake] sheet change not made:', g.refusalReason ?? (g.insufficientCredits ? 'credits' : 'unknown'))
+    return { fileId: g.fileId ?? null, ledger: [{ item, attempt: 0, creditsMicro: g.creditsUsedMicro ?? '0', outcome: g.fileId ? 'kept' : 'failed' }] }
+  } catch (err) {
+    console.error('[remake] sheet change failed:', err instanceof Error ? err.message : String(err))
+    return { fileId: null, ledger: [] }
+  }
+}
+
 /** The styling of the reel's first look with the person: the person sheet is drawn in it. */
 const reelStyling = (plan: RemakePlan): string => { const l = plan.looks.find(personIn); return l ? stylingOf(plan, l) : '' }
 

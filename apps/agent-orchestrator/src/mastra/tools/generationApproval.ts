@@ -170,7 +170,11 @@ const remakePreview = (args: Record<string, unknown>): string | undefined =>
   args.action === 'approve_plan'
     ? 'Approves the remake plan and makes the casting sheet (3 new people to choose from). When the video has no person to cast, it makes the stills and the free preview instead, as estimated with the plan.'
     : args.action === 'pick_cast'
-      ? 'Makes every still for the remake with the chosen person (at most one automatic retry each), then the free preview, as estimated with the plan.'
+      ? 'Makes the chosen person\'s reference sheet for you to approve before any still is made.'
+      : args.action === 'change_person'
+        ? 'Edits the person\'s reference sheet with your change (the same person), for you to approve.'
+        : args.action === 'approve_person'
+          ? 'Makes every still for the remake with the approved person (at most one automatic retry each), then the free preview, as estimated with the plan.'
       : args.action === 'approve_preview'
         ? 'Animates every part of the remake (at most one automatic retry each), adds new music, checks it against the original and delivers the video, as estimated with the preview.'
         : undefined

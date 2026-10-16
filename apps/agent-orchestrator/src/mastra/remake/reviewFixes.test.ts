@@ -55,7 +55,10 @@ describe('C1 approval card', () => {
     const meta = GENERATION_APPROVAL_METADATA['remake_video']
     expect(meta?.resourceType).toBe('image_generation')
     expect(meta.buildPreview!({ action: 'approve_plan' })).toMatch(/casting sheet/)
-    expect(meta.buildPreview!({ action: 'pick_cast' })).toMatch(/every still/)
+    // 2026-10-16: the pick makes the person's sheet for approval; the stills come with approve_person
+    expect(meta.buildPreview!({ action: 'pick_cast' })).toMatch(/reference sheet for you to approve/)
+    expect(meta.buildPreview!({ action: 'change_person' })).toMatch(/same person/)
+    expect(meta.buildPreview!({ action: 'approve_person' })).toMatch(/every still/)
     expect(meta.buildPreview!({ action: 'approve_preview' })).toMatch(/Animates every part/)
     expect(meta.subjectFor!({ action: 'approve_preview' }, undefined)).toBe('google/veo-3.1-fast-generate-001')
     expect(meta.resourceTypeFor!({ action: 'approve_preview' })).toBe('video_generation')
