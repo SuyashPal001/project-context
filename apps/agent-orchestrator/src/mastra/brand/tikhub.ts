@@ -26,7 +26,7 @@ export function parseInstagramProfile(json: unknown, handle: string): InstagramF
   }
 }
 
-/** One TikHub call. Null on any failure (logged). Cost is TikHub's per-call price, logged by the caller. */
+/** One TikHub call. Null on any failure (logged). Not cost-logged yet — TikHub cost tracking is a follow-up. */
 export async function fetchInstagramProfile(handle: string): Promise<InstagramFacts | null> {
   const key = process.env.TIKHUB_API_KEY
   if (!key) {

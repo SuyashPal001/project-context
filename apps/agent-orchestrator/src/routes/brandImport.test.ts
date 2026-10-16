@@ -1,13 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const start = vi.fn()
+const reportImportResult = vi.fn()
 vi.mock('../mastra/workflows/brandImportWorkflow.js', () => ({
   brandImportWorkflow: { createRun: async () => ({ runId: 'run-1', start: (...a: unknown[]) => start(...a) }) },
-  reportImportResult: vi.fn(),
+  reportImportResult: (...a: unknown[]) => reportImportResult(...a),
 }))
 const T = '11111111-1111-4111-8111-111111111111'
 
-beforeEach(() => { vi.clearAllMocks(); process.env.INTERNAL_SERVICE_KEY = 'k'; start.mockResolvedValue({ status: 'success' }) })
+beforeEach(() => {
+  vi.clearAllMocks()
+  process.env.INTERNAL_SERVICE_KEY = 'k'
+  start.mockResolvedValue({ status: 'success' })
+  reportImportResult.mockResolvedValue(undefined)
+})
 
 async function call(body: unknown, key = 'k') {
   const { brandImportRouter } = await import('./brandImport.js')
@@ -28,5 +34,19 @@ describe('POST /internal/brand/import', () => {
 
   it('rejects a body with no handle or facts', async () => {
     expect((await call({ tenantId: T, source: 'website' })).status).toBe(400)
+  })
+
+  it('reports ok:false when the run resolves failed', async () => {
+    start.mockResolvedValue({ status: 'failed', error: { message: 'x' } })
+    const res = await call({ tenantId: T, source: 'instagram', handle: 'mamaearth.in' })
+    expect(res.status).toBe(202)
+    await vi.waitFor(() => expect(reportImportResult).toHaveBeenCalledWith({ tenantId: T, ok: false, error: 'x' }))
+  })
+
+  it('reports ok:false when start rejects', async () => {
+    start.mockRejectedValue(new Error('boom'))
+    const res = await call({ tenantId: T, source: 'instagram', handle: 'mamaearth.in' })
+    expect(res.status).toBe(202)
+    await vi.waitFor(() => expect(reportImportResult).toHaveBeenCalledWith({ tenantId: T, ok: false, error: 'boom' }))
   })
 })

@@ -45,6 +45,41 @@ export const brandFillOutputSchema = z.object({
   headlineFont: z.string(),
 })
 
+export type BrandFillOutput = z.infer<typeof brandFillOutputSchema>
+
+// Mirrors products/agent-platform/packages/api/lib/brandSchema.ts's brandFillSchema limits
+// (kept in sync by hand — the two packages can't import each other). That schema's array
+// items are z.string().max(N) with no catch, so an over-length model value would fail the
+// whole /import-result POST, not just drop that one field. Truncating a single string field
+// is safe (name/oneLiner/audience/voiceNotes/headlineFont — summaries, fine to shorten).
+// Array items are dropped instead of truncated: signaturePhrases and ctaExamples must stay
+// verbatim or not appear at all, never cut mid-phrase.
+const LIMITS = {
+  name: 80, oneLiner: 200, audience: 300, voiceNotes: 3000, headlineFont: 60,
+  toneWordItem: 30, toneWordCount: 5,
+  signaturePhraseItem: 80, signaturePhraseCount: 10,
+  ctaExampleItem: 80, ctaExampleCount: 10,
+}
+
+const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) : s)
+const dropOverLong = (items: string[], maxLen: number, maxCount: number) =>
+  items.filter((i) => i.length <= maxLen).slice(0, maxCount)
+
+/** Clamps a fill agent's output to the API's brandFillSchema limits so the report POST can't be rejected. */
+export function clampFill(fields: BrandFillOutput): BrandFillOutput {
+  return {
+    ...fields,
+    name: truncate(fields.name, LIMITS.name),
+    oneLiner: truncate(fields.oneLiner, LIMITS.oneLiner),
+    audience: truncate(fields.audience, LIMITS.audience),
+    voiceNotes: truncate(fields.voiceNotes, LIMITS.voiceNotes),
+    headlineFont: truncate(fields.headlineFont, LIMITS.headlineFont),
+    toneWords: dropOverLong(fields.toneWords, LIMITS.toneWordItem, LIMITS.toneWordCount),
+    signaturePhrases: dropOverLong(fields.signaturePhrases, LIMITS.signaturePhraseItem, LIMITS.signaturePhraseCount),
+    ctaExamples: dropOverLong(fields.ctaExamples, LIMITS.ctaExampleItem, LIMITS.ctaExampleCount),
+  }
+}
+
 const list = (label: string, items: string[]) => (items.length ? `${label}:\n${items.map((i) => `- ${i}`).join('\n')}` : '')
 
 export function buildFillPrompt(input: { website?: WebsiteFacts; instagram?: InstagramFacts }): string {

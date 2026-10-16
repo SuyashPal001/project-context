@@ -1,13 +1,24 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows'
 import { z } from 'zod'
 
-import { brandFillAgent, brandFillOutputSchema, buildFillPrompt } from '../agents/brandFillAgent.js'
+import { brandFillAgent, brandFillOutputSchema, buildFillPrompt, clampFill } from '../agents/brandFillAgent.js'
 import { fetchInstagramProfile } from '../brand/tikhub.js'
 import { downloadImageBase64 } from '../../routes/productDescribe.js'
+import { sniffImageMimeType } from '../../media.js'
 import { persistCost } from '../cost.js'
 import type { InstagramFacts, WebsiteFacts } from '../brand/types.js'
 
 const FILL_MODEL = process.env.MASTRA_LITE_MODEL ?? 'gemini-3.6-flash'
+
+// The API's import-result route caps sourceText at 20,000 chars (z.string().max(20_000)) —
+// an over-length body fails the whole report, not just that field. Caption-level capping
+// keeps one runaway caption from eating the whole budget before the join+slice below.
+const MAX_CAPTION_CHARS = 1_500
+const MAX_SOURCE_TEXT_CHARS = 20_000
+const SNIFFABLE_LOGO_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
+
+const capCaptions = (captions: string[]) => captions.map((c) => c.slice(0, MAX_CAPTION_CHARS))
+const joinSourceText = (parts: string[]) => parts.filter(Boolean).join('\n').slice(0, MAX_SOURCE_TEXT_CHARS)
 
 const inputSchema = z.object({
   tenantId: z.string().uuid(),
@@ -37,19 +48,42 @@ const gather = createStep({
       if (!ig) throw new Error('instagram profile could not be read')
       return {
         tenantId: inputData.tenantId, instagram: ig, logoUrl: ig.profilePicUrl ?? undefined,
-        sourceText: [ig.fullName, ig.bio, ...ig.captions].filter(Boolean).join('\n'),
+        sourceText: joinSourceText([ig.fullName ?? '', ig.bio ?? '', ...capCaptions(ig.captions)]),
       }
     }
     const w = inputData.facts as WebsiteFacts | undefined
     if (!w) throw new Error('website facts missing')
+    // Prefer an explicit logo candidate; a .ico favicon isn't a usable logo image
+    // (the fill step would just drop it text-only) so skip straight past it.
+    const nonIcoIcon = w.iconUrls.find((u) => !u.toLowerCase().endsWith('.ico'))
     return {
       tenantId: inputData.tenantId, website: w,
-      logoUrl: w.logoCandidates[0] ?? w.iconUrls[0],
+      logoUrl: w.logoCandidates[0] ?? nonIcoIcon,
       faviconUrl: w.iconUrls[0],
-      sourceText: [w.siteName, w.title, w.description, ...w.headings, ...w.ctas, w.bodyText].filter(Boolean).join('\n'),
+      sourceText: joinSourceText([w.siteName ?? '', w.title ?? '', w.description ?? '', ...w.headings, ...w.ctas, w.bodyText]),
     }
   },
 })
+
+/**
+ * Downloads a candidate logo and sniffs its real type from the bytes. Returns null — never
+ * throws — on a download failure (DNS/TLS/timeout/bad URL/over-size) or when the bytes
+ * aren't one of the three image types Gemini accepts here; a .ico favicon or an HTML error
+ * page served at the URL both land here and the fill step runs text-only instead.
+ */
+async function resolveLogoImage(logoUrl: string): Promise<{ base64: string; mimeType: string } | null> {
+  let base64: string | null
+  try {
+    base64 = await downloadImageBase64(logoUrl)
+  } catch (err) {
+    console.error('[brandImport] logo download failed', { logoUrl, error: (err as Error).message })
+    return null
+  }
+  if (!base64) return null
+  const sniffed = sniffImageMimeType(Buffer.from(base64.slice(0, 32), 'base64'))
+  if (!sniffed || !SNIFFABLE_LOGO_MIME_TYPES.has(sniffed)) return null
+  return { base64, mimeType: sniffed }
+}
 
 const fill = createStep({
   id: 'fill',
@@ -57,9 +91,9 @@ const fill = createStep({
   outputSchema: filledSchema,
   execute: async ({ inputData }) => {
     const prompt = buildFillPrompt({ website: inputData.website, instagram: inputData.instagram })
-    const logo = inputData.logoUrl ? await downloadImageBase64(inputData.logoUrl) : null
+    const logo = inputData.logoUrl ? await resolveLogoImage(inputData.logoUrl) : null
     const content: Array<Record<string, unknown>> = [{ type: 'text', text: prompt }]
-    if (logo) content.unshift({ type: 'image', image: logo, mimeType: 'image/png' })
+    if (logo) content.unshift({ type: 'image', image: logo.base64, mimeType: logo.mimeType })
     const result = await brandFillAgent.generate(
       [{ role: 'user', content }] as never,
       { structuredOutput: { schema: brandFillOutputSchema } },
@@ -70,7 +104,7 @@ const fill = createStep({
       persistCost({ tenantId: inputData.tenantId, agentId: 'brand-fill', workflowId: 'creative-brand', model: FILL_MODEL, inputTokens: usage.inputTokens ?? 0, outputTokens: usage.outputTokens ?? 0 })
     }
     if (!result.object) throw new Error('fill returned no object')
-    return { ...inputData, fields: result.object }
+    return { ...inputData, fields: clampFill(result.object) }
   },
 })
 
