@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '@serverless-saas/types';
 import { brandPatchSchema } from '../lib/brandSchema';
-import { getBrand, patchBrand } from '../lib/brandRecords';
+import { effectiveImportStatus, getBrand, getBrandRow, patchBrand } from '../lib/brandRecords';
 import { parseBrandSource } from '../lib/brandSource';
 import { runBrandImport } from '../lib/brandImport';
 import { filesBelongToTenant } from '../lib/brandFiles';
@@ -47,6 +47,9 @@ brandRoutes.post('/import', zValidator('json', z.object({ value: z.string().max(
   if (g instanceof Response) return g;
   const source = parseBrandSource(c.req.valid('json').value);
   if (!source) return c.json({ error: 'Import failed', message: 'Paste a website link or an Instagram handle' }, 400);
+  // One import at a time: a second click while one is still running gets that run back.
+  const row = await getBrandRow(g.tenantId);
+  if (row && effectiveImportStatus(row).status === 'importing') return c.json({ data: await getBrand(g.tenantId) }, 202);
   await runBrandImport(g.tenantId, g.userId, source);
   return c.json({ data: await getBrand(g.tenantId) }, 202);
 });

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../db', () => ({ db: {} }));
 vi.mock('@serverless-saas/storage', () => ({ storageService: { getDownloadUrl: vi.fn() } }));
 
-import { toBrandRecord, effectiveImportStatus, mergeImport, IMPORT_STALE_MS, applyImportResult, markImportFailed } from '../lib/brandRecords';
+import { toBrandRecord, effectiveImportStatus, mergeImport, IMPORT_STALE_MS, applyImportResult, markImportFailed, patchBrand } from '../lib/brandRecords';
 import { brandFillSchema, brandPatchSchema } from '../lib/brandSchema';
 import type { CreativeBrand } from '@serverless-saas/agent-schema/creativeBrand';
 import { db } from '../db';
@@ -136,5 +136,32 @@ describe('markImportFailed', () => {
     expect(mockSet).toHaveBeenCalledWith({ importStatus: 'failed', importError: 'some error' });
     const whereCall = mockChain.where.mock.calls[0][0];
     expect(whereCall).toBeDefined();
+  });
+});
+
+describe('patchBrand', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const mockRow = (r: CreativeBrand) => {
+    const whereChain = { limit: vi.fn().mockResolvedValue([r]) };
+    (db as any).select = vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue(whereChain) }) });
+    const set = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    (db as any).update = vi.fn().mockReturnValue({ set });
+    return set;
+  };
+
+  it('merges colours into the saved ones instead of replacing them', async () => {
+    const set = mockRow(row({ colors: { primary: '#111111', accent: '#222222' } }));
+    await patchBrand('t1', 'u1', { colors: { accent: '#333333' } });
+    expect(set.mock.calls[0][0].colors).toEqual({ primary: '#111111', accent: '#333333' });
+  });
+
+  it('leaves non-colour fields as given', async () => {
+    const set = mockRow(row({ colors: { primary: '#111111' } }));
+    await patchBrand('t1', 'u1', { name: 'X' });
+    expect(set.mock.calls[0][0]).toMatchObject({ name: 'X' });
+    expect(set.mock.calls[0][0]).not.toHaveProperty('colors');
   });
 });

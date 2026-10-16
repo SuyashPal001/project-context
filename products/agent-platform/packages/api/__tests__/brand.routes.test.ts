@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
 
-const lib = { getBrand: vi.fn(), patchBrand: vi.fn() };
+const lib = { getBrand: vi.fn(), patchBrand: vi.fn(), getBrandRow: vi.fn() };
 vi.mock('../lib/brandRecords', async (orig) => ({
   ...(await orig<typeof import('../lib/brandRecords')>()),
   getBrand: (...a: unknown[]) => lib.getBrand(...a),
   patchBrand: (...a: unknown[]) => lib.patchBrand(...a),
+  getBrandRow: (...a: unknown[]) => lib.getBrandRow(...a),
 }));
 const runBrandImport = vi.fn();
 vi.mock('../lib/brandImport', () => ({ runBrandImport: (...a: unknown[]) => runBrandImport(...a) }));
@@ -29,7 +30,7 @@ async function app(permissions = [{ resource: 'files', action: 'read' }, { resou
 }
 const send = (method: string, body: unknown) => ({ method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
-beforeEach(() => { vi.clearAllMocks(); lib.getBrand.mockResolvedValue(record); fileOwned.mockResolvedValue(true); });
+beforeEach(() => { vi.clearAllMocks(); lib.getBrand.mockResolvedValue(record); lib.getBrandRow.mockResolvedValue(null); fileOwned.mockResolvedValue(true); });
 
 describe('/brand routes', () => {
   it('GET returns null data when there is no brand', async () => {
@@ -61,6 +62,22 @@ describe('/brand routes', () => {
     const res = await (await app()).request('/brand/import', send('POST', { value: '@mamaearth.in' }));
     expect(res.status).toBe(202);
     expect(runBrandImport).toHaveBeenCalledWith('tenant-1', 'user-1', { type: 'instagram', handle: 'mamaearth.in' });
+  });
+
+  it('POST /import returns the running import instead of starting another', async () => {
+    lib.getBrandRow.mockResolvedValue({ importStatus: 'importing', importStartedAt: new Date(), importError: null });
+    lib.getBrand.mockResolvedValue({ ...record, importStatus: 'importing' });
+    const res = await (await app()).request('/brand/import', send('POST', { value: '@mamaearth.in' }));
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ data: { ...record, importStatus: 'importing' } });
+    expect(runBrandImport).not.toHaveBeenCalled();
+  });
+
+  it('POST /import starts again when the running import went stale', async () => {
+    lib.getBrandRow.mockResolvedValue({ importStatus: 'importing', importStartedAt: new Date(Date.now() - 10 * 60_000), importError: null });
+    const res = await (await app()).request('/brand/import', send('POST', { value: '@mamaearth.in' }));
+    expect(res.status).toBe(202);
+    expect(runBrandImport).toHaveBeenCalled();
   });
 
   it('POST /import rejects input that is neither a site nor a handle', async () => {

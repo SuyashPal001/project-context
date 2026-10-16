@@ -119,7 +119,10 @@ export async function patchBrand(tenantId: string, userId: string, patch: BrandP
       .onConflictDoUpdate({ target: creativeBrand.tenantId, set: { ...patch, editedByUser } });
     return;
   }
-  await db.update(creativeBrand).set({ ...patch, editedByUser }).where(eq(creativeBrand.tenantId, tenantId));
+  // Colours merge per role: a role absent from the patch stays as saved, so a
+  // caller that names one role (update_brand) never wipes the others.
+  const merged = patch.colors ? { ...patch, colors: { ...(existing.colors ?? {}), ...patch.colors } } : patch;
+  await db.update(creativeBrand).set({ ...merged, editedByUser }).where(eq(creativeBrand.tenantId, tenantId));
 }
 
 /** Applies an import result unless the row moved on (a newer import, or none running). */
