@@ -18,7 +18,7 @@ Return ONLY JSON with these keys:
    "leg_side": "image-left|image-right|center (where the lower legs and feet end up)"}],
  "subject_box": [x0, y0, x1, y1] as 0-1 fractions where the main subject sits most of the time, or null,
  "story": {"setup": "how it opens", "cause": "what action drives the change", "payoff": "how it ends"},
- "moments": [{"t_s": 0, "what": "every meaningful action or event, including small ones inside a shot (a gesture, a prop used, a switch pressed, text appearing)", "why_it_matters": "its job in the story"}],
+ "moments": [{"t_s": 0, "what": "every meaningful action or event, including small ones inside a shot (a gesture, a prop used, a switch pressed, text appearing)", "why_it_matters": "its job in the story", "story_beat": "true ONLY when this moment IS the story's setup, cause or payoff action (at most one each), not a small gesture"}],
  "setting": {"floor": "", "rug": "", "furniture": "", "light": "", "framing": "how much of the frame the subject fills"},
  "characters": [{"who": "short description of each OTHER person the story needs (someone the main person reacts to, talks to or looks at), not the main person and not passers-by", "when": "m:ss - m:ss on screen", "where": "where in the frame"}],
  "props": [{"prop": "", "where": "", "when": "", "stays_in_place": true, "part_of_trick": "true ONLY when this object IS the trick (it covers the camera, wipes the frame or hides the change), not something that is simply in the scene"}],
@@ -35,7 +35,7 @@ export interface WatchOverview {
   looks: Array<{ label: string; approx_start_s: number; approx_end_s: number; outfit?: string; expression?: string; start_pose?: string; end_pose?: string; moves?: Array<{ t_s: number; limb: string; direction: string; how: string; measured?: boolean }>; leg_side?: string; leg_side_start?: string; leg_side_source?: 'measured' | 'gemini'; body_angle?: number | null; body?: { people: number | null; no_person: boolean | null; start: BodyReading | null; end: BodyReading | null }; measured?: string }>
   subject_box: [number, number, number, number] | null
   story: { setup: string; cause: string; payoff: string }
-  moments: Array<{ t_s: number; what: string; why_it_matters: string; measured?: boolean }>
+  moments: Array<{ t_s: number; what: string; why_it_matters: string; measured?: boolean; story_beat?: boolean }>
   setting: Record<string, string>
   props: Array<{ prop: string; where: string; when: string; stays_in_place?: boolean; part_of_trick?: boolean }>
   /** Other people the story needs (not the main person, not passers-by). Missing on older breakdowns. */

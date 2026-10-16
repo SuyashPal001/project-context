@@ -99,7 +99,8 @@ describe('the workflow casts each character once and gives the portrait to her s
     await resume('cast', { pick: 1 })
     const portrait = generateStill.mock.calls.find((c) => /character/i.test(c[0].title))!
     expect(portrait[2]).toBe(2)
-    expect(promptGate.mock.calls.some((c) => /character portrait/.test(c[0].planLine))).toBe(true)
+    // Metro run: the check read a plain studio portrait as contradicting "looking at her phone in the train".
+    expect(promptGate.mock.calls.some((c) => /casting portrait.*the scene, pose and expression come later/.test(c[0].planLine))).toBe(true)
     const stills = generateStill.mock.calls.filter((c) => /look \d (start|end) still/.test(c[0].title))
     const withHer = stills.filter((c) => (c[0].referenceFileIds as string[]).includes('girl-portrait')).map((c) => c[0].title)
     expect(withHer).toEqual(['Remake look 2 end still'])  // look 2 end (9.5s): she is on screen 5-9.5s; look 1 (0.2s) and look 2 start (4.6s) not

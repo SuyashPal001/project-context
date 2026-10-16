@@ -16,7 +16,36 @@ export function bodyChanged(a: BodyReading | null, b: BodyReading | null): boole
   return a.framing !== b.framing || a.orientation !== b.orientation || turned(a, b) || a.knees !== b.knees || a.knees_toward !== b.knees_toward || raised(a) !== raised(b)
 }
 
+// A moment this far inside a shot gets its own still (each part stays long enough to animate).
+const MOMENT_EDGE_S = 1
+
+/** Splits a person shot at a story beat (setup, cause or payoff; small gestures don't count) well inside it (metro reel: holding the phone up to the window
+ *  at 2.2s sat between shot 1's start and end stills, so only the clip could show it). The first part
+ *  ends on the moment's still; the second continues from it (never paid twice). One moment per shot. */
+function splitAtMoments(looks: RemakeLook[], moments: Breakdown['overview']['moments']): RemakeLook[] {
+  const out: RemakeLook[] = []
+  const shift = (lines: string[], from: number, to: number, by: number) => lines.flatMap((x) => {
+    const m = /^at (\d+(?:\.\d+)?)s/.exec(x)
+    const t = m ? Number(m[1]) : 0
+    return t >= from && t < to ? [x.replace(/^at \d+(?:\.\d+)?s/, `at ${(t - by).toFixed(1)}s`)] : []
+  })
+  for (const l of looks) {
+    const m = (l.people ?? 0) > 0 ? moments.find((x) => (x.story_beat === true || String(x.story_beat) === 'true') && x.t_s >= l.startS + MOMENT_EDGE_S && x.t_s <= l.endS - MOMENT_EDGE_S) : undefined
+    if (!m) { out.push(l); continue }
+    const t = m.t_s, cut = t - l.startS
+    out.push(
+      { ...l, endS: t, end: null, endPose: m.what, guideEndS: t, needsEndStill: true, moveLines: shift(l.moveLines, 0, cut, 0), cameraLines: shift(l.cameraLines, 0, cut, 0) },
+      { ...l, startS: t, start: null, startPose: '', guideStartS: t, continues: true, moveLines: shift(l.moveLines, cut, Infinity, cut), cameraLines: shift(l.cameraLines, cut, Infinity, cut) },
+    )
+  }
+  return out.map((l, i) => ({ ...l, n: i + 1 }))
+}
+
 export function remakeLooks(b: Breakdown): RemakeLook[] {
+  return splitAtMoments(shotLooks(b), b.overview.moments ?? [])
+}
+
+function shotLooks(b: Breakdown): RemakeLook[] {
   const spans = lookSpans(b.overview, b.hidden_cuts, b.video.durationS, b.cuts?.cuts ?? [])
   const measured = new Map((b.pose?.looks ?? []).map((l) => [l.label, l]))
   // One remake look per SHOT (a look split at a hard cut is two shots of one outfit look); `ref` is

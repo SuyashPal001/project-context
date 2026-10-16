@@ -137,7 +137,7 @@ async function characterPortraits(plan: RemakePlan, a: { tenantId: string }, dep
     const item = `portrait of the ${c.who}`
     try {
       const prompt = characterPortraitPrompt(c.to)
-      const gate = await deps.promptGate({ prompt, planLine: `character portrait; characters[${c.i}]: swap to ${c.to}`, look: {}, startFrameObjects: [], keyMoments: [], tenantId: a.tenantId })
+      const gate = await deps.promptGate({ prompt, planLine: `casting portrait of a new person for this role: a plain studio head-and-shoulders photo of who they are; the scene, pose and expression come later in the stills, so a studio background, a neutral face and facing the camera are expected; characters[${c.i}]: swap to ${c.to}`, look: {}, startFrameObjects: [], keyMoments: [], tenantId: a.tenantId })
       if (gate.status !== 'pass') {
         console.error(`[remake] ${item} not checked/passed:`, gate.status, gate.reason)
         ledger.push({ item, attempt: 0, creditsMicro: '0', outcome: 'blocked' })
