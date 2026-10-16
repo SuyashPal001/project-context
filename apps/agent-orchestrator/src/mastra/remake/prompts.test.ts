@@ -17,7 +17,7 @@ describe('stillPrompt', () => {
     expect(s).toContain('yellow tee with a Bubbli soda can in hand')
     expect(s).not.toContain('red dress')
     expect(s).toContain('mouth closed')
-    expect(s).toMatch(/Copy ONLY the body pose and camera framing from the second image/)
+    expect(s).toMatch(/Copy ONLY the body pose, camera framing and setting from the second image/) // setting kept
     expect(s).toMatch(/full body/)
     expect(s).toContain('a Bubbli soda can (left)')
     expect(s).toMatch(/Add nothing that is not described here/)
@@ -71,5 +71,19 @@ describe('stillGateInput', () => {
     expect(g.startFrameObjects).toEqual(['a Bubbli soda can'])
     expect(g.keyMoments).toEqual([])
     expect(g.look.expression).toBe('mouth closed')
+  })
+})
+
+describe('the guide image and the setting line agree (real checker, 2026-10-16)', () => {
+  it('a KEPT setting is copied from the guide image, not excluded from it', async () => {
+    const p = await plan() // setting: keep (auto)
+    const s = stillPrompt(p, p.looks[0], 'start', brand, false)
+    expect(s).toMatch(/Copy ONLY the body pose, camera framing and setting from the second image; not its person, face, outfit or any text/)
+  })
+  it('a SWAPPED setting is excluded from the guide image', async () => {
+    const p = applyEdits(await plan(), [{ ref: 'setting', action: 'swap', to: 'a bright cafe' }], brand)
+    const s = stillPrompt(p, p.looks[0], 'start', brand, false)
+    expect(s).toMatch(/Copy ONLY the body pose and camera framing from the second image; not its person, face, outfit, setting or any text/)
+    expect(s).toMatch(/Setting: a bright cafe/)
   })
 })
