@@ -93,10 +93,20 @@ export async function writePlan(b: Breakdown, brand: Brand, ask: AskFn): Promise
 Rules: the person on screen, and every other character, is always a new person who fits the brand (describe age range and style only; never a real or famous person; no names). Outfits and props usually swap toward the brand's product and style. Moments, poses and the story's structure are kept. Never write the name of a real person or a character.
 BRAND: ${brandText(brand)}
 REFS: ${JSON.stringify(refs)}
-Reply ONLY JSON {"lines":[{"ref":"","action":"keep|swap|drop","to":"","why":""}]}` }], [{ key: 'lines', type: 'array' }])
+Also list in "missing_props" every object a look's pose, a move or a moment says the person holds or uses that is NOT in the props refs, with roughly when it is on screen (m:ss - m:ss).
+LOOKS: ${JSON.stringify(b.overview.looks.map((l) => ({ start_pose: l.start_pose, end_pose: l.end_pose, moves: (l.moves ?? []).map((m) => `${m.t_s}s ${m.how}`) })))}
+Reply ONLY JSON {"lines":[{"ref":"","action":"keep|swap|drop","to":"","why":""}],"missing_props":[{"prop":"","where":"","when":""}]}` }], [{ key: 'lines', type: 'array' }])
   const raw = (v.lines as unknown[])
     .filter((x): x is PlanLine => !!x && typeof x === 'object' && typeof (x as PlanLine).ref === 'string' && ['keep', 'swap', 'drop'].includes((x as PlanLine).action))
     .map((x): PlanLine => ({ ref: x.ref, action: x.action, ...(x.to ? { to: x.to } : {}), ...(x.why ? { why: x.why } : {}) }))
+  // An object a pose holds but the props list missed (metro rerun v7: "holding bouquet and phone", no
+  // phone prop) is added and kept, so the still draws it and the check expects it.
+  const missing = (Array.isArray(v.missing_props) ? v.missing_props : []).filter((x): x is { prop: string; where?: string; when?: string } => !!x && typeof x === 'object' && typeof (x as { prop?: unknown }).prop === 'string' && !!(x as { prop: string }).prop.trim())
+    .filter((x) => !reference.props.some((p) => p.prop.toLowerCase() === x.prop.toLowerCase()))
+  for (const x of missing) {
+    refs.push({ ref: `props[${reference.props.length}]`, what: `${x.prop} (${x.where ?? ''})` })
+    reference.props.push({ prop: x.prop, where: x.where ?? '', when: x.when ?? '' })
+  }
   const { lines, warnings } = enforceRules(raw, refs, { brand, musicMood: reference.musicMood })
   return { lines, looks, reference, needsCasting: looks.some(personIn), aspectRatio: aspectOf(b), warnings }
 }

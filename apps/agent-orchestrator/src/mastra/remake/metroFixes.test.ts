@@ -93,3 +93,28 @@ describe('a still whose original faces away is still face-checked when a face sh
   })
 })
 void body
+
+// Metro rerun v7 (2026-10-16): shot 1's start still was blocked: its check input listed the earbuds
+// (on screen from 3s) as a plan line, "missing: props[1]"; and the start pose held a phone that the
+// breakdown never listed as a prop ("holding an object that isn't there").
+describe('the check input lists only props in view', () => {
+  it('a prop off screen at the still is not a line the still is checked against', async () => {
+    const b = breakdown({ overview: { ...breakdown().overview, props } } as never)
+    const p = await writePlan(b, brand, vi.fn().mockResolvedValue({ lines: [] }))
+    const look = { ...p.looks[0], guideStartS: 0.2 }
+    const g = stillGateInput(p, look, 'start', 'x')
+    expect(g.planLine).toMatch(/props\[1\]/)       // smartphone, 0-3.5s
+    expect(g.planLine).not.toMatch(/props\[2\]/)   // earbuds, 3.7-14s
+  })
+})
+
+describe('an object the person holds that the breakdown left out of the props is added', () => {
+  it('the plan adds the props the poses and moments name but the list missed', async () => {
+    const b = breakdown({ overview: { ...breakdown().overview, props: [props[0]], looks: [{ ...breakdown().overview.looks[0], start_pose: 'stepping out holding bouquet and phone' }, breakdown().overview.looks[1]] } } as never)
+    const ask = vi.fn().mockResolvedValue({ lines: [], missing_props: [{ prop: 'smartphone', where: 'right hand', when: '0:00 - 0:03' }, { prop: '' }] })
+    const p = await writePlan(b, brand, ask)
+    expect(p.reference.props.map((x) => x.prop)).toEqual(['Flower bouquet', 'smartphone'])
+    expect(p.lines.find((l) => l.ref === 'props[1]')).toMatchObject({ action: 'keep' })
+    expect(String(ask.mock.calls[0][0][0].text)).toMatch(/missing_props/)
+  })
+})

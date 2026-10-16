@@ -27,12 +27,11 @@ const SLACK_S = 0.25
 /** Props in view at time t (metro A/B: every prop went into every still, so a phone from shot 1
  *  appeared in the selfie shots and earbuds from the selfie shots appeared in shot 1). */
 export function propsAt(plan: RemakePlan, t: number): string[] {
-  return plan.reference.props.flatMap((p, i) => {
-    if (p.trick) return []
-    const r = whenRange(p.when ?? '')
-    if (r && (t < r[0] - SLACK_S || t > r[1] + SLACK_S)) return []
-    return shown(plan, `props[${i}]`, p.prop) ?? []
-  })
+  return plan.reference.props.flatMap((p, i) => (p.trick || !inView(p.when, t) ? [] : shown(plan, `props[${i}]`, p.prop) ?? []))
+}
+function inView(when: string | undefined, t: number): boolean {
+  const r = whenRange(when ?? '')
+  return !r || (t >= r[0] - SLACK_S && t <= r[1] + SLACK_S)
 }
 /** Other characters on screen at time t that the plan casts as new people (a dropped one is left out). */
 export function charactersAt(plan: RemakePlan, t: number): Array<{ i: number; who: string; to: string }> {
@@ -130,7 +129,10 @@ export const CAST_BY_IMAGE = 'the person: a new person, given by the first refer
 
 export function stillGateInput(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', prompt: string, characters?: CharacterImages) {
   const i = refOf(look)
-  const mine = plan.lines.filter((l) => l.ref.startsWith(`looks[${i}].`) || l.ref === 'setting' || l.ref.startsWith('props['))
+  // Only the props in view at this still: an off-screen prop's line read as "missing" (metro rerun v7).
+  const t = stillTime(look, kind)
+  const propInView = (ref: string) => { const m = /^props\[(\d+)\]$/.exec(ref); return !m || inView(plan.reference.props[Number(m[1])]?.when, t) }
+  const mine = plan.lines.filter((l) => l.ref.startsWith(`looks[${i}].`) || l.ref === 'setting' || (l.ref.startsWith('props[') && propInView(l.ref)))
   const trickRef = (ref: string) => { const m = /^props\[(\d+)\]$/.exec(ref); return !!m && !!plan.reference.props[Number(m[1])]?.trick }
   // A trick object is added over the finished video, so a still that leaves it out is right (fan rerun: "missing: props[1]").
   // A character in view is given by their portrait, like the lead: never a line the prompt is checked against in words.
