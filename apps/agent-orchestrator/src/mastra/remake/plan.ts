@@ -117,6 +117,9 @@ Reply ONLY JSON {"lines":[{"ref":"","action":"keep|swap|drop","to":"","why":""}]
   const raw = (v.lines as unknown[])
     .filter((x): x is PlanLine => !!x && typeof x === 'object' && typeof (x as PlanLine).ref === 'string' && ['keep', 'swap', 'drop'].includes((x as PlanLine).action))
     .map((x): PlanLine => ({ ref: x.ref, action: x.action, ...(x.to ? { to: x.to } : {}), ...(x.why ? { why: x.why } : {}) }))
+    // Styling (hair, jewellery, makeup) is kept from the reference; only the user's own edit changes it
+    // (fan run 2026-10-16: the writer gave each look a different hairstyle, so her hair changed every look).
+    .map((x): PlanLine => (/\.styling$/.test(x.ref) ? { ref: x.ref, action: 'keep' } : x))
   // An object a pose holds but the props list missed (metro rerun v7: "holding bouquet and phone", no
   // phone prop) is added and kept, so the still draws it and the check expects it.
   const missing = (Array.isArray(v.missing_props) ? v.missing_props : []).filter((x): x is { prop: string; where?: string; when?: string } => !!x && typeof x === 'object' && typeof (x as { prop?: unknown }).prop === 'string' && !!(x as { prop: string }).prop.trim())

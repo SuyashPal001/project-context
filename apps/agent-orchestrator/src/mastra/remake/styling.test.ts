@@ -43,7 +43,8 @@ describe('styling is per look, not part of the person', () => {
     expect(REFERENCE_SHEET_PROMPT).toMatch(/Hair, jewellery and makeup are styling/)
   })
   it('a still says its look\'s styling, kept or swapped', async () => {
-    const p = await writePlan(styled(), brand, vi.fn().mockResolvedValue({ lines: [{ ref: 'looks[1].styling', action: 'swap', to: 'hair in a braid, gold jhumkas' }] }))
+    const { applyEdits } = await import('./plan.js')
+    const p = applyEdits(await writePlan(styled(), brand, vi.fn().mockResolvedValue({ lines: [] })), [{ ref: 'looks[1].styling', action: 'swap', to: 'hair in a braid, gold jhumkas' }], brand)
     expect(stylingOf(p, p.looks[0])).toBe('hair open in soft waves, gold jhumkas')
     expect(stillPrompt(p, p.looks[1], 'start', brand, false)).toMatch(/Styling: hair in a braid, gold jhumkas\./)
   })
@@ -110,5 +111,22 @@ describe('the quote counts one image per styling', () => {
     const p = await writePlan(styled(), brand, vi.fn().mockResolvedValue({ lines: [] }))
     const plain = { ...p, lines: p.lines.map((l) => (/\.styling$/.test(l.ref) ? { ...l, action: 'drop' as const } : l)) }
     expect(estimateCost(p, { castProvided: true, microEach: 1n }).images - estimateCost(plain, { castProvided: true, microEach: 1n }).images).toBe(2)
+  })
+})
+
+// Fan run 2026-10-16: the plan writer gave every look a different hairstyle ("sleek centre-parted",
+// "soft curls", "voluminous waves") though the reel keeps open hair throughout. Styling is kept from the
+// reference by default; only the user's own edit changes it.
+describe('styling is kept from the reference unless the user changes it', () => {
+  it('a styling swap from the plan writer is kept as the reference', async () => {
+    const p = await writePlan(styled(), brand, vi.fn().mockResolvedValue({ lines: [{ ref: 'looks[0].styling', action: 'swap', to: 'center-parted sleek hair' }] }))
+    expect(p.lines.find((l) => l.ref === 'looks[0].styling')).toMatchObject({ action: 'keep' })
+    expect(stylingOf(p, p.looks[0])).toBe('hair open in soft waves, gold jhumkas')
+  })
+  it('the user\'s edit still changes it', async () => {
+    const { applyEdits } = await import('./plan.js')
+    const p = await writePlan(styled(), brand, vi.fn().mockResolvedValue({ lines: [] }))
+    const e = applyEdits(p, [{ ref: 'looks[0].styling', action: 'swap', to: 'hair in a bun' }], brand)
+    expect(stylingOf(e, e.looks[0])).toBe('hair in a bun')
   })
 })
