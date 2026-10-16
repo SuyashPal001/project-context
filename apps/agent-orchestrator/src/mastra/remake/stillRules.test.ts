@@ -73,3 +73,28 @@ describe('knee side fails only when the legs are far from the reference', () => 
     expect(personWords(body({ knees_toward: 'image-left', leg_offset: -0.059 }), null).join(', ')).toMatch(/knees fall to image-left/)
   })
 })
+
+describe('trick objects stay out of stills; objects are placed from the picture', () => {
+  // Fan reel: the blade was drawn into every still at a different angle, and "beside her on the rug,
+  // then in her left hand" drew two remotes (and got one prompt blocked).
+  const b = () => breakdown({ overview: { ...breakdown().overview, props: [
+    { prop: 'remote control', where: 'beside her on the rug, then in her left hand', when: 'all' },
+    { prop: 'ceiling fan blade', where: 'foreground, sweeping across the lens', when: 'at each change', part_of_trick: true },
+  ] } as never })
+  it('referenceOf keeps the trick flag', () => {
+    expect(referenceOf(b()).props.map((p) => !!p.trick)).toEqual([false, true])
+  })
+  it('the still names scene objects without timed positions, and says not to draw the trick object', async () => {
+    const p = await writePlan(b(), brand, vi.fn().mockResolvedValue({ lines: [] }))
+    const s = stillPrompt(p, p.looks[0], 'start', brand, false)
+    expect(s).toContain('Objects: remote control.')
+    expect(s).not.toMatch(/then in her left hand/)
+    expect(s).toMatch(/where objects sit/)
+    expect(s).toMatch(/Do not draw: ceiling fan blade/)
+  })
+  it('the prompt check is not told the trick object is in the frame', async () => {
+    const { stillGateInput } = await import('./prompts.js')
+    const p = await writePlan(b(), brand, vi.fn().mockResolvedValue({ lines: [] }))
+    expect(stillGateInput(p, p.looks[0], 'start', 'x').startFrameObjects).toEqual(['remote control'])
+  })
+})

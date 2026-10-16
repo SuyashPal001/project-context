@@ -4,6 +4,7 @@ import { personWords } from '../tools/videoBreakdown/measuredLine.js'
 import { personIn } from './looks.js'
 import { CAST_BY_IMAGE } from './prompts.js'
 import type { Brand, PlanLine, RemakeLook, RemakePlan, StillResult } from './types.js'
+import { usableStill } from './preview.js'
 
 export const CLIP_FPS = 30
 const VEO_SECONDS = [4, 6, 8] as const
@@ -23,7 +24,7 @@ export function lookFrames(plan: RemakePlan): Map<number, number> {
   return out
 }
 
-const usable = (s: StillResult | undefined) => (s && s.fileId && (s.status === 'passed' || s.status === 'unchecked') ? s.fileId : null)
+const usable = usableStill
 
 export function clipSpecs(plan: RemakePlan, stills: StillResult[]): ClipSpec[] {
   const frames = lookFrames(plan)

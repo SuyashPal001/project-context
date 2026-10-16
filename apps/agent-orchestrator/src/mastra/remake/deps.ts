@@ -8,7 +8,8 @@ import { join } from 'node:path'
 import { costMicro, resolveRate } from '@serverless-saas/credits'
 import { generateImageItem, type ImageItemInput } from '../tools/generateImage.js'
 import type { MediaExecContext } from '../tools/batchRunner.js'
-import { gatewayAsk, runStillChecks, sampleFrames, type AskFn, type Img } from '../tools/tvcChecks.js'
+import { gatewayAsk, sampleFrames, type AskFn, type Img } from '../tools/tvcChecks.js'
+import { remakeStillChecks } from './stillChecks.js'
 import { fetchBase64 } from '../tools/checkClip.js'
 import { fetchPresignedUrl, downloadToSessionCache } from '../tools/mediaCache.js'
 import { uploadFileWithKey, deleteFile } from '../../persistence.js'
@@ -38,7 +39,7 @@ export interface RemakeDeps {
   upload: (idToken: string, key: string, name: string, content: Buffer, contentType: string) => Promise<string | null>
   poseImage: (path: string) => Promise<ImagePose>
   promptGate: (input: ReturnType<typeof stillGateInput> & { tenantId: string }) => Promise<CheckResult>
-  stillChecks: (ask: AskFn, still: Img, opts: { lead?: Img; leadInShot?: boolean }) => Promise<{ passed: boolean; reasons: string[] }>
+  stillChecks: (ask: AskFn, still: Img, opts: { lead?: Img; leadInShot?: boolean }) => Promise<{ passed: boolean; reasons: string[]; warnings?: string[] }>
   ffmpeg: (args: string[]) => Promise<void>
   readFile: (path: string) => Buffer
   renderPreview: (job: PreviewJob) => Promise<string>
@@ -71,7 +72,7 @@ const real: RemakeDeps = {
   upload: async (idToken, key, name, content, contentType) => (await uploadFileWithKey(idToken, { key, name, content, contentType }))?.fileId ?? null,
   poseImage: (path) => aiService<ImagePose>('/media/pose-image', { path }),
   promptGate: ({ tenantId, ...input }) => runGate(promptCheckScorer, 'prompt', { ...input, tenantId }, []),
-  stillChecks: (ask, still, opts) => runStillChecks(ask, still, opts),
+  stillChecks: (ask, still, opts) => remakeStillChecks(ask, still, opts),
   ffmpeg: async (args) => { await execFile('ffmpeg', ['-y', '-v', 'error', ...args], { timeout: 120_000 }) },
   readFile: (path) => readFileSync(path),
   renderPreview: (job) => renderPreview(job),

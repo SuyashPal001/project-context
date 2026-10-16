@@ -21,7 +21,10 @@ export interface StillJob { look: RemakeLook; kind: 'start' | 'end'; prompt: str
 
 export const slotFor = (n: number, kind: 'start' | 'end', attempt: number): number => n * 4 + (kind === 'end' ? 2 : 0) + attempt
 
-async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: RemakeDeps): Promise<CheckResult> {
+// hard: one paid retry. warnings: the still is kept and the user sees what may be off (user's call).
+type StillCheck = { status: CheckResult['status']; hard: string[]; warnings: string[]; reason: string }
+
+async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: RemakeDeps): Promise<StillCheck> {
   try {
     const still = await deps.fetchImage(fileId, ctx.idToken)
     const person = personIn(job.look)
@@ -31,13 +34,14 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
     ])
     const body = job.kind === 'start' ? job.look.start : job.look.end
     const p = comparePose(body, job.look.people, pose)
-    const reasons = [...looks.reasons, ...(p.status === 'fail' ? [p.reason] : [])]
-    if (reasons.length) return { name: 'still', status: 'fail', reason: reasons.join('; '), evidenceTimes: [] }
-    if (p.status === 'unknown') return { name: 'still', status: 'unknown', reason: p.reason, evidenceTimes: [] }
-    return { name: 'still', status: 'pass', reason: 'passed every check', evidenceTimes: [] }
+    const hard = [...looks.reasons, ...(p.status === 'fail' && p.hard ? [p.reason] : [])]
+    const warnings = [...(looks.warnings ?? []), ...(p.status === 'fail' && !p.hard ? [p.reason] : [])]
+    if (hard.length) return { status: 'fail', hard, warnings, reason: hard.join('; ') }
+    if (p.status === 'unknown' && !warnings.length) return { status: 'unknown', hard, warnings, reason: p.reason }
+    return { status: 'pass', hard, warnings, reason: warnings.join('; ') || 'passed every check' }
   } catch (err) {
     console.error('[remake] still check failed:', err instanceof Error ? err.message : String(err))
-    return { name: 'still', status: 'unknown', reason: 'the still could not be checked this time', evidenceTimes: [] }
+    return { status: 'unknown', hard: [], warnings: [], reason: 'the still could not be checked this time' }
   }
 }
 
@@ -82,7 +86,8 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
     const c = await checkStill(g.fileId, job, ctx, deps)
     if (c.status === 'pass' || c.status === 'unknown') {
       ledger.push({ item, attempt, creditsMicro: spent, outcome: 'kept' })
-      return { result: { ...base, fileId: g.fileId, status: c.status === 'pass' ? 'passed' : 'unchecked', reasons: c.status === 'pass' ? [] : [c.reason] }, ledger }
+      const status = c.status === 'unknown' ? 'unchecked' : c.warnings.length ? 'warned' : 'passed'
+      return { result: { ...base, fileId: g.fileId, status, reasons: status === 'passed' ? [] : status === 'warned' ? c.warnings : [c.reason] }, ledger }
     }
     ledger.push({ item, attempt, creditsMicro: spent, outcome: attempt === 0 ? 'retried' : 'failed' })
     last = { fileId: g.fileId, reasons: [c.reason] }

@@ -61,7 +61,8 @@ export function referenceOf(b: Breakdown): RemakeReference {
     // Framing is per shot (the guide frame and measured body carry it); a reel-wide framing note in
     // the setting contradicted every still it was copied into (live Snitch run, 2026-10-16).
     setting: Object.entries(o.setting).filter(([k]) => !/framing|camera|shot/i.test(k)).map(([k, v]) => `${k}: ${v}`).join('; '),
-    props: o.props.map((p) => ({ prop: p.prop, where: p.where, when: p.when })),
+    // part_of_trick may come back as true or "true"; only a plain yes counts.
+    props: o.props.map((p) => ({ prop: p.prop, where: p.where, when: p.when, ...(p.part_of_trick === true || String(p.part_of_trick) === 'true' ? { trick: true } : {}) })),
     moments: o.moments.map((m) => ({ t_s: m.t_s, what: m.what })),
     musicMood: [o.music.mood, o.music.genre].filter(Boolean).join(', '),
     music: { mood: o.music.mood, genre: o.music.genre, instruments: o.music.instruments, hasVocals: o.music.has_vocals, songName: o.music.song_name },

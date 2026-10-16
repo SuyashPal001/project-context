@@ -13,7 +13,7 @@ import { writePlan, applyEdits } from './plan.js'
 import { estimateCost, estimateClipsCost, ledgerSummary } from './cost.js'
 import { castSheetPrompt, stillPrompt, stillGateInput, usesProduct } from './prompts.js'
 import { makeStill, type StillCtx, type StillJob } from './paidStill.js'
-import { previewSegments, previewSize } from './preview.js'
+import { previewSegments, previewSize, usableStill } from './preview.js'
 import { personIn } from './looks.js'
 import { clipSpecs, lookFrames, CLIP_FPS, type ClipSpec } from './clipSpec.js'
 import { makeClip, type ClipCtx, type ClipResult } from './paidClip.js'
@@ -194,7 +194,7 @@ const previewStep = createStep({
     // Square: the video models make only 9:16 or 16:9 (Review Focus 2).
     // Nothing to animate when no part has a usable start still (live run 08466630 went on to
     // an all-grey "finished" video).
-    const anyStill = stills.some((s) => s.kind === 'start' && s.fileId && (s.status === 'passed' || s.status === 'unchecked'))
+    const anyStill = stills.some((s) => s.kind === 'start' && !!usableStill(s))
     const cantAnimate = plan.aspectRatio === '1:1' ? 'Square videos can be previewed but not animated yet.'
       : !anyStill ? 'None of the stills could be made, so there is nothing to animate yet. Change the plan and start the remake again.' : undefined
     if (resumeData) {

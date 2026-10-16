@@ -20,7 +20,7 @@ Return ONLY JSON with these keys:
  "story": {"setup": "how it opens", "cause": "what action drives the change", "payoff": "how it ends"},
  "moments": [{"t_s": 0, "what": "every meaningful action or event, including small ones inside a shot (a gesture, a prop used, a switch pressed, text appearing)", "why_it_matters": "its job in the story"}],
  "setting": {"floor": "", "rug": "", "furniture": "", "light": "", "framing": "how much of the frame the subject fills"},
- "props": [{"prop": "", "where": "", "when": "", "stays_in_place": true}],
+ "props": [{"prop": "", "where": "", "when": "", "stays_in_place": true, "part_of_trick": "true ONLY when this object IS the trick (it covers the camera, wipes the frame or hides the change), not something that is simply in the scene"}],
  "trick": "the single mechanic that makes this video work, including what covers the camera and from where, if anything",
  "sound": "music / voice / sound effects summary", "voice_lines": "verbatim spoken words or null",
  "music": {"mood": "", "genre": "", "instruments": "", "has_vocals": true, "song_name": "ONLY if the song title is shown on screen or in the post caption; otherwise null — never guess"},
@@ -36,7 +36,7 @@ export interface WatchOverview {
   story: { setup: string; cause: string; payoff: string }
   moments: Array<{ t_s: number; what: string; why_it_matters: string; measured?: boolean }>
   setting: Record<string, string>
-  props: Array<{ prop: string; where: string; when: string; stays_in_place?: boolean }>
+  props: Array<{ prop: string; where: string; when: string; stays_in_place?: boolean; part_of_trick?: boolean }>
   trick: string; sound: string; voice_lines: string | null; on_screen_text: string[]
   music: { mood: string; genre: string; instruments: string; has_vocals: boolean | null; song_name: string | null }
   keep_for_clone: string[]; swap_for_clone: string[]; never_copy: string[]

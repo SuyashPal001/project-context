@@ -8,14 +8,16 @@ const FRAMINGS = ['full_body', 'knees_up', 'waist_up', 'chest_up', 'face']
 const WORD: Record<string, string> = { full_body: 'full body', knees_up: 'knees up', waist_up: 'waist up', chest_up: 'chest up', face: 'face close-up' }
 const LEG_APART = 0.15
 const known = (v: unknown) => v !== null && v !== undefined && v !== 'unknown'
-const result = (status: CheckResult['status'], reason: string): CheckResult => ({ name: 'pose', status, reason, evidenceTimes: [] })
+// hard: the wrong number of people (one paid retry). Everything else is a warning (user's call).
+export type PoseResult = CheckResult & { hard?: boolean }
+const result = (status: CheckResult['status'], reason: string, hard = false): PoseResult => ({ name: 'pose', status, reason, evidenceTimes: [], ...(hard ? { hard } : {}) })
 
-export function comparePose(ref: BodyReading | null, refPeople: number | null, got: ImagePose): CheckResult {
-  if (refPeople === 0) return got.people === 0 ? result('pass', 'no person, as in the reference') : result('fail', 'a person appears where the reference has none')
+export function comparePose(ref: BodyReading | null, refPeople: number | null, got: ImagePose): PoseResult {
+  if (refPeople === 0) return got.people === 0 ? result('pass', 'no person, as in the reference') : result('fail', 'a person appears where the reference has none', true)
   if (refPeople === null || !ref) return result('unknown', 'the reference body was not measured')
-  if (got.people === 0 || !got.main) return result('fail', 'no person found in the still')
-  if (refPeople === 1 && got.people > 1) return result('fail', `extra person: ${got.people} people in the still, 1 in the reference`)
-  if (refPeople > 1 && got.people < 2) return result('fail', `only ${got.people} person in the still, ${refPeople} in the reference`)
+  if (got.people === 0 || !got.main) return result('fail', 'no person found in the still', true)
+  if (refPeople === 1 && got.people > 1) return result('fail', `extra person: ${got.people} people in the still, 1 in the reference`, true)
+  if (refPeople > 1 && got.people < 2) return result('fail', `only ${got.people} person in the still, ${refPeople} in the reference`, true)
   const g = got.main
   const diffs: string[] = []
   const unread: string[] = []

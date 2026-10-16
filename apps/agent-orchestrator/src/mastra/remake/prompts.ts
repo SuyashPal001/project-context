@@ -13,12 +13,13 @@ function shown(plan: RemakePlan, ref: string, original: string): string | null {
   return l.action === 'swap' ? l.to?.trim() || null : null
 }
 
+// Scene objects by name only: where they sit comes from the guide picture. Position words cover the
+// whole reel ("beside her, then in her hand") and drew one object twice (fan reel, 2026-10-16).
+// A trick object (a fan blade, a wiping hand) is added over the finished video, never drawn in a still.
 function visibleProps(plan: RemakePlan): string[] {
-  return plan.reference.props.flatMap((p, i) => {
-    const what = shown(plan, `props[${i}]`, p.prop)
-    return what ? [`${what} (${p.where})`] : []
-  })
+  return plan.reference.props.flatMap((p, i) => (p.trick ? [] : shown(plan, `props[${i}]`, p.prop) ?? []))
 }
+const trickProps = (plan: RemakePlan): string[] => plan.reference.props.filter((p) => p.trick).map((p) => p.prop)
 
 export function usesProduct(plan: RemakePlan, brand: Brand): boolean {
   const name = brand.product.toLowerCase()
@@ -44,8 +45,8 @@ export function stillPrompt(plan: RemakePlan, look: RemakeLook, kind: 'start' | 
     // A kept setting IS the guide frame's setting; excluding it contradicted the plan (real checker, 2026-10-16).
     const settingKept = (lineOf(plan, 'setting')?.action ?? 'keep') === 'keep'
     parts.push(settingKept
-      ? 'Copy ONLY the body pose, camera framing and setting from the second image; not its person, face, outfit, accessories or any text.'
-      : 'Copy ONLY the body pose and camera framing from the second image; not its person, face, outfit, accessories, setting or any text.')
+      ? 'Copy ONLY the body pose, camera framing, setting and where objects sit from the second image; not its person, face, outfit, accessories or any text.'
+      : 'Copy ONLY the body pose, camera framing and where objects sit from the second image; not its person, face, outfit, accessories, setting or any text.')
     if (pose) parts.push(`Pose: ${pose}.`)
     const words = body ? personWords(body, null) : []
     if (words.length) parts.push(`Body: ${words.join(', ')}.`)
@@ -58,6 +59,8 @@ export function stillPrompt(plan: RemakePlan, look: RemakeLook, kind: 'start' | 
   }
   if (setting) parts.push(`Setting: ${setting}.`)
   if (props.length) parts.push(`Objects: ${props.join('; ')}.`)
+  const trick = trickProps(plan)
+  if (trick.length) parts.push(`Do not draw: ${trick.join('; ')}.`)
   if (hasProductPhoto && usesProduct(plan, brand)) parts.push(`The ${person ? 'third' : 'second'} image is the brand's product: show it exactly as it is, same shape, colour and label.`)
   parts.push('Add nothing that is not described here: no extra people, effects, text or logos.')
   return parts.join(' ')
@@ -79,7 +82,7 @@ export function stillGateInput(plan: RemakePlan, look: RemakeLook, kind: 'start'
   return {
     prompt, planLine,
     look: { expression: shown(plan, `looks[${i}].expression`, look.expression) ?? undefined, pose, body_measured: body ? personWords(body, null).join(', ') : undefined } as Record<string, unknown> & { expression?: string },
-    startFrameObjects: plan.reference.props.flatMap((p, j) => shown(plan, `props[${j}]`, p.prop) ?? []),
+    startFrameObjects: plan.reference.props.flatMap((p, j) => (p.trick ? [] : shown(plan, `props[${j}]`, p.prop) ?? [])),
     keyMoments: [] as string[],
   }
 }

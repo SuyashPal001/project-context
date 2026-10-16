@@ -25,7 +25,7 @@ export interface RemakeLook {
 
 export interface RemakeReference {
   setting: string
-  props: Array<{ prop: string; where: string; when: string }>
+  props: Array<{ prop: string; where: string; when: string; trick?: boolean }>
   moments: Array<{ t_s: number; what: string }>
   musicMood: string
   music: { mood: string; genre: string; instruments: string; hasVocals: boolean | null; songName: string | null }
@@ -39,4 +39,4 @@ export interface RemakePlan {
 }
 
 export interface LedgerEntry { item: string; attempt: number; creditsMicro: string; outcome: 'kept' | 'retried' | 'failed' | 'blocked' }
-export interface StillResult { look: number; kind: 'start' | 'end'; fileId: string | null; status: 'passed' | 'failed' | 'unchecked' | 'blocked'; reasons: string[] }
+export interface StillResult { look: number; kind: 'start' | 'end'; fileId: string | null; status: 'passed' | 'warned' | 'failed' | 'unchecked' | 'blocked'; reasons: string[] }
