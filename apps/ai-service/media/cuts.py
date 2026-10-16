@@ -16,7 +16,9 @@ def _model():
 
 def _fps(path: str) -> float:
     out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=r_frame_rate", "-of", "csv=p=0", path], capture_output=True, text=True, check=True).stdout.strip()
-    n, d = out.split("/")
+    # ffprobe's csv can print "60/1," (trailing comma); read the first rate only.
+    rate = next(x for x in out.replace("\n", ",").split(",") if "/" in x)
+    n, d = rate.split("/")
     return float(n) / float(d)
 
 def find_cuts(path: str, threshold: float = 0.5) -> dict:

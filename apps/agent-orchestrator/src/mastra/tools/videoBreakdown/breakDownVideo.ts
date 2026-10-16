@@ -41,15 +41,47 @@ export function fillMissingShots(bounds: number[], shots: Shot[]): Shot[] {
 
 // Each look's span: from the hidden cuts and their labels when there are any,
 // else the looks' own rough bounds (empty ones dropped).
-export function lookSpans(overview: Pick<WatchOverview, 'looks'>, hidden: HiddenCutsResult['hidden_cuts'], durationS: number): Array<{ label: string; start_s: number; end_s: number }> {
+// The watch's look edges are rough; a measured hard cut within SNAP_S of an edge is the real edge
+// (live Snitch run: edge 3.7s vs cut 3.43s put look 1's end guide frame in look 2's shot).
+const SNAP_S = 0.6
+const snap = (t: number, cuts: number[]): number => {
+  const near = cuts.filter((c) => Math.abs(c - t) <= SNAP_S).sort((a, b) => Math.abs(a - t) - Math.abs(b - t))[0]
+  return near ?? t
+}
+
+export function lookSpans(overview: Pick<WatchOverview, 'looks'>, hidden: HiddenCutsResult['hidden_cuts'], durationS: number, cuts: number[] = []): Array<{ label: string; start_s: number; end_s: number }> {
   const hc = [...hidden].sort((a, b) => a.at_s - b.at_s)
   if (hc.length && hc.every((h) => h.from && h.to)) {
     const bounds = [0, ...hc.map((h) => h.at_s), durationS]
     return bounds.slice(0, -1).map((b, i) => ({ label: i === 0 ? hc[0].from : hc[i - 1].to, start_s: b, end_s: bounds[i + 1] }))
   }
   return overview.looks
-    .map((l) => ({ label: l.label, start_s: Math.max(0, l.approx_start_s), end_s: Math.min(durationS, l.approx_end_s) }))
+    .map((l) => ({ label: l.label, start_s: Math.max(0, l.approx_start_s > 0 ? snap(l.approx_start_s, cuts) : 0), end_s: Math.min(durationS, l.approx_end_s < durationS ? snap(l.approx_end_s, cuts) : durationS) }))
     .filter((l) => Number.isFinite(l.start_s) && Number.isFinite(l.end_s) && l.end_s > l.start_s)
+    .flatMap((l) => splitAtCuts(l, cuts))
+    .flatMap((l) => splitLong(l))
+}
+
+// One outfit look can span a hard cut (a new camera shot): each shot gets its own span, so it gets
+// its own stills and clip (Snitch: one look 0-14.2s over a cut at 3.42s). Same look, "· shot N".
+export const SHOT_MARK = ' · shot '
+// A shot longer than one clip can be (8s) is split into equal continuous parts ("· part N"): each
+// later part continues from the previous part's end (Snitch shot 2: 12.4s stayed a still).
+export const PART_MARK = ' · part '
+export const MAX_PART_S = 8
+export const lookLabelOf = (label: string): string => label.split(SHOT_MARK)[0].split(PART_MARK)[0]
+export const isContinuingPart = (label: string): boolean => label.includes(PART_MARK)
+function splitLong(l: { label: string; start_s: number; end_s: number }) {
+  const n = Math.ceil((l.end_s - l.start_s) / MAX_PART_S - 1e-9)
+  if (n <= 1) return [l]
+  const step = (l.end_s - l.start_s) / n
+  const r2 = (x: number) => Math.round(x * 100) / 100
+  return Array.from({ length: n }, (_, i) => ({ label: i === 0 ? l.label : `${l.label}${PART_MARK}${i + 1}`, start_s: r2(l.start_s + i * step), end_s: i === n - 1 ? l.end_s : r2(l.start_s + (i + 1) * step) }))
+}
+function splitAtCuts(l: { label: string; start_s: number; end_s: number }, cuts: number[]) {
+  const inside = cuts.filter((c) => c > l.start_s + SNAP_S && c < l.end_s - SNAP_S).sort((a, b) => a - b)
+  const edges = [l.start_s, ...inside, l.end_s]
+  return edges.slice(0, -1).map((s, i) => ({ label: i === 0 ? l.label : `${l.label}${SHOT_MARK}${i + 1}`, start_s: s, end_s: edges[i + 1] }))
 }
 
 // The latest breakdown per tenant scope and link, so a later comparison checks the
@@ -153,7 +185,7 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
     // Leg side and body angle are MEASURED from the frames; Gemini's reading was wrong
     // for most looks on the golden set (spec §8a: no paid step from a model's guess).
     // Started now, awaited after the shot descriptions: CPU pose overlaps the Gemini call.
-    const spans = lookSpans(overview, hidden, video.durationS)
+    const spans = lookSpans(overview, hidden, video.durationS, cuts?.cuts ?? [])
     if (spans.length) {
       posePending = aiService<PoseResult>('/media/pose', { path: video.filePath, looks: spans, exclude })
         .catch((e: Error) => { logStep('pose', e); warnings.push('body readings unavailable this time; leg sides are estimates'); return null })

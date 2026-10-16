@@ -21,7 +21,9 @@ export function previewSize(w: number, h: number): { width: number; height: numb
 }
 
 // A still that failed its checks is never shown as fine: grey card (it is still listed with its reasons).
-const usable = (s: StillResult | undefined) => (s && s.fileId && (s.status === 'passed' || s.status === 'unchecked') ? s.fileId : null)
+/** A still the remake goes on with: passed, unchecked, or kept with a warning. */
+export const usableStill = (s: StillResult | undefined): string | null => (s && s.fileId && (s.status === 'passed' || s.status === 'warned' || s.status === 'unchecked') ? s.fileId : null)
+const usable = usableStill
 
 export function previewSegments(plan: RemakePlan, stills: StillResult[], localPaths: Map<string, string>): PreviewJob['segments'] {
   const path = (id: string | null) => (id ? localPaths.get(id) ?? null : null)

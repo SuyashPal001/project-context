@@ -7,13 +7,13 @@ import { join } from 'node:path'
 import type { Breakdown } from '../tools/videoBreakdown/breakDownVideo.js'
 import type { MediaExecContext } from '../tools/batchRunner.js'
 import { generatedFileKey } from '../../persistence.js'
-import { remakeDeps } from './deps.js'
+import { remakeDeps, type RemakeDeps } from './deps.js'
 import { runToken } from './runTokens.js'
 import { writePlan, applyEdits } from './plan.js'
 import { estimateCost, estimateClipsCost, ledgerSummary } from './cost.js'
-import { castSheetPrompt, stillPrompt, stillGateInput, usesProduct } from './prompts.js'
+import { castSheetPrompt, stillPrompt, stillGateInput, usesProduct, REFERENCE_SHEET_PROMPT, CAST_BY_IMAGE } from './prompts.js'
 import { makeStill, type StillCtx, type StillJob } from './paidStill.js'
-import { previewSegments, previewSize } from './preview.js'
+import { previewSegments, previewSize, usableStill } from './preview.js'
 import { personIn } from './looks.js'
 import { clipSpecs, lookFrames, CLIP_FPS, type ClipSpec } from './clipSpec.js'
 import { makeClip, type ClipCtx, type ClipResult } from './paidClip.js'
@@ -21,7 +21,7 @@ import { checkClip } from './clipCheck.js'
 import { musicPrompt } from './music.js'
 import { differenceNote } from './finalNote.js'
 import { runGate } from '../scorers/video/gate.js'
-import type { Brand, LedgerEntry, PlanLine, RemakePlan, StillResult } from './types.js'
+import type { Brand, LedgerEntry, PlanLine, RemakeLook, RemakePlan, StillResult } from './types.js'
 
 export class RemakeAccessError extends Error {}
 class NothingToShow extends Error {}
@@ -65,7 +65,7 @@ const planStep = createStep({
 })
 
 // the casting sheet's charge rides along so the cost meter counts it
-const casted = planned.extend({ portraitFileId: z.string().nullable(), ledger: z.array(any) })
+const casted = planned.extend({ portraitFileId: z.string().nullable(), referenceSheetFileId: z.string().nullable().optional(), ledger: z.array(any) })
 const castStep = createStep({
   id: 'cast', inputSchema: planned, outputSchema: casted,
   // sheetFileId null = no sheet yet (it was blocked or could not be made); `error` is plain words.
@@ -106,7 +106,8 @@ const castStep = createStep({
       const id = await deps.upload(a.idToken, generatedFileKey(a.conversationId, `remake ${runId} cast ${resumeData.pick}`, 'jpg'), `Remake cast ${resumeData.pick}.jpg`, deps.readFile(out), 'image/jpeg')
       if (!id) throw new Error('upload returned no file')
       const sheet: LedgerEntry = { item: 'casting sheet', attempt: 0, creditsMicro: spentSoFar, outcome: 'kept' }
-      return { ...inputData, portraitFileId: id, ledger: [sheet] }
+      const ref = await referenceSheet(id, a, deps, execFor(requestContext as Rc, runId, a.idToken)(1))
+      return { ...inputData, portraitFileId: id, referenceSheetFileId: ref.fileId, ledger: [sheet, ...ref.ledger] }
     } catch (err) {
       console.error('[remake] saving the chosen person failed:', err instanceof Error ? err.message : String(err))
       return await suspend({ stage: 'cast_pick', sheetFileId: sheetId, sheetCreditsMicro: spentSoFar, error: 'the chosen person could not be saved; please pick again' })
@@ -115,6 +116,40 @@ const castStep = createStep({
     }
   },
 })
+
+// The chosen person's reference sheet (the TVC continuity bible, minus costume) leads every still and is the
+// face check's reference (face consistency is hard). Gated like every paid call; a sheet that can't be
+// made never ends the run: the stills fall back to the cropped portrait.
+async function referenceSheet(portraitId: string, a: { tenantId: string }, deps: RemakeDeps, exec: ReturnType<ReturnType<typeof execFor>>): Promise<{ fileId: string | null; ledger: LedgerEntry[] }> {
+  try {
+    const prompt = REFERENCE_SHEET_PROMPT
+    const gate = await deps.promptGate({ prompt, planLine: `reference sheet of the chosen person; ${CAST_BY_IMAGE}`, look: {}, startFrameObjects: [], keyMoments: [], tenantId: a.tenantId })
+    if (gate.status !== 'pass') {
+      console.error('[remake] reference sheet not checked/passed:', gate.status, gate.reason)
+      return { fileId: null, ledger: [{ item: 'reference sheet', attempt: 0, creditsMicro: '0', outcome: 'blocked' }] }
+    }
+    const g = await deps.generateStill({ prompt, aspectRatio: '3:4', imageSize: '2K', referenceFileIds: [portraitId], engine: 'gemini', skipAvatarExpansion: true, title: 'Remake reference sheet' }, exec, 1)
+    if (!g.fileId) console.error('[remake] reference sheet not made:', g.refusalReason ?? (g.insufficientCredits ? 'credits' : 'unknown'))
+    return { fileId: g.fileId ?? null, ledger: [{ item: 'reference sheet', attempt: 0, creditsMicro: g.creditsUsedMicro ?? '0', outcome: g.fileId ? 'kept' : 'failed' }] }
+  } catch (err) {
+    console.error('[remake] reference sheet failed:', err instanceof Error ? err.message : String(err))
+    return { fileId: null, ledger: [] }
+  }
+}
+
+/** Each continuing part's start still is the previous look's end still (same file, no tries: it
+ *  was paid for once, on the previous part). */
+export function continueParts(looks: RemakeLook[], stills: StillResult[]): StillResult[] {
+  const out = [...stills]
+  const ordered = [...looks].sort((a, b) => a.startS - b.startS)
+  ordered.forEach((look, i) => {
+    if (!look.continues || i === 0) return
+    const prev = out.find((s) => s.look === ordered[i - 1].n && s.kind === 'end')
+    const start: StillResult = prev ? { look: look.n, kind: 'start', fileId: prev.fileId, status: prev.status, reasons: prev.reasons } : { look: look.n, kind: 'start', fileId: null, status: 'failed', reasons: ['the part before it has no end still'] }
+    out.push(start)
+  })
+  return out
+}
 
 const stilled = casted.extend({ stills: z.array(any) })
 const stillsStep = createStep({
@@ -131,20 +166,25 @@ const stillsStep = createStep({
       await deps.ffmpeg(['-ss', String(Math.max(0, t)), '-i', source, '-frames:v', '1', '-q:v', '2', out])
       return deps.upload(a.idToken, generatedFileKey(a.conversationId, `remake ${runId} look ${n} ${kind} guide`, 'jpg'), `Remake look ${n} ${kind} guide.jpg`, deps.readFile(out), 'image/jpeg')
     }
-    const portraitId = inputData.portraitFileId
+    // Identity: the reference sheet when there is one, else the cropped portrait.
+    const portraitId = (inputData.referenceSheetFileId as string | null | undefined) ?? inputData.portraitFileId
     const portrait = portraitId ? { fileId: portraitId, img: await deps.fetchImage(portraitId, a.idToken) } : null
     const product = brand.productPhotoFileId && usesProduct(plan, brand) ? brand.productPhotoFileId : null
-    const ctx: StillCtx = { tenantId: a.tenantId, idToken: a.idToken, scopeId: a.scopeId, runId, exec: execFor(requestContext as Rc, runId, a.idToken), portrait }
+    const ctx: StillCtx = { tenantId: a.tenantId, idToken: a.idToken, scopeId: a.scopeId, runId, conversationId: a.conversationId, exec: execFor(requestContext as Rc, runId, a.idToken), portrait }
     ctx.outOfCredits = () => outOfCredits
-    const jobs: Array<() => Promise<{ result: StillResult; ledger: LedgerEntry[] }>> = []
+    // The anchor: the first kept person still, passed to the rest (same person, same light). Not when a
+    // product photo needs the third reference slot (the product must show exactly).
+    let anchor: string | null = null
+    const jobs: Array<{ person: boolean; run: () => Promise<{ result: StillResult; ledger: LedgerEntry[] }> }> = []
     // Once credits run out, the remaining stills stop before any guide, gate or call (M3).
     let outOfCredits = false
     const noCredits = (look: number, kind: 'start' | 'end') => ({ result: { look, kind, fileId: null, status: 'failed' as const, reasons: ['not enough credits'] }, ledger: [] })
     // Pose-guide frames show the original person: deleted from the user's files after use (M4).
     const guideIds: string[] = []
     for (const look of plan.looks) {
-      for (const kind of (look.needsEndStill ? ['start', 'end'] : ['start']) as Array<'start' | 'end'>) {
-        jobs.push(async () => {
+      // A continuing part of a long shot starts from the previous part's end still (never paid twice).
+      for (const kind of ((look.needsEndStill ? ['start', 'end'] : ['start']) as Array<'start' | 'end'>).filter((k) => !(k === 'start' && look.continues))) {
+        jobs.push({ person: personIn(look), run: async () => {
           // Never paid: a look whose people were not measured (spec §8a).
           if (!look.measuredPeople) return { result: { look: look.n, kind, fileId: null, status: 'blocked', reasons: ['this part of the video couldn’t be measured, so its still wasn’t made'] }, ledger: [] }
           // One still failing never ends the run: earlier stills are paid for and must reach the ledger and the preview.
@@ -155,7 +195,7 @@ const stillsStep = createStep({
             if (outOfCredits) return noCredits(look.n, kind)
             if (!g) return { result: { look: look.n, kind, fileId: null, status: 'blocked', reasons: ['the pose guide could not be saved'] }, ledger: [] }
             const person = personIn(look)
-            const references = [...(person && portrait ? [portrait.fileId] : []), g, ...(product ? [product] : [])]
+            const references = [...(person && portrait ? [portrait.fileId] : []), g, ...(product ? [product] : person && anchor ? [anchor] : [])]
             const prompt = stillPrompt(plan, look, kind, brand, !!product)
             const job: StillJob = { look, kind, prompt, references, aspectRatio: plan.aspectRatio, gate: stillGateInput(plan, look, kind, prompt) }
             if (outOfCredits) return noCredits(look.n, kind)
@@ -166,17 +206,24 @@ const stillsStep = createStep({
             console.error(`[remake] look ${look.n} ${kind} still failed:`, err instanceof Error ? err.message : String(err))
             return { result: { look: look.n, kind, fileId: null, status: 'failed', reasons: ['this still could not be made this time'] }, ledger: [] }
           }
-        })
+        } })
       }
     }
     const done: Array<{ result: StillResult; ledger: LedgerEntry[] }> = []
     try {
-      for (let i = 0; i < jobs.length; i += MAX_PARALLEL) done.push(...await Promise.all(jobs.slice(i, i + MAX_PARALLEL).map((j) => j())))
+      const first = jobs.findIndex((j) => j.person)
+      const firstDone = first >= 0 ? await jobs[first].run() : null
+      if (firstDone && !product) anchor = usableStill(firstDone.result)
+      const rest = jobs.filter((_, i) => i !== first)
+      const restDone: typeof done = []
+      for (let i = 0; i < rest.length; i += MAX_PARALLEL) restDone.push(...await Promise.all(rest.slice(i, i + MAX_PARALLEL).map((j) => j.run())))
+      // Back in plan order.
+      done.push(...jobs.map((j, i) => (i === first ? firstDone! : restDone[rest.indexOf(j)])))
     } finally {
       deps.removeDir(dir)
       await Promise.all(guideIds.map((id) => deps.deleteFile(a.idToken, id)))
     }
-    return { ...inputData, stills: done.map((d) => d.result), ledger: [...(inputData.ledger as LedgerEntry[]), ...done.flatMap((d) => d.ledger)] }
+    return { ...inputData, stills: continueParts(plan.looks, done.map((d) => d.result)), ledger: [...(inputData.ledger as LedgerEntry[]), ...done.flatMap((d) => d.ledger)] }
   },
 })
 
@@ -194,7 +241,7 @@ const previewStep = createStep({
     // Square: the video models make only 9:16 or 16:9 (Review Focus 2).
     // Nothing to animate when no part has a usable start still (live run 08466630 went on to
     // an all-grey "finished" video).
-    const anyStill = stills.some((s) => s.kind === 'start' && s.fileId && (s.status === 'passed' || s.status === 'unchecked'))
+    const anyStill = stills.some((s) => s.kind === 'start' && !!usableStill(s))
     const cantAnimate = plan.aspectRatio === '1:1' ? 'Square videos can be previewed but not animated yet.'
       : !anyStill ? 'None of the stills could be made, so there is nothing to animate yet. Change the plan and start the remake again.' : undefined
     if (resumeData) {
@@ -228,7 +275,8 @@ const clipsStep = createStep({
     if (inputData.stop) return { ...inputData, clips: [], clipsDir: null }
     const deps = remakeDeps()
     const plan = inputData.plan as RemakePlan
-    const portrait = inputData.portraitFileId ? await deps.fetchImage(inputData.portraitFileId, a.idToken) : null
+    const identityId = (inputData.referenceSheetFileId as string | null | undefined) ?? inputData.portraitFileId
+    const portrait = identityId ? await deps.fetchImage(identityId, a.idToken) : null
     const size = previewSize(plan.reference.width || 1080, plan.reference.height || 1920)
     // Kept until the finish step has joined the clips; removed there.
     const workDir = deps.tempDir('remake-clips-')
@@ -293,7 +341,7 @@ const finishStep = createStep({
       // No real picture in any part: never deliver grey cards as a finished video, and pay
       // for no music or comparison.
       if (realParts === 0) throw new NothingToShow()
-      let video = await deps.joinSegments(parts, join(work, 'joined.mp4'))
+      let video = await deps.joinSegments(parts, join(work, 'joined.mp4'), size)
       const totalS = [...frames.values()].reduce((x, y) => x + y, 0) / CLIP_FPS
       // Music: always new (spec §9a), gated like every paid call. Its own guard: any failure
       // leaves the finished video silent, never lost.

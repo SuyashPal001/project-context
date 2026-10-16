@@ -2,18 +2,22 @@
 // general for any reel (no assumption about lying down, leg sides or one person).
 import type { BodyReading, ImagePose } from '../tools/videoBreakdown/aiServiceClient.js'
 import type { CheckResult } from '../scorers/video/gate.js'
+import { kneesInShot } from '../tools/videoBreakdown/measuredLine.js'
 
 const FRAMINGS = ['full_body', 'knees_up', 'waist_up', 'chest_up', 'face']
 const WORD: Record<string, string> = { full_body: 'full body', knees_up: 'knees up', waist_up: 'waist up', chest_up: 'chest up', face: 'face close-up' }
+const LEG_APART = 0.15
 const known = (v: unknown) => v !== null && v !== undefined && v !== 'unknown'
-const result = (status: CheckResult['status'], reason: string): CheckResult => ({ name: 'pose', status, reason, evidenceTimes: [] })
+// hard: the wrong number of people (one paid retry). Everything else is a warning (user's call).
+export type PoseResult = CheckResult & { hard?: boolean }
+const result = (status: CheckResult['status'], reason: string, hard = false): PoseResult => ({ name: 'pose', status, reason, evidenceTimes: [], ...(hard ? { hard } : {}) })
 
-export function comparePose(ref: BodyReading | null, refPeople: number | null, got: ImagePose): CheckResult {
-  if (refPeople === 0) return got.people === 0 ? result('pass', 'no person, as in the reference') : result('fail', 'a person appears where the reference has none')
+export function comparePose(ref: BodyReading | null, refPeople: number | null, got: ImagePose): PoseResult {
+  if (refPeople === 0) return got.people === 0 ? result('pass', 'no person, as in the reference') : result('fail', 'a person appears where the reference has none', true)
   if (refPeople === null || !ref) return result('unknown', 'the reference body was not measured')
-  if (got.people === 0 || !got.main) return result('fail', 'no person found in the still')
-  if (refPeople === 1 && got.people > 1) return result('fail', `extra person: ${got.people} people in the still, 1 in the reference`)
-  if (refPeople > 1 && got.people < 2) return result('fail', `only ${got.people} person in the still, ${refPeople} in the reference`)
+  if (got.people === 0 || !got.main) return result('fail', 'no person found in the still', true)
+  if (refPeople === 1 && got.people > 1) return result('fail', `extra person: ${got.people} people in the still, 1 in the reference`, true)
+  if (refPeople > 1 && got.people < 2) return result('fail', `only ${got.people} person in the still, ${refPeople} in the reference`, true)
   const g = got.main
   const diffs: string[] = []
   const unread: string[] = []
@@ -30,8 +34,23 @@ export function comparePose(ref: BodyReading | null, refPeople: number | null, g
   } else {
     field('orientation', ref.orientation, g.orientation, (a, b) => a === b, (a, b) => `body: reference ${a}, still ${b}`)
   }
-  field('knees', ref.knees, g.knees, (a, b) => a === b, (a, b) => `knees: reference ${a}, still ${b}`)
-  field('knee side', ref.knees_toward, g.knees_toward, (a, b) => a === b, (a, b) => `knees fall to ${b} in the still, ${a} in the reference`)
+  // Knees the reference frame does not show are not compared (they were guessed off-frame).
+  if (kneesInShot(ref)) field('knees', ref.knees, g.knees, (a, b) => a === b, (a, b) => `knees: reference ${a}, still ${b}`)
+  // Side labels flip on noise near the "center" line (Snitch stride -0.091 vs a still at -0.017), so
+  // when both offsets are read, the legs fail only when they sit far apart; the labels are the fallback.
+  const off = (x: unknown) => (typeof x === 'number' ? x : null)
+  const ro = off(ref.leg_offset), go = off(g.leg_offset)
+  if (kneesInShot(ref) && ro !== null && go !== null && known(ref.knees_toward) && known(g.knees_toward)) {
+    if (Math.abs(ro - go) > LEG_APART && ref.knees_toward !== g.knees_toward) diffs.push(`knees fall to ${g.knees_toward} in the still, ${ref.knees_toward} in the reference`)
+  } else if (kneesInShot(ref)) field('knee side', ref.knees_toward, g.knees_toward, (a, b) => a === b, (a, b) => `knees fall to ${b} in the still, ${a} in the reference`)
+  // Facing: front against back is a different pose (hard); side-on either way is a warning.
+  const rf = ref.facing, gf = g.facing
+  if (rf && gf && known(rf) && known(gf) && rf !== gf) {
+    const say = (f: string) => (f === 'back' ? 'back to the camera' : f === 'side' ? 'side-on to the camera' : 'facing the camera')
+    const msg = `reference ${say(rf)}, still ${say(gf)}`
+    if (rf !== 'side' && gf !== 'side') return result('fail', msg, true)
+    diffs.push(msg)
+  }
   for (const side of ['left', 'right'] as const) {
     field(`${side} arm`, ref.arms[side], g.arms[side], (a, b) => (a === 'raised') === (b === 'raised'),
       (a) => `${side} arm: ${a === 'raised' ? 'raised in the reference, not in the still' : 'raised in the still, not in the reference'}`)

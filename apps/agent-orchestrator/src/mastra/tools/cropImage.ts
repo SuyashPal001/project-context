@@ -85,7 +85,7 @@ export function parseHeadBox(raw: string): HeadBox | null {
 const FIND_HEAD_QUESTION = 'Find the main person\'s (or character\'s) head, from the top of the hair to the chin. Return ONLY JSON {"x":..,"y":..,"w":..,"h":..} with the head\'s bounding box as fractions of the image width and height (0 to 1, x and y are the top-left corner).'
 const FIND_HEAD_MAX_TOKENS = 120
 
-async function findHead(base64: string, mimeType: string, tenantId: string | undefined, signal: AbortSignal): Promise<HeadBox | null> {
+export async function findHead(base64: string, mimeType: string, tenantId: string | undefined, signal: AbortSignal): Promise<HeadBox | null> {
   // The shared finder (K2) parsing, crop_image's own question: it still asks
   // for the main person only, so largestBox is just taking the one box back.
   try {
@@ -93,6 +93,21 @@ async function findHead(base64: string, mimeType: string, tenantId: string | und
   } catch {
     return null
   }
+}
+
+/** The crop itself, shared by crop_image and the remake (no download or upload): a crop around
+ *  the head at `framing`, either `aspect` shaped or (keepAspect) a face-centred zoom; scaleBack
+ *  sizes the crop back up to the source so a 9:16 still stays a full-size 9:16 frame. */
+export async function cropImageLocal(inputPath: string, outputPath: string, framing: CropFraming, head: HeadBox | null, opts: { keepAspect?: boolean; aspect?: number; scaleBack?: boolean } = {}): Promise<string> {
+  const { stdout } = await execFile('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', inputPath], { timeout: FFMPEG_TIMEOUT_MS })
+  const [width, height] = stdout.trim().split('x').map(Number)
+  if (!width || !height) throw new Error('CROP_FAILED: unreadable image size')
+  const rect = opts.keepAspect
+    ? (computeZoomRect(width, height, framing, head) ?? { x: 0, y: 0, w: width - (width % 2), h: height - (height % 2) })
+    : computeCropRect(width, height, framing, head, opts.aspect)
+  const scale = opts.keepAspect || opts.scaleBack ? `,scale=${width - (width % 2)}:${height - (height % 2)}:flags=lanczos` : ''
+  await execFile('ffmpeg', ['-y', '-i', inputPath, '-vf', `crop=${rect.w}:${rect.h}:${rect.x}:${rect.y}${scale}`, '-q:v', '2', outputPath], { timeout: FFMPEG_TIMEOUT_MS })
+  return outputPath
 }
 
 export const cropImage = createTool({
@@ -133,21 +148,18 @@ export const cropImage = createTool({
       const inputPath = join(workDir, 'in')
       writeFileSync(inputPath, bytes)
 
-      const { stdout } = await execFile('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', inputPath], { timeout: FFMPEG_TIMEOUT_MS })
-      const [width, height] = stdout.trim().split('x').map(Number)
-      if (!width || !height) return { refused: true, refusalReason: 'CROP_FAILED' }
-
       const head = await findHead(bytes.toString('base64'), mimeType, tenantId, controller.signal)
       // keepAspect (a video start frame): a face-centred zoom, or the source
-      // itself when the face can't be placed safely — never a blind guess.
-      const rect = keepAspect
-        ? (computeZoomRect(width, height, framing, head) ?? { x: 0, y: 0, w: width - (width % 2), h: height - (height % 2) })
-        : computeCropRect(width, height, framing, head)
+      // itself when the face can't be placed safely — never a blind guess;
+      // scaled back up to the source size, so a 9:16 still stays a full-size
+      // 9:16 start frame for generate_video.
       const outputPath = join(workDir, 'out.jpg')
-      // keepAspect: scale the crop back up to the source size, so a 9:16 still
-      // stays a full-size 9:16 start frame for generate_video.
-      const scale = keepAspect ? `,scale=${width - (width % 2)}:${height - (height % 2)}:flags=lanczos` : ''
-      await execFile('ffmpeg', ['-y', '-i', inputPath, '-vf', `crop=${rect.w}:${rect.h}:${rect.x}:${rect.y}${scale}`, '-q:v', '2', outputPath], { timeout: FFMPEG_TIMEOUT_MS })
+      try {
+        await cropImageLocal(inputPath, outputPath, framing, head, { keepAspect })
+      } catch (err) {
+        if ((err as Error).message.startsWith('CROP_FAILED')) return { refused: true, refusalReason: 'CROP_FAILED' }
+        throw err
+      }
 
       const attachment = await uploadGeneratedFile(idToken, {
         conversationId, title: title ?? (framing === 'close-up' ? 'Close-up' : 'Half-body'),

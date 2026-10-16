@@ -104,3 +104,21 @@ def test_clean_moves_drops_weak_ones_and_ones_next_to_covered_spans_and_merges_s
 def test_framing_on_a_tall_frame_uses_frame_position_not_scaled_distance():
     kp, sc = person(ankle=(50, 80))
     assert pose.read_person(kp, sc, 16 / 9, (0.3, 0.1, 0.7, 0.999))["framing"] == "full_body"
+
+
+
+# Facing (2026-10-16): Snitch's back-to-camera frame read shoulders mirrored (-0.59 of the torso),
+# front frames +0.64..+0.73 on two reels. The pose model "sees" a face on the back of a head too,
+# so the shoulder order decides, not the face points.
+def turned(l_sh_x, r_sh_x, hide=()):
+    kp, sc = person(hide=hide)
+    kp = kp.copy(); kp[5][0], kp[6][0] = l_sh_x / 100.0, r_sh_x / 100.0
+    return kp, sc
+
+def test_facing_front_back_and_side_from_the_shoulder_order():
+    assert pose.read_person(*turned(60, 40))["facing"] == "front"   # the person's left shoulder on the image's right
+    assert pose.read_person(*turned(40, 60))["facing"] == "back"
+    assert pose.read_person(*turned(52, 48))["facing"] == "side"
+
+def test_facing_unknown_without_both_shoulders():
+    assert pose.read_person(*turned(60, 40, hide=(6,)))["facing"] == "unknown"

@@ -44,7 +44,7 @@ describe('makeStill', () => {
     const d = deps({ poseImage: vi.fn().mockResolvedValue({ ...okPose, people: 2 }) })
     const r = await makeStill(job, ctx, d)
     expect(d.generateStill).toHaveBeenCalledTimes(2)
-    expect((d.generateStill as ReturnType<typeof vi.fn>).mock.calls[1][0].prompt).toMatch(/^P Fix: extra person/)
+    expect((d.generateStill as ReturnType<typeof vi.fn>).mock.calls[1][0].prompt).toMatch(/^Edit the first image\. Change only this: exactly as many people as the second image shows\./) // an edit, plain plan words
     expect(d.promptGate).toHaveBeenCalledTimes(2)
     expect(r.result).toMatchObject({ status: 'failed', fileId: 'still-2' })
     expect(r.ledger.map((e) => e.outcome)).toEqual(['retried', 'failed'])

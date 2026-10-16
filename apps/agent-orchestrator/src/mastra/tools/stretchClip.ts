@@ -18,71 +18,10 @@ const STRETCH_SUBJECT = 'ffmpeg-stretch-clip'
 const FFMPEG_TIMEOUT_MS = 120_000
 const MAX_SOURCE_BYTES = 200 * 1024 * 1024
 const MAX_TARGET_SECONDS = 120
-// Past ~2x slow-down, interpolated motion visibly degrades into slideshow.
-const MAX_SLOW_FACTOR = 2
-// Guards a tiny source from being looped hundreds of times.
-const MAX_LOOP_RATIO = 30
 
-export type StretchMode = 'loop' | 'slow' | 'hold'
-
-export type StretchPlan =
-  | { ok: true; args: string[] }
-  | { ok: false; reason: 'TARGET_NOT_LONGER' | 'STRETCH_TOO_LARGE' }
-
-// Every value interpolated into the ffmpeg arguments below is a number
-// computed here from ffprobe output and the validated target — no
-// caller-supplied string ever reaches a filter graph.
-export function buildStretchArgs(opts: {
-  mode: StretchMode
-  sourcePath: string
-  outputPath: string
-  sourceSeconds: number
-  targetSeconds: number
-  hasAudio: boolean
-}): StretchPlan {
-  const { mode, sourcePath, outputPath, sourceSeconds, targetSeconds, hasAudio } = opts
-  if (!(targetSeconds > sourceSeconds)) return { ok: false, reason: 'TARGET_NOT_LONGER' }
-  const encode = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p']
-  const t = targetSeconds.toFixed(3)
-
-  if (mode === 'loop') {
-    if (targetSeconds / sourceSeconds > MAX_LOOP_RATIO) return { ok: false, reason: 'STRETCH_TOO_LARGE' }
-    // -stream_loop repeats video and audio together, hard-cut at the seam.
-    return {
-      ok: true,
-      args: ['-y', '-stream_loop', '-1', '-i', sourcePath, '-t', t, ...encode, ...(hasAudio ? ['-c:a', 'aac'] : ['-an']), outputPath],
-    }
-  }
-
-  if (mode === 'slow') {
-    const factor = targetSeconds / sourceSeconds
-    if (factor > MAX_SLOW_FACTOR) return { ok: false, reason: 'STRETCH_TOO_LARGE' }
-    // atempo accepts 0.5–2.0, so 1/factor is always in range here.
-    return {
-      ok: true,
-      args: [
-        '-y', '-i', sourcePath,
-        '-vf', `setpts=${factor.toFixed(6)}*PTS`,
-        ...(hasAudio ? ['-af', `atempo=${(1 / factor).toFixed(6)}`, '-c:a', 'aac'] : ['-an']),
-        '-t', t, ...encode, outputPath,
-      ],
-    }
-  }
-
-  // hold: freeze the last frame; any audio plays once then goes silent. Pad by the
-  // full target, not target - source: the video stream can be shorter than the
-  // container duration, and -t trims the excess.
-  const pad = targetSeconds.toFixed(3)
-  return {
-    ok: true,
-    args: [
-      '-y', '-i', sourcePath,
-      '-vf', `tpad=stop_mode=clone:stop_duration=${pad}`,
-      ...(hasAudio ? ['-af', 'apad', '-c:a', 'aac'] : ['-an']),
-      '-t', t, ...encode, outputPath,
-    ],
-  }
-}
+// The arg builder lives in the shared media core (mediaCore.ts) so workflows use the same code.
+import { buildStretchArgs } from './mediaCore.js'
+export { buildStretchArgs, type StretchMode, type StretchPlan } from './mediaCore.js'
 
 const outputSchema = z.object({
   fileId: z.string().optional(),

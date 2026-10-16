@@ -1,5 +1,5 @@
 import type { Breakdown } from '../tools/videoBreakdown/breakDownVideo.js'
-import { lookSpans } from '../tools/videoBreakdown/breakDownVideo.js'
+import { lookSpans, lookLabelOf, isContinuingPart } from '../tools/videoBreakdown/breakDownVideo.js'
 import type { BodyReading } from '../tools/videoBreakdown/aiServiceClient.js'
 import type { RemakeLook } from './types.js'
 
@@ -7,19 +7,34 @@ const AREA: Record<string, string> = { upper: 'upper body', lower: 'legs' }
 const CAMERA: Record<string, string> = { 'pan-left': 'pans left', 'pan-right': 'pans right', 'tilt-up': 'tilts up', 'tilt-down': 'tilts down' }
 const raised = (b: BodyReading) => `${b.arms.left === 'raised'}${b.arms.right === 'raised'}`
 
+// Turned around: only when both ends were read (an unread side never buys an extra paid still).
+const turned = (a: BodyReading, b: BodyReading) => !!a.facing && !!b.facing && a.facing !== 'unknown' && b.facing !== 'unknown' && a.facing !== b.facing
+
 /** The body visibly differs between a look's start and end (so an end still is needed). */
 export function bodyChanged(a: BodyReading | null, b: BodyReading | null): boolean {
   if (!a || !b) return false
-  return a.framing !== b.framing || a.orientation !== b.orientation || a.knees !== b.knees || a.knees_toward !== b.knees_toward || raised(a) !== raised(b)
+  return a.framing !== b.framing || a.orientation !== b.orientation || turned(a, b) || a.knees !== b.knees || a.knees_toward !== b.knees_toward || raised(a) !== raised(b)
 }
 
 export function remakeLooks(b: Breakdown): RemakeLook[] {
-  const spans = new Map(lookSpans(b.overview, b.hidden_cuts, b.video.durationS).map((s) => [s.label, s]))
+  const spans = lookSpans(b.overview, b.hidden_cuts, b.video.durationS, b.cuts?.cuts ?? [])
   const measured = new Map((b.pose?.looks ?? []).map((l) => [l.label, l]))
-  return b.overview.looks.flatMap((l, i) => {
-    const m = measured.get(l.label)
-    const s = m ?? spans.get(l.label)
+  // One remake look per SHOT (a look split at a hard cut is two shots of one outfit look); `ref` is
+  // the outfit look's index, which the plan lines use.
+  const shots = b.pose?.looks?.length ? b.pose.looks : spans
+  let n = 0
+  return shots.flatMap((shot) => {
+    const i = b.overview.looks.findIndex((x) => x.label === lookLabelOf(shot.label))
+    const l = b.overview.looks[i]
+    if (!l) return []
+    const m = measured.get(shot.label)
+    const s = m ?? shot
     if (!s || !(s.end_s > s.start_s)) return []
+    const first = shot.label === l.label
+    const continues = isContinuingPart(shot.label)
+    // the shot right after this one continues it: this one must end on a still the next starts from
+    const nextContinues = shots.some((x) => isContinuingPart(x.label) && Math.abs(x.start_s - shot.end_s) < 1e-6)
+    const last = !shots.some((x) => x !== shot && lookLabelOf(x.label) === l.label && x.start_s > shot.start_s)
     const startS = s.start_s, endS = s.end_s
     const pad = Math.min(0.5, (endS - startS) / 4)
     const kf = m?.key_frames ?? []
@@ -35,19 +50,22 @@ export function remakeLooks(b: Breakdown): RemakeLook[] {
     const cameraLines = (b.pose?.camera_moves ?? []).filter((x) => x.t_s >= startS && x.t_s < endS)
       .map((x) => `${rel(x.t_s)}: the camera ${CAMERA[x.direction] ?? x.direction}`)
     return [{
-      n: i + 1, label: l.label, startS, endS,
-      outfit: l.outfit ?? '', expression: l.expression ?? '', startPose: l.start_pose ?? '', endPose: l.end_pose ?? '',
+      n: ++n, ref: i, label: shot.label, startS, endS,
+      outfit: l.outfit ?? '', expression: l.expression ?? '', startPose: first ? l.start_pose ?? '' : '', endPose: last ? l.end_pose ?? '' : '',
       measured: l.measured ?? null, people: m?.people ?? null, noPerson: m?.no_person ?? null, start, end, moves,
       moveLines: [...measuredMoves, ...describedMoves], cameraLines,
       measuredPeople: m?.people != null && !(m.people === 0 && (m.people_max ?? 0) > 0),
       guideStartS: kf[0]?.t_s ?? startS + pad,
       guideEndS: kf.length ? kf[kf.length - 1].t_s : endS - pad,
-      needsEndStill: moves > 0 || bodyChanged(start, end),
+      needsEndStill: nextContinues || moves > 0 || bodyChanged(start, end),
+      ...(continues ? { continues: true } : {}),
     }]
   })
 }
 
 export const personIn = (l: RemakeLook): boolean => (l.people ?? 0) > 0
+/** The plan-line index of a look's outfit look (two shots of one outfit share it). */
+export const refOf = (l: RemakeLook): number => l.ref ?? l.n - 1
 
 /** Plain words for the user when a breakdown cannot be remade safely; null when it can. */
 export function refuseReason(b: Breakdown): string | null {

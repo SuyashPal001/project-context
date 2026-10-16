@@ -12,7 +12,7 @@ describe('comparePose', () => {
   })
   it('fails a far framing, a flipped leg side, a missing raised arm, and a 40° tilt', () => {
     expect(comparePose(b(), 1, got({ framing: 'chest_up' })).reason).toMatch(/framing/)
-    expect(comparePose(b({ knees_toward: 'image-right' }), 1, got({ knees_toward: 'image-left' })).reason).toMatch(/image-right/)
+    expect(comparePose(b({ knees_toward: 'image-right', leg_offset: 0.3 }), 1, got({ knees_toward: 'image-left', leg_offset: -0.3 })).reason).toMatch(/image-right/)
     expect(comparePose(b({ arms: { left: 'down', right: 'raised' } }), 1, got({})).reason).toMatch(/right arm/)
     expect(comparePose(b({ torso_angle_deg: 0 }), 1, got({ torso_angle_deg: 40, orientation: 'diagonal' })).status).toBe('fail')
   })

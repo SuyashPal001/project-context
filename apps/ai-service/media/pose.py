@@ -29,6 +29,7 @@ MIN_BOX_AREA = 0.004    # of the frame; smaller boxes are noise
 WINDOW_S = 1.0          # look start / end window
 MIN_FRAMES = 2
 LEG_THRESHOLD = 0.05    # knee / foot offset as a fraction of torso length
+SIDE_ON = 0.3           # shoulder width across the body, as a fraction of torso length, below which the body is side-on
 EDGE = 0.985            # with only one ankle seen, a box reaching the bottom edge may have its feet cut off
 FOOT_ROOM = 0.04        # of frame height: space a foot needs below its ankle
 MOVE_MIN = 0.025        # frame widths per second; weaker body moves are noise
@@ -86,7 +87,7 @@ def read_person(kp, sc, aspect: float = 1.0, box=None) -> dict:
     sh, hp = _mid(kp, sc, (L_SH, R_SH)), _mid(kp, sc, (L_HIP, R_HIP))
     out = {"framing": framing, "orientation": "unknown", "torso_angle_deg": None, "knees": "unknown",
            "arms": {"left": "unknown", "right": "unknown"}, "knees_toward": "unknown", "feet_toward": "unknown",
-           "knee_offset": None, "feet_offset": None, "legs_toward": "unknown", "leg_offset": None}
+           "knee_offset": None, "feet_offset": None, "legs_toward": "unknown", "leg_offset": None, "facing": "unknown"}
     u, L = None, None
     if sh is not None and hp is not None and np.linalg.norm(hp - sh) > 1e-6:
         d = hp - sh
@@ -98,6 +99,12 @@ def read_person(kp, sc, aspect: float = 1.0, box=None) -> dict:
     elif sc[L_SH] >= VIS and sc[R_SH] >= VIS:
         # no hips in shot: assume upright, scale by shoulder width (flagged by framing)
         u, L = np.array([0.0, 1.0]), float(np.linalg.norm(kp[L_SH] - kp[R_SH]) * 1.5) or None
+    if u is not None and L and sc[L_SH] >= VIS and sc[R_SH] >= VIS:
+        # Facing from the shoulder order across the body: facing the camera, the person's left
+        # shoulder is on the image's right. The model also "sees" a face on the back of a head, so
+        # the face points never decide (Snitch back-to-camera frame: -0.59; front frames +0.64..+0.73).
+        w = float(np.dot(kp[L_SH] - kp[R_SH], np.array([u[1], -u[0]]))) / L
+        out["facing"] = "side" if abs(w) < SIDE_ON else "front" if w > 0 else "back"
     if u is not None and L:
         for name, s_i, w_i in (("left", L_SH, L_WR), ("right", R_SH, R_WR)):
             if sc[s_i] >= VIS and sc[w_i] >= VIS:
@@ -143,6 +150,7 @@ def _aggregate(readings):
         "leg_offset": round(float(np.median(offs)), 3) if offs else None,
         "knees_toward": _mode(r["knees_toward"] for r in readings),
         "feet_toward": _mode(r["feet_toward"] for r in readings),
+        "facing": _mode(r.get("facing") for r in readings),
         "frames": len(readings),
     }
 

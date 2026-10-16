@@ -1,9 +1,10 @@
 // Which model animates each look, for how long, and the prompt, all from the plan and
 // the measured readings (spec §5.4, rules 5, 6, 7.1, 7.2, 12).
 import { personWords } from '../tools/videoBreakdown/measuredLine.js'
-import { personIn } from './looks.js'
+import { personIn, refOf } from './looks.js'
 import { CAST_BY_IMAGE } from './prompts.js'
 import type { Brand, PlanLine, RemakeLook, RemakePlan, StillResult } from './types.js'
+import { usableStill } from './preview.js'
 
 export const CLIP_FPS = 30
 const VEO_SECONDS = [4, 6, 8] as const
@@ -23,7 +24,7 @@ export function lookFrames(plan: RemakePlan): Map<number, number> {
   return out
 }
 
-const usable = (s: StillResult | undefined) => (s && s.fileId && (s.status === 'passed' || s.status === 'unchecked') ? s.fileId : null)
+const usable = usableStill
 
 export function clipSpecs(plan: RemakePlan, stills: StillResult[]): ClipSpec[] {
   const frames = lookFrames(plan)
@@ -59,7 +60,7 @@ const scaleTimes = (lines: string[], factor: number) =>
 export function clipPrompt(plan: RemakePlan, look: RemakeLook, _brand: Brand, engine: 'veo' | 'omni', clipSeconds?: number, plain = false): string {
   const len = look.endS - look.startS
   const factor = clipSeconds && len > 0 ? clipSeconds / len : 1
-  const i = look.n - 1
+  const i = refOf(look)
   const parts: string[] = [engine === 'veo'
     ? 'The first image is the first frame and the second image is the last frame; move naturally from one to the other.'
     : 'The image is the exact first frame; continue from it.']
@@ -77,7 +78,7 @@ export function clipPrompt(plan: RemakePlan, look: RemakeLook, _brand: Brand, en
 }
 
 export function clipGateInput(plan: RemakePlan, look: RemakeLook, prompt: string) {
-  const i = look.n - 1
+  const i = refOf(look)
   const mine = plan.lines.filter((l) => l.ref.startsWith(`looks[${i}].`) || l.ref.startsWith('props['))
   return {
     prompt,

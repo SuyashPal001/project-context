@@ -7,7 +7,8 @@ export interface Brand { name: string; product: string; productPhotoFileId?: str
 export interface PlanLine { ref: string; action: 'keep' | 'swap' | 'drop'; to?: string; why?: string; auto?: boolean }
 
 export interface RemakeLook {
-  n: number                       // 1-based; ref index is n - 1 (overview.looks order)
+  n: number                       // 1-based shot order (slots, clips, joining)
+  ref?: number                    // the outfit look's index in overview.looks (plan lines); n - 1 when absent
   label: string; startS: number; endS: number
   outfit: string; expression: string; startPose: string; endPose: string
   measured: string | null         // the breakdown's plain "Measured:" line
@@ -21,11 +22,12 @@ export interface RemakeLook {
   cameraLines: string[]   // "at 0.5s: the camera pans right"
   guideStartS: number; guideEndS: number   // measured frames used as pose-only guides
   needsEndStill: boolean
+  continues?: boolean             // a later part of a long shot: starts from the previous look's end still
 }
 
 export interface RemakeReference {
   setting: string
-  props: Array<{ prop: string; where: string; when: string }>
+  props: Array<{ prop: string; where: string; when: string; trick?: boolean }>
   moments: Array<{ t_s: number; what: string }>
   musicMood: string
   music: { mood: string; genre: string; instruments: string; hasVocals: boolean | null; songName: string | null }
@@ -39,4 +41,6 @@ export interface RemakePlan {
 }
 
 export interface LedgerEntry { item: string; attempt: number; creditsMicro: string; outcome: 'kept' | 'retried' | 'failed' | 'blocked' }
-export interface StillResult { look: number; kind: 'start' | 'end'; fileId: string | null; status: 'passed' | 'failed' | 'unchecked' | 'blocked'; reasons: string[] }
+/** One paid try at a still: the user sees every one, failed or kept, with why and what it cost. */
+export interface StillTry { fileId: string; kept: boolean; why: string[]; creditsMicro: string }
+export interface StillResult { look: number; kind: 'start' | 'end'; fileId: string | null; status: 'passed' | 'warned' | 'failed' | 'unchecked' | 'blocked'; reasons: string[]; tries?: StillTry[] }

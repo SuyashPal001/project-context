@@ -1,6 +1,6 @@
 import type { Breakdown } from '../tools/videoBreakdown/breakDownVideo.js'
 import { askChecked, type AskFn } from '../tools/tvcChecks.js'
-import { remakeLooks, personIn, aspectOf } from './looks.js'
+import { remakeLooks, personIn, aspectOf, refOf } from './looks.js'
 import type { Brand, PlanLine, RemakeLook, RemakePlan, RemakeReference } from './types.js'
 
 type Ref = { ref: string; what: string }
@@ -12,7 +12,10 @@ export function planRefs(b: Breakdown, looks: RemakeLook[]): Ref[] {
     { ref: 'setting', what: Object.entries(o.setting).map(([k, v]) => `${k}: ${v}`).join('; ') },
   ]
   if (looks.some(personIn)) out.push({ ref: 'cast', what: 'the person on screen' })
-  for (const l of looks) out.push({ ref: `looks[${l.n - 1}].outfit`, what: l.outfit }, { ref: `looks[${l.n - 1}].expression`, what: l.expression })
+  for (const l of looks) {
+    if (out.some((r) => r.ref === `looks[${refOf(l)}].outfit`)) continue // a later shot of the same outfit look
+    out.push({ ref: `looks[${refOf(l)}].outfit`, what: l.outfit }, { ref: `looks[${refOf(l)}].expression`, what: l.expression })
+  }
   o.moments.forEach((m, i) => out.push({ ref: `moments[${i}]`, what: `${m.t_s}s ${m.what}` }))
   o.props.forEach((p, i) => out.push({ ref: `props[${i}]`, what: `${p.prop} (${p.where})` }))
   o.on_screen_text.forEach((t, i) => out.push({ ref: `onScreenText[${i}]`, what: t }))
@@ -58,8 +61,11 @@ export function enforceRules(lines: PlanLine[], refs: Ref[], ctx: { brand: Brand
 export function referenceOf(b: Breakdown): RemakeReference {
   const o = b.overview
   return {
-    setting: Object.entries(o.setting).map(([k, v]) => `${k}: ${v}`).join('; '),
-    props: o.props.map((p) => ({ prop: p.prop, where: p.where, when: p.when })),
+    // Framing is per shot (the guide frame and measured body carry it); a reel-wide framing note in
+    // the setting contradicted every still it was copied into (live Snitch run, 2026-10-16).
+    setting: Object.entries(o.setting).filter(([k]) => !/framing|camera|shot/i.test(k)).map(([k, v]) => `${k}: ${v}`).join('; '),
+    // part_of_trick may come back as true or "true"; only a plain yes counts.
+    props: o.props.map((p) => ({ prop: p.prop, where: p.where, when: p.when, ...(p.part_of_trick === true || String(p.part_of_trick) === 'true' ? { trick: true } : {}) })),
     moments: o.moments.map((m) => ({ t_s: m.t_s, what: m.what })),
     musicMood: [o.music.mood, o.music.genre].filter(Boolean).join(', '),
     music: { mood: o.music.mood, genre: o.music.genre, instruments: o.music.instruments, hasVocals: o.music.has_vocals, songName: o.music.song_name },
