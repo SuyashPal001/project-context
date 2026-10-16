@@ -1,9 +1,5 @@
 import { api, ApiError } from '@/lib/api';
 
-export const EMOJI_POLICIES = [
-    { value: 'none', label: 'None' }, { value: 'minimal', label: 'Minimal' },
-    { value: 'moderate', label: 'Moderate' }, { value: 'expressive', label: 'Expressive' },
-] as const;
 export const COLOR_ROLES = ['primary', 'secondary', 'accent', 'text', 'background', 'muted'] as const;
 export const FONT_CHOICES = ['Inter', 'Poppins', 'Space Grotesk', 'Figtree', 'Playfair Display', 'JetBrains Mono'] as const;
 

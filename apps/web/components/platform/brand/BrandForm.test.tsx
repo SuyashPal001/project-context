@@ -78,6 +78,14 @@ describe('BrandForm', () => {
         expect(screen.queryByRole('button', { name: 'India' })).toBeNull();
     });
 
+    it('has no Emoji row on the Voice tab (set from the import or from chat)', () => {
+        render(<BrandForm {...baseProps} brand={brand} />);
+        fireEvent.click(screen.getByRole('tab', { name: 'Voice' }));
+        expect(screen.getByText('Tone words')).toBeTruthy();
+        expect(screen.queryByText('Emoji')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Minimal' })).toBeNull();
+    });
+
     it('shows where the brand came from', () => {
         render(<BrandForm {...baseProps} brand={brand} />);
         expect(screen.getByText(/Filled from mamaearth\.in · today/)).toBeTruthy();

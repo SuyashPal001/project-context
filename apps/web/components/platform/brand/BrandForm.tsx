@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 
 import { cn } from '@/lib/utils';
 import {
-    COLOR_ROLES, EMOJI_POLICIES, FONT_CHOICES, sourceLine,
+    COLOR_ROLES, FONT_CHOICES, sourceLine,
     type BrandPatch, type BrandRecord,
 } from './brandApi';
 import { BrandFillRow } from './BrandFillRow';
@@ -84,20 +84,6 @@ function FontField({ id, value, onSave }: { id: string; value: string; onSave: (
                 onChange={(e) => setDraft(e.target.value)} onBlur={blur} />
             <datalist id={`${id}-list`}>{FONT_CHOICES.map((f) => <option key={f} value={f} />)}</datalist>
         </>
-    );
-}
-
-function Chips<T extends string>({ options, value, onPick }: { options: ReadonlyArray<{ value: T; label: string }>; value: string; onPick: (v: T) => void }) {
-    return (
-        <div className="flex flex-wrap gap-2">
-            {options.map((o) => (
-                <button key={o.value} type="button" onClick={() => o.value !== value && onPick(o.value)}
-                    className={cn('rounded-full border px-3 py-1 text-xs transition-colors',
-                        o.value === value ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground')}>
-                    {o.label}
-                </button>
-            ))}
-        </div>
     );
 }
 
@@ -212,9 +198,6 @@ export function VoiceSection({ brand, onSave }: SectionProps) {
         <Section title="Voice" subtitle="How you sound. Every caption and script follows it.">
             <Row label="Tone words" hint="3 to 5 words for how you sound.">
                 <ToneWords words={brand.toneWords} onSave={(toneWords) => onSave({ toneWords })} />
-            </Row>
-            <Row label="Emoji">
-                <Chips options={EMOJI_POLICIES} value={brand.emojiPolicy} onPick={(emojiPolicy) => onSave({ emojiPolicy })} />
             </Row>
             <TextField id="brand-signature" label="Signature phrases" hint="One per line. Phrases you own." multiline
                 value={brand.signaturePhrases.join('\n')} onSave={(v) => onSave({ signaturePhrases: toLines(v) })} />
