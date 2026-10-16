@@ -64,4 +64,19 @@ describe('POST /internal/brand/import-result', () => {
     expect(await res.json()).toEqual({ result: 'failed' });
     expect(rec.markImportFailed).toHaveBeenCalledWith(T, 'gateway 500');
   });
+
+  it('ignores an error report when no import is running', async () => {
+    rec.getBrandRow.mockResolvedValue({ importStatus: 'done', createdBy: 'user-1' });
+    const res = await (await app()).request('/internal/brand/import-result', post({ tenantId: T, ok: false, error: 'late error' }));
+    expect(await res.json()).toEqual({ result: 'ignored' });
+    expect(rec.markImportFailed).not.toHaveBeenCalled();
+  });
+
+  it('ignores a result with ok:true when the row does not exist', async () => {
+    rec.getBrandRow.mockResolvedValue(null);
+    const res = await (await app()).request('/internal/brand/import-result', post({ tenantId: T, ok: true, fields, sourceText: '' }));
+    expect(await res.json()).toEqual({ result: 'ignored' });
+    expect(importOneImage).not.toHaveBeenCalled();
+    expect(rec.applyImportResult).not.toHaveBeenCalled();
+  });
 });

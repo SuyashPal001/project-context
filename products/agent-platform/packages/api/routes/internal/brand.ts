@@ -36,14 +36,14 @@ internalBrandRoute.post('/import-result', async (c) => {
   if (!parsed.success) return c.json({ error: 'Invalid body', issues: parsed.error.issues }, 400);
   const body = parsed.data;
 
+  const row = await getBrandRow(body.tenantId);
+  if (!row || row.importStatus !== 'importing') return c.json({ result: 'ignored' });
+
   if (!body.ok) {
     console.error('[internal.brand] import failed', { tenantId: body.tenantId, error: body.error });
     await markImportFailed(body.tenantId, body.error);
     return c.json({ result: 'failed' });
   }
-
-  const row = await getBrandRow(body.tenantId);
-  if (!row || row.importStatus !== 'importing') return c.json({ result: 'ignored' });
 
   const [logoFileId, faviconFileId] = await Promise.all([
     saveImage(body.logoUrl, body.tenantId, row.createdBy),
