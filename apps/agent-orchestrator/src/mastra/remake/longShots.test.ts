@@ -76,6 +76,6 @@ describe('our own blocks found on the real rerun', () => {
     await makeStill({ look, kind: 'start', prompt: 'P', references: ['portrait', 'guide'], aspectRatio: '9:16', gate: { prompt: 'P', planLine: 'x', look: {}, startFrameObjects: [], keyMoments: [] } } as StillJob, ctx, d)
     const second = (d.promptGate as ReturnType<typeof vi.fn>).mock.calls[1][0]
     expect(second.prompt).toMatch(/^Edit the first image\. Change only this: the face must be exactly the person in the second image\./) // an edit, in plan words
-    expect(second.planLine).toMatch(/retry as an EDIT/)
+    expect(second.planLine).toMatch(/edit of a still that was already checked/)
   })
 })

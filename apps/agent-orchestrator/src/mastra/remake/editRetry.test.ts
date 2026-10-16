@@ -47,3 +47,27 @@ describe('the retry edits the failed still', () => {
     expect(second.prompt).toMatch(/^P Fix:/)
   })
 })
+
+// Metro A/B (2026-10-16): every edit retry was stopped by the prompt check. It was checked against the
+// still's full plan ("swap the outfit to …", "the person is the first image"), which an edit prompt
+// ("keep everything else exactly"; the person is now the SECOND image) reads as contradicting.
+describe('the edit retry is checked as an edit', () => {
+  it('its check input names the one fix, not the still plan', async () => {
+    n = 0
+    const d = deps({ reasons: ['the face differs from the chosen person: different nose'] })
+    await makeStill(job(), ctx, d)
+    const g = (d.promptGate as ReturnType<typeof vi.fn>).mock.calls[1][0]
+    expect(g.prompt).toMatch(/^Edit the first image/)
+    expect(g.planLine).toMatch(/edit of a still that was already checked/)
+    expect(g.planLine).toMatch(/the face must be exactly the person in the second image/)
+    expect(g.planLine).not.toMatch(/^x/)
+    expect(g).toMatchObject({ look: {}, startFrameObjects: [], keyMoments: [] })
+  })
+  it('a fresh retry is still checked against the full still plan', async () => {
+    n = 0
+    const look = { ...remakeLooks(breakdown())[0], start: body({ facing: 'back' } as never) }
+    const d = deps({ reasons: [] }, { model: 'm', people: 1, no_person: false, main: body({ facing: 'front' } as never) })
+    await makeStill({ ...job(), look }, ctx, d)
+    expect((d.promptGate as ReturnType<typeof vi.fn>).mock.calls[1][0].planLine).toMatch(/^x; retry/)
+  })
+})

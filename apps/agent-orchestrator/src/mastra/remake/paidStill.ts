@@ -89,11 +89,16 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
   let prompt = job.prompt
   let references = job.references
   let retryNote = ''
+  let editGate = ''
   let last: { fileId: string; reasons: string[] } | null = null
   const tries: StillTry[] = []
   const withTries = (r: { result: StillResult; ledger: LedgerEntry[] }) => (tries.length ? { ...r, result: { ...r.result, tries } } : r)
   for (let attempt = 0; attempt < 2; attempt++) {
-    const gate = await deps.promptGate({ ...job.gate, prompt, tenantId: ctx.tenantId, ...(attempt > 0 ? { planLine: `${job.gate.planLine}; ${retryNote}` } : {}) })
+    // An edit is checked as an edit: the one fix, not the still's plan (which an edit prompt, "keep
+    // everything else", read as contradicting: every edit retry was stopped, metro A/B 2026-10-16).
+    const gate = await deps.promptGate(editGate
+      ? { prompt, planLine: editGate, look: {}, startFrameObjects: [], keyMoments: [], tenantId: ctx.tenantId }
+      : { ...job.gate, prompt, tenantId: ctx.tenantId, ...(attempt > 0 ? { planLine: `${job.gate.planLine}; ${retryNote}` } : {}) })
     if (gate.status !== 'pass') {
       // A blocked retry after a failed attempt: the item failed (the paid attempt was wasted),
       // so the ledger says failed too, never "blocked" next to a failed result (M6).
@@ -145,9 +150,10 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
       retryNote = 'retry: the prompt ends with a "Fix:" sentence saying what the previous try got wrong, in plan words (not new content)'
     } else {
       const identity = personIn(job.look) && ctx.portrait ? [job.references[0]] : []
-      prompt = editPrompt(fixLine(c.hard).replace(/the first image/g, 'the second image'))
+      const fix = fixLine(c.hard).replace(/the first image/g, 'the second image')
+      prompt = editPrompt(fix)
       references = [g.fileId, ...identity]
-      retryNote = 'retry as an EDIT of the previous try (the first image); only the named fix changes, everything else is kept from it'
+      editGate = `edit of a still that was already checked against the approved plan (the first image); the only change asked for: ${fix}; everything else is kept from the first image${identity.length ? '; the second image is the chosen person (not described in words)' : ''}`
     }
   }
   return withTries({ result: { ...base, fileId: last!.fileId, status: 'failed', reasons: last!.reasons }, ledger })

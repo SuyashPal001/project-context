@@ -12,7 +12,7 @@ const SAY: Record<string, string> = { duplicate_object: 'an object appears twice
 const REMAKE_GLITCH_QUESTION = GLITCH_QUESTION.replace(' Reply ONLY JSON {', ', drawn (the whole image is a drawing, illustration, cartoon, painting or 3D render, not a real photograph). Reply ONLY JSON {"drawn":true|false,')
 // The original shows the person from the back, so the still may show no face at all; a face or hair
 // that IS in view must still be the chosen person (metro A/B: the original man's face passed in profile).
-export const VISIBLE_FACE_QUESTION = 'Image L is the lead actor. Image F is a still from the ad. Is any part of the person\'s face or hair visible in Image F (profile and side views count; the back of a head shows hair)? If so, is it the same person as in Image L, judged by face and hair only? Reply ONLY JSON {"face_visible":true|false,"same_person":true|false,"why":"short"}'
+export const VISIBLE_FACE_QUESTION = 'Image L is the lead actor. Image F is a still from the ad. Is any part of the person\'s face or hair visible in Image F (profile and side views count; the back of a head shows hair)? If so, is it CLEARLY a different person from Image L, judged by face and hair only? If you cannot tell (too little shows), answer false. Reply ONLY JSON {"face_visible":true|false,"clearly_different":true|false,"why":"short"}'
 
 export interface StillVerdict { passed: boolean; reasons: string[]; warnings: string[] }
 
@@ -29,6 +29,6 @@ export async function remakeStillChecks(ask: AskFn, still: Img, opts: { lead?: I
   if (clone && !clone.passed) reasons.push('someone in the background looks like the lead')
   // Face consistency is hard (user, 2026-10-16); the check now compares against the chosen person's reference sheet.
   if (face && !face.passed) reasons.push(`the face differs from the chosen person: ${face.reason.replace(/^The lead is missing or looks different: /, '').replace(/\.+$/, '')}`)
-  if (visible && visible.face_visible === true && visible.same_person === false) reasons.push(`the face differs from the chosen person: ${String(visible.why ?? '').replace(/\.+$/, '')}`)
+  if (visible && visible.face_visible === true && visible.clearly_different === true) reasons.push(`the face differs from the chosen person: ${String(visible.why ?? '').replace(/\.+$/, '')}`)
   return { passed: reasons.length === 0, reasons, warnings }
 }

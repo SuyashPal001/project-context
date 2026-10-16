@@ -48,7 +48,7 @@ const glitchFree = { duplicate_object: false, stray_face: false, invented_text: 
 const asker = (o: { glitch?: Record<string, unknown>; visible?: Record<string, unknown> } = {}) => vi.fn(async (parts: Array<{ text?: string }>) => {
   const q = parts.map((p) => ('text' in p ? p.text : '')).join(' ')
   if (/duplicate_object/.test(q)) return { ...glitchFree, ...o.glitch }
-  if (/face_visible/.test(q)) return { face_visible: true, same_person: true, why: '', ...o.visible }
+  if (/face_visible/.test(q)) return { face_visible: true, clearly_different: false, why: '', ...o.visible }
   if (/same face/.test(q)) return { lead_present: true, same_face: true, why: '' }
   return { others: [] }
 })
@@ -63,12 +63,16 @@ describe('a drawn still is a hard fault', () => {
 
 describe('a still whose original faces away is still face-checked when a face shows', () => {
   it('a visible face that differs fails', async () => {
-    const r = await remakeStillChecks(asker({ visible: { same_person: false, why: 'blonde, not dark curly hair' } }) as never, img, { lead: img, faceMayHide: true })
+    const r = await remakeStillChecks(asker({ visible: { clearly_different: true, why: 'blonde, not dark curly hair' } }) as never, img, { lead: img, faceMayHide: true })
     expect(r.passed).toBe(false)
     expect(r.reasons.join(' ')).toMatch(/face differs/)
   })
   it('no face in view passes', async () => {
-    const r = await remakeStillChecks(asker({ visible: { face_visible: false, same_person: false } }) as never, img, { lead: img, faceMayHide: true })
+    const r = await remakeStillChecks(asker({ visible: { face_visible: false, clearly_different: true } }) as never, img, { lead: img, faceMayHide: true })
+    expect(r.passed).toBe(true)
+  })
+  it('only the back of the head, can\'t tell: passes (metro rerun failed it for "insufficient evidence")', async () => {
+    const r = await remakeStillChecks(asker({ visible: { face_visible: true, clearly_different: false, why: 'only the back of the head' } }) as never, img, { lead: img, faceMayHide: true })
     expect(r.passed).toBe(true)
   })
   it('makeStill asks for it when the original shows the person from the back', async () => {
