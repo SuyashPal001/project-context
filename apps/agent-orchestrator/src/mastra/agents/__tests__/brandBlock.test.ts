@@ -33,7 +33,19 @@ describe('brandInstructionBlock', () => {
     expect(b).toContain('ask_clarifying_questions')
   })
 
-  it('treats a row with no name as no brand', () => {
-    expect(brandInstructionBlock({ ...brand, name: null })).toContain('no saved brand')
+  it('shows a saved brand with no name and asks for the name', () => {
+    const b = brandInstructionBlock({ ...brand, name: null })
+    expect(b).not.toContain('no saved brand')
+    expect(b).toContain('Name: not saved yet — ask for it')
+    expect(b).toContain('Never use: "cheap"')
+  })
+
+  it('treats a row with nothing saved as no brand', () => {
+    const empty: TenantBrand = {
+      name: '  ', oneLiner: null, audience: null, region: 'IN', toneWords: [], emojiPolicy: 'minimal',
+      signaturePhrases: [], bannedPhrases: [], ctaExamples: [], voiceNotes: null, colors: {}, headlineFont: null, logoFileId: null,
+    }
+    expect(brandInstructionBlock(empty)).toContain('no saved brand')
+    expect(brandInstructionBlock({ ...empty, bannedPhrases: ['cheap'] })).not.toContain('no saved brand')
   })
 })

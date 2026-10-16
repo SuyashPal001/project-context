@@ -180,14 +180,18 @@ export const compositeEndCard = createTool({
   id: 'composite-end-card',
   description: 'Overlays the real product photo onto the last beat\'s clip, dissolving in over its final second and a half — the end card is always composited from the real photo, never AI-rendered, to avoid wordmark/brand-name garbling. Animated ad: run BEFORE assemble_clips, on beat 4 only. UGC or talking-head ad: run on the finished (tightened) ad with holdSeconds 1.5, so the card follows the last words. Never run it on a video that already carries a disclaimer from overlay_text (refused with END_CARD_OVER_DISCLAIMER); in the TVC finish the end card always comes first.' +
     ' TVC packshot: logoFileId lays the brand logo top centre (9% of the shorter side; a logo with no transparency on a rounded white plate; never over a face) and vegMark the FSSAI veg or non-veg mark in the opposite bottom corner, above the disclaimer when disclaimerLines is given, all in the same pass. An SVG logo is refused with LOGO_NOT_RASTER, the product photo as the logo with LOGO_IS_PRODUCT_PHOTO, an unreadable one with LOGO_NOT_IMAGE, all uncharged.' +
-    ' When logoFileId is not given, the saved brand logo is used; pass noLogo: true when the user asks for no logo.',
+    ' When logoFileId is not given, the saved brand logo is used (left off, never refused, if it cannot be used); pass noLogo: true when the user asks for no logo.',
   inputSchema,
   outputSchema,
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'clip_assembly', subject: COMPOSITE_SUBJECT }, ctx),
   execute: async (inputData, execContext) => {
     const { videoFileId, productPhotoFileId, aspectRatio, holdSeconds = 0, avoidFaces, vegMark, disclaimerLines } = inputData as z.infer<typeof inputSchema>
-    const logoFileId = resolveEndCardLogo(inputData as z.infer<typeof inputSchema>, execContext?.requestContext?.get('brand') as TenantBrand | null | undefined)
+    let logoFileId = resolveEndCardLogo(inputData as z.infer<typeof inputSchema>, execContext?.requestContext?.get('brand') as TenantBrand | null | undefined)
+    // A logo nobody asked for on this call (the saved brand's) never blocks the
+    // end card: if it can't be used, the card goes out without a logo. A logo
+    // passed in explicitly keeps the refusals below.
+    const brandDefaultLogo = Boolean(logoFileId) && !(inputData as z.infer<typeof inputSchema>).logoFileId
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined
@@ -200,7 +204,10 @@ export const compositeEndCard = createTool({
     if (!idToken) return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE', jobId }
 
     // M3: the logo is never the product photo. Refused before anything is fetched or charged.
-    if (logoFileId && logoFileId === productPhotoFileId) return { refused: true, refusalReason: LOGO_IS_PRODUCT_PHOTO, jobId }
+    if (logoFileId && logoFileId === productPhotoFileId) {
+      if (!brandDefaultLogo) return { refused: true, refusalReason: LOGO_IS_PRODUCT_PHOTO, jobId }
+      logoFileId = undefined
+    }
 
     const scopeId = tenantId || sessionId
     let videoPath: string, photoPath: string
@@ -227,9 +234,9 @@ export const compositeEndCard = createTool({
       // X3: what the file really is, from its bytes, before any charge.
       if (logoFile) {
         const kind = sniffImage(logoFile.buf)
-        if (kind === 'svg') return { refused: true, refusalReason: LOGO_NOT_RASTER, jobId }
-        if (kind === 'other') return { refused: true, refusalReason: LOGO_NOT_IMAGE, jobId }
-        logoPath = logoFile.filePath
+        if (kind === 'png' || kind === 'jpeg' || kind === 'webp') logoPath = logoFile.filePath
+        else if (!brandDefaultLogo) return { refused: true, refusalReason: kind === 'svg' ? LOGO_NOT_RASTER : LOGO_NOT_IMAGE, jobId }
+        else console.warn(`[session:${sessionId}] compositeEndCard: saved brand logo is not a raster image (${kind}); end card without a logo`)
       }
     } catch (err) {
       console.error(`[session:${sessionId}] compositeEndCard: failed to download sources:`, (err as Error).message)
@@ -242,7 +249,8 @@ export const compositeEndCard = createTool({
         logo = await inspectLogo(logoPath)
       } catch (err) {
         console.error(`[session:${sessionId}] compositeEndCard: logo unreadable:`, (err as Error).message)
-        return { refused: true, refusalReason: LOGO_NOT_IMAGE, jobId }
+        if (!brandDefaultLogo) return { refused: true, refusalReason: LOGO_NOT_IMAGE, jobId }
+        logoPath = undefined
       }
     }
 

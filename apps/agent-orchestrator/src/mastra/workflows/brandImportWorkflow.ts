@@ -3,8 +3,7 @@ import { z } from 'zod'
 
 import { brandFillAgent, brandFillOutputSchema, buildFillPrompt, clampFill } from '../agents/brandFillAgent.js'
 import { fetchInstagramProfile } from '../brand/tikhub.js'
-import { downloadImageBase64 } from '../../routes/productDescribe.js'
-import { sniffImageMimeType } from '../../media.js'
+import { fetchInstagramImage } from '../brand/safeImage.js'
 import { persistCost } from '../cost.js'
 import type { InstagramFacts, WebsiteFacts } from '../brand/types.js'
 
@@ -15,7 +14,6 @@ const FILL_MODEL = process.env.MASTRA_LITE_MODEL ?? 'gemini-3.6-flash'
 // keeps one runaway caption from eating the whole budget before the join+slice below.
 const MAX_CAPTION_CHARS = 1_500
 const MAX_SOURCE_TEXT_CHARS = 20_000
-const SNIFFABLE_LOGO_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
 
 const capCaptions = (captions: string[]) => captions.map((c) => c.slice(0, MAX_CAPTION_CHARS))
 const joinSourceText = (parts: string[]) => parts.filter(Boolean).join('\n').slice(0, MAX_SOURCE_TEXT_CHARS)
@@ -53,8 +51,8 @@ const gather = createStep({
     }
     const w = inputData.facts as WebsiteFacts | undefined
     if (!w) throw new Error('website facts missing')
-    // Prefer an explicit logo candidate; a .ico favicon isn't a usable logo image
-    // (the fill step would just drop it text-only) so skip straight past it.
+    // Prefer an explicit logo candidate; a .ico favicon isn't a usable logo image, so skip
+    // past it. Reported to the API, which saves it; never downloaded here.
     const nonIcoIcon = w.iconUrls.find((u) => !u.toLowerCase().endsWith('.ico'))
     return {
       tenantId: inputData.tenantId, website: w,
@@ -65,33 +63,17 @@ const gather = createStep({
   },
 })
 
-/**
- * Downloads a candidate logo and sniffs its real type from the bytes. Returns null — never
- * throws — on a download failure (DNS/TLS/timeout/bad URL/over-size) or when the bytes
- * aren't one of the three image types Gemini accepts here; a .ico favicon or an HTML error
- * page served at the URL both land here and the fill step runs text-only instead.
- */
-async function resolveLogoImage(logoUrl: string): Promise<{ base64: string; mimeType: string } | null> {
-  let base64: string | null
-  try {
-    base64 = await downloadImageBase64(logoUrl)
-  } catch (err) {
-    console.error('[brandImport] logo download failed', { logoUrl, error: (err as Error).message })
-    return null
-  }
-  if (!base64) return null
-  const sniffed = sniffImageMimeType(Buffer.from(base64.slice(0, 32), 'base64'))
-  if (!sniffed || !SNIFFABLE_LOGO_MIME_TYPES.has(sniffed)) return null
-  return { base64, mimeType: sniffed }
-}
-
 const fill = createStep({
   id: 'fill',
   inputSchema: gatheredSchema,
   outputSchema: filledSchema,
   execute: async ({ inputData }) => {
     const prompt = buildFillPrompt({ website: inputData.website, instagram: inputData.instagram })
-    const logo = inputData.logoUrl ? await resolveLogoImage(inputData.logoUrl) : null
+    // Only the Instagram profile picture is ever downloaded here, through the guarded
+    // helper. Website logo URLs come from the page itself and could point anywhere, so
+    // the website fill runs text-only (its CSS colours are already in the facts); the
+    // API saves the logo with its own SSRF-guarded fetch.
+    const logo = inputData.instagram && inputData.logoUrl ? await fetchInstagramImage(inputData.logoUrl) : null
     const content: Array<Record<string, unknown>> = [{ type: 'text', text: prompt }]
     if (logo) content.unshift({ type: 'image', image: logo.base64, mimeType: logo.mimeType })
     const result = await brandFillAgent.generate(

@@ -7,15 +7,12 @@ vi.mock('../agents/brandFillAgent.js', async (orig) => ({
 }))
 const fetchInstagramProfile = vi.fn()
 vi.mock('../brand/tikhub.js', () => ({ fetchInstagramProfile: (...a: unknown[]) => fetchInstagramProfile(...a) }))
-const downloadImageBase64 = vi.fn()
-vi.mock('../../routes/productDescribe.js', () => ({ downloadImageBase64: (...a: unknown[]) => downloadImageBase64(...a) }))
+const fetchInstagramImage = vi.fn()
+vi.mock('../brand/safeImage.js', () => ({ fetchInstagramImage: (...a: unknown[]) => fetchInstagramImage(...a) }))
 vi.mock('../cost.js', () => ({ persistCost: vi.fn() }))
 const fetchMock = vi.fn()
 
 const T = '11111111-1111-4111-8111-111111111111'
-// A valid PNG magic-byte prefix, base64-encoded, so sniffImageMimeType recognises it as
-// image/png — the fill step only attaches an image when the bytes actually sniff as one
-// of the three accepted types.
 const PNG_BASE64 = 'iVBORw0KGgoAAAAAAAAAAA=='
 const facts = {
   url: 'https://mamaearth.example/', siteName: 'Mamaearth', title: null, description: 'Natural skincare.',
@@ -34,7 +31,7 @@ beforeEach(() => {
   fetchMock.mockResolvedValue(new Response('{"result":"applied"}', { status: 200 }))
   process.env.API_BASE_URL = 'https://api.test'
   process.env.INTERNAL_SERVICE_KEY = 'k'
-  downloadImageBase64.mockResolvedValue(PNG_BASE64)
+  fetchInstagramImage.mockResolvedValue({ base64: PNG_BASE64, mimeType: 'image/png' })
   generate.mockResolvedValue({ object, usage: { inputTokens: 100, outputTokens: 50 } })
 })
 
@@ -60,11 +57,13 @@ describe('brandImportWorkflow', () => {
     expect(body.sourceText).toContain('Goodness Inside')
   })
 
-  it('sends the logo image to the fill agent with structured output', async () => {
+  it('never downloads a website image: the website fill is text-only, with structured output', async () => {
     await run({ tenantId: T, source: 'website', facts })
     const [messages, options] = generate.mock.calls[0]
     expect(options.structuredOutput.schema).toBeDefined()
-    expect(JSON.stringify(messages)).toContain(PNG_BASE64)
+    expect(JSON.stringify(messages)).not.toContain('"type":"image"')
+    expect(fetchInstagramImage).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledTimes(1) // only the report
   })
 
   it('reads Instagram through TikHub and uses the profile picture as the logo', async () => {
@@ -73,6 +72,16 @@ describe('brandImportWorkflow', () => {
     const body = reportBody()
     expect(body.logoUrl).toBe('https://ig.example/pic.jpg')
     expect(body.sourceText).toContain('Comment GLOW for the link')
+    expect(fetchInstagramImage).toHaveBeenCalledWith('https://ig.example/pic.jpg')
+    expect(JSON.stringify(generate.mock.calls[0][0])).toContain(PNG_BASE64)
+  })
+
+  it('runs text-only when the profile picture cannot be fetched safely', async () => {
+    fetchInstagramProfile.mockResolvedValue({ handle: 'mamaearth.in', fullName: 'Mamaearth', bio: null, externalUrl: null, profilePicUrl: 'https://evil.example/pic.jpg', captions: [] })
+    fetchInstagramImage.mockResolvedValue(null)
+    const result = await run({ tenantId: T, source: 'instagram', handle: 'mamaearth.in' })
+    expect(result.status).toBe('success')
+    expect(JSON.stringify(generate.mock.calls[0][0])).not.toContain('"type":"image"')
   })
 
   it('fails the run when Instagram cannot be read', async () => {
@@ -81,34 +90,10 @@ describe('brandImportWorkflow', () => {
     expect(result.status).toBe('failed')
   })
 
-  it('runs text-only and reports no logoUrl when website facts have no logo or icon candidates', async () => {
-    const noLogoFacts = { ...facts, logoCandidates: [], iconUrls: [] }
-    const result = await run({ tenantId: T, source: 'website', facts: noLogoFacts })
+  it('reports no logoUrl when website facts have no logo or icon candidates', async () => {
+    const result = await run({ tenantId: T, source: 'website', facts: { ...facts, logoCandidates: [], iconUrls: [] } })
     expect(result.status).toBe('success')
-    expect(downloadImageBase64).not.toHaveBeenCalled()
-    const [messages] = generate.mock.calls[0]
-    expect(JSON.stringify(messages)).not.toContain('"type":"image"')
-    const body = reportBody()
-    expect(body.logoUrl).toBeUndefined()
-  })
-
-  it('still succeeds, text-only, when the logo download throws', async () => {
-    downloadImageBase64.mockRejectedValue(new Error('ENOTFOUND cdn.example'))
-    const result = await run({ tenantId: T, source: 'website', facts })
-    expect(result.status).toBe('success')
-    const [messages] = generate.mock.calls[0]
-    expect(JSON.stringify(messages)).not.toContain('"type":"image"')
-    const body = reportBody()
-    // logoUrl still reported — it's the candidate, not proof the image reached the model.
-    expect(body.logoUrl).toBe('https://cdn.example/logo.png')
-  })
-
-  it('runs text-only when the downloaded bytes are not png, jpeg or webp', async () => {
-    downloadImageBase64.mockResolvedValue(Buffer.from('<!doctype html><title>404</title>').toString('base64'))
-    const result = await run({ tenantId: T, source: 'website', facts })
-    expect(result.status).toBe('success')
-    const [messages] = generate.mock.calls[0]
-    expect(JSON.stringify(messages)).not.toContain('"type":"image"')
+    expect(reportBody().logoUrl).toBeUndefined()
   })
 
   it('caps sourceText at 20,000 chars when captions are long', async () => {

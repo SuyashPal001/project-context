@@ -9,24 +9,78 @@ beforeEach(() => {
 // Not a default parameter: `ctx(undefined)` (used below to mean "no token")
 // would otherwise fall through to the 'tok' default too, since JS applies a
 // default parameter whenever the argument is undefined, explicit or omitted.
-const ctx = (...args: [] | [string | undefined]) => {
+const ctx = (...args: [] | [string | undefined] | [string | undefined, Record<string, unknown>]) => {
   const idToken = args.length === 0 ? 'tok' : args[0]
   const rc = new RequestContext()
   if (idToken) rc.set('idToken', idToken)
+  if (args[1]) rc.set('brand', args[1])
   return { requestContext: rc } as never
 }
+const saved = {
+  name: 'Mamaearth', toneWords: ['warm', 'caring'], signaturePhrases: ['Goodness Inside'],
+  bannedPhrases: ['chemical-free', 'Cheap'], ctaExamples: ['Shop now'], colors: { primary: '#00A651', accent: '#FFCC00' },
+}
+const sentBody = () => JSON.parse(fetchMock.mock.calls[0][1].body)
 
 describe('update_brand', () => {
   it('PATCHes only the given fields with the user token', async () => {
     fetchMock.mockResolvedValue(new Response('{"data":{}}', { status: 200 }))
     const { updateBrandTool } = await import('./brandTools.js')
-    const out = await updateBrandTool.execute!({ bannedPhrases: ['cheap'] } as never, ctx())
+    const out = await updateBrandTool.execute!({ addBannedPhrases: ['cheap'] } as never, ctx())
     expect(out).toMatchObject({ success: true })
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toBe('https://api.test/api/v1/brand')
     expect(init.method).toBe('PATCH')
     expect(init.headers.Authorization).toBe('Bearer tok')
     expect(JSON.parse(init.body)).toEqual({ bannedPhrases: ['cheap'] })
+  })
+
+  it('adding a banned phrase keeps the saved ones', async () => {
+    fetchMock.mockResolvedValue(new Response('{"data":{}}', { status: 200 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    await updateBrandTool.execute!({ addBannedPhrases: ['miracle', 'cheap'] } as never, ctx('tok', saved))
+    expect(sentBody()).toEqual({ bannedPhrases: ['chemical-free', 'Cheap', 'miracle'] })
+  })
+
+  it('removes case-insensitively, then adds', async () => {
+    fetchMock.mockResolvedValue(new Response('{"data":{}}', { status: 200 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    await updateBrandTool.execute!({ removeToneWords: ['WARM'], addToneWords: ['bold'], removeCtaExamples: ['shop now'] } as never, ctx('tok', saved))
+    expect(sentBody()).toEqual({ toneWords: ['caring', 'bold'], ctaExamples: [] })
+  })
+
+  it('caps a list at its limit', async () => {
+    fetchMock.mockResolvedValue(new Response('{"data":{}}', { status: 200 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    await updateBrandTool.execute!({ addToneWords: ['a', 'b', 'c', 'd'] } as never, ctx('tok', saved))
+    expect(sentBody().toneWords).toEqual(['warm', 'caring', 'a', 'b', 'c'])
+  })
+
+  it('a second edit in the same turn builds on the first', async () => {
+    fetchMock.mockImplementation(async () => new Response('{"data":{}}', { status: 200 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    const c = ctx('tok', saved)
+    await updateBrandTool.execute!({ addBannedPhrases: ['miracle'], colors: { text: '#000000' } } as never, c)
+    await updateBrandTool.execute!({ addBannedPhrases: ['instant'] } as never, c)
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ bannedPhrases: ['chemical-free', 'Cheap', 'miracle', 'instant'] })
+    const brand = (c as unknown as { requestContext: RequestContext }).requestContext.get('brand') as Record<string, unknown>
+    expect(brand.colors).toEqual({ primary: '#00A651', accent: '#FFCC00', text: '#000000' })
+  })
+
+  it('a first list edit with no saved brand starts from empty and is kept for the next', async () => {
+    fetchMock.mockImplementation(async () => new Response('{"data":{}}', { status: 200 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    const c = ctx()
+    await updateBrandTool.execute!({ addToneWords: ['warm'] } as never, c)
+    await updateBrandTool.execute!({ addToneWords: ['bold'] } as never, c)
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ toneWords: ['warm', 'bold'] })
+  })
+
+  it('sends only the colour roles given', async () => {
+    fetchMock.mockResolvedValue(new Response('{"data":{}}', { status: 200 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    await updateBrandTool.execute!({ colors: { accent: '#112233' } } as never, ctx('tok', saved))
+    expect(sentBody()).toEqual({ colors: { accent: '#112233' } })
   })
 
   it('reports a plain failure without internals', async () => {

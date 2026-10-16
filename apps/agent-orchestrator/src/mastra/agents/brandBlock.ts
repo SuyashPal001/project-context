@@ -14,12 +14,21 @@ const quoted = (items: string[]) => items.map((i) => `"${i}"`).join(', ')
 const SETUP = `\n\n## Your brand
 This workspace has no saved brand yet. When the user asks to set up their brand, or pastes their website or Instagram handle for that purpose, call import_brand with the link or handle and tell them it will appear on the Brand page in a minute. If they have neither, ask with ask_clarifying_questions, one question at a time: what the brand is called, who it is for, and how it should sound; save each answer with update_brand, then ask them to send their logo if they have one and save it with update_brand's logoFileId.`
 
+const has = (v: string | null | undefined) => Boolean(v?.trim())
+
+/** True when anything at all is saved; region and emoji policy always have defaults, so they don't count. */
+function hasAnyField(b: TenantBrand): boolean {
+  return has(b.name) || has(b.oneLiner) || has(b.audience) || has(b.voiceNotes) || has(b.headlineFont) ||
+    b.toneWords.length > 0 || b.signaturePhrases.length > 0 || b.bannedPhrases.length > 0 || b.ctaExamples.length > 0 ||
+    Object.keys(b.colors ?? {}).length > 0 || Boolean(b.logoFileId)
+}
+
 /** Olmo's view of the saved brand. Appended last so the stable instructions stay a cacheable prefix. */
 export function brandInstructionBlock(brand: TenantBrand | null): string {
-  if (!brand?.name?.trim()) return SETUP
+  if (!brand || !hasAnyField(brand)) return SETUP
   const colours = Object.entries(brand.colors ?? {}).map(([role, hex]) => `${role} ${hex}`).join(', ')
   const lines = [
-    `- Name: ${brand.name}`,
+    has(brand.name) ? `- Name: ${brand.name!.trim()}` : '- Name: not saved yet — ask for it',
     brand.oneLiner && `- What it makes: ${brand.oneLiner}`,
     brand.audience && `- Audience: ${brand.audience}`,
     `- Region: ${REGION_NAMES[brand.region] ?? brand.region} (use its currency, festivals and language habits)`,
