@@ -305,6 +305,13 @@ function ChatPage() {
     const { isModalOpen, session, openVoice, closeVoice, handleTap } = useVoice({ conversationId: conversationId || undefined });
     const [inputPrefill, setInputPrefill] = useState('');
 
+    // ?prefill=… (e.g. the Brand page's "Tell Olmo about your brand") puts text
+    // in the composer once; the user still presses send.
+    useEffect(() => {
+        const prefill = searchParams.get('prefill');
+        if (prefill) setInputPrefill(prefill.slice(0, 500));
+    }, [searchParams]);
+
     // Text typed into the no-conversation-selected composer, held until the
     // conversation handleNewChat() creates finishes loading — then sent once.
     // Cleared immediately after firing so a later empty (0-message) conversation
@@ -755,7 +762,7 @@ function ChatPage() {
                                 {showConversationWelcome ? (
                                     activePill !== null ? (
                                         <WizardView pill={activePill} onBack={() => setActivePill(null)} onSubmit={(prompt) => sendMessage(prompt)}>
-                                            <ChatInput onSend={sendMessage} onStop={cancel} queueKey={conversationId ?? undefined} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={isPreparingMessage} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} {...modelChangeProps} {...allowModeProps} {...skillProps} />
+                                            <ChatInput onSend={sendMessage} onStop={cancel} queueKey={conversationId ?? undefined} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={isPreparingMessage} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} prefill={inputPrefill} {...folderScopeProps} {...modelChangeProps} {...allowModeProps} {...skillProps} />
                                         </WizardView>
                                     ) : selectedConversation.agent?.origin === 'built_in' ? (
                                         <div className="flex-1 flex flex-col items-center p-8 text-center bg-background h-full relative overflow-y-auto">
@@ -797,6 +804,7 @@ function ChatPage() {
                                                     isLoading={isPreparingMessage}
                                                     isStreaming={isStreaming}
                                                     disabled={selectedConversation.status !== 'active'}
+                                                    prefill={inputPrefill}
                                                     hasSupplementalContent={creativeBriefStarted}
                                                     supplementalContent={
                                                         <CreativeBriefChips
@@ -825,7 +833,7 @@ function ChatPage() {
                                         <ChatTimelineNavigator messages={displayedMessages} />
                                         {!awaitingClarificationReply && !awaitingGenerationConfirmReply && !awaitingUploadReply && (
                                             <div className="shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                                                <ChatInput onSend={sendMessage} onStop={cancel} queueKey={conversationId ?? undefined} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={isPreparingMessage} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} {...allowModeProps} {...skillProps} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
+                                                <ChatInput onSend={sendMessage} onStop={cancel} queueKey={conversationId ?? undefined} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={isPreparingMessage} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} prefill={inputPrefill} {...folderScopeProps} {...allowModeProps} {...skillProps} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
                                             </div>
                                         )}
                                     </>
@@ -921,6 +929,7 @@ function ChatPage() {
                                             agentId={draftAgent?.id}
                                             allowMode={pendingAllowMode ?? 'ask'}
                                             onAllowModeChange={setPendingAllowMode}
+                                            prefill={inputPrefill}
                                             hasSupplementalContent={creativeBriefStarted}
                                             supplementalContent={
                                                 <CreativeBriefChips
