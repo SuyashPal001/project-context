@@ -28,24 +28,23 @@ interface Props {
 
 const toLines = (v: string) => v.split('\n').map((s) => s.trim()).filter(Boolean);
 
-// A row: label + hint on the left, control on the right, hairline divider below. No boxes.
+// One field, laid out like the profile settings page: label, control, hint underneath.
 function Row({ label, hint, htmlFor, children }: { label: string; hint?: string; htmlFor?: string; children: ReactNode }) {
     return (
-        <div className="grid gap-2 border-b border-border/60 py-4 last:border-b-0 sm:grid-cols-[200px_1fr] sm:gap-6">
-            <div>
-                <label htmlFor={htmlFor} className="text-sm font-medium text-foreground">{label}</label>
-                {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
-            </div>
+        <div className="grid gap-2">
+            <label htmlFor={htmlFor} className="text-sm font-medium text-foreground">{label}</label>
             <div className="min-w-0">{children}</div>
+            {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
         </div>
     );
 }
 
 // The tab already names the section, so only its one-line description shows here.
+// Fields sit in one even column, the same width and spacing as the profile page.
 function Section({ title, subtitle, action, children }: { title: string; subtitle: string; action?: ReactNode; children: ReactNode }) {
     return (
-        <section aria-label={title}>
-            <div className="flex items-end justify-between gap-4 border-b border-border pb-2">
+        <section aria-label={title} className="max-w-xl space-y-8">
+            <div className="flex items-center justify-between gap-4">
                 <p className="text-sm text-muted-foreground">{subtitle}</p>
                 {action}
             </div>
