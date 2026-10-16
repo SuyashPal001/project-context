@@ -1,7 +1,8 @@
 // A paid clip, checked before it is kept (spec §8, rule 10): the measured body at the
 // clip's start and end against the reference look, the same person, no empty-hand action.
 import type { PoseResult, BodyReading } from '../tools/videoBreakdown/aiServiceClient.js'
-import { evenTimes, type Img } from '../tools/tvcChecks.js'
+import { evenTimes, type AskFn, type Img } from '../tools/tvcChecks.js'
+import { duplicatedProps } from '../tools/propCount.js'
 import { runGate, type CheckResult } from '../scorers/video/gate.js'
 import { samePersonScorer, emptyHandScorer } from '../scorers/video/visionScorers.js'
 import { comparePose } from './poseCompare.js'
@@ -12,12 +13,14 @@ export interface ClipCheckDeps {
   poseClip: (path: string, seconds: number) => Promise<PoseResult>
   sample: (path: string, times: number[]) => Promise<Img[]>
   gate: typeof runGate
+  /** the vision model, for counting objects (tools/propCount) */
+  ask?: AskFn
 }
 
 const asImage = (people: number | null, main: BodyReading | null) => ({ model: 'clip', people: people ?? 0, no_person: (people ?? 0) === 0, main })
 
 // checkEnd: false for a clip made from the start still only (Omni) — it was never given the end pose.
-export async function checkClip(o: { clipPath: string; seconds: number; look: RemakeLook; portrait: Img | null; tenantId: string; checkEnd?: boolean }, d: ClipCheckDeps): Promise<CheckResult> {
+export async function checkClip(o: { clipPath: string; seconds: number; look: RemakeLook; portrait: Img | null; tenantId: string; checkEnd?: boolean; /** the approved start photo and the objects in view: each is counted per frame against it */ startImage?: Img; props?: string[] }, d: ClipCheckDeps): Promise<CheckResult> {
   try {
     const times = evenTimes(o.seconds, 4)
     const [pose, frames] = await Promise.all([d.poseClip(o.clipPath, o.seconds), d.sample(o.clipPath, times)])
@@ -30,6 +33,7 @@ export async function checkClip(o: { clipPath: string; seconds: number; look: Re
     ]
     if (personIn(o.look) && o.portrait) results.push(await d.gate(samePersonScorer, 'same-person', { tenantId: o.tenantId, reference: o.portrait, frames }, times))
     results.push(await d.gate(emptyHandScorer, 'empty-hand', { tenantId: o.tenantId, frames }, times))
+    if (o.startImage && o.props?.length && d.ask) results.push({ name: 'objects', evidenceTimes: times, ...(await duplicatedProps(d.ask, o.startImage, frames.map((img, i) => ({ t: times[i], img })), o.props)) })
     const fails = results.filter((r) => r.status === 'fail')
     if (fails.length) return { name: 'clip', status: 'fail', reason: fails.map((r) => `${r.name}: ${r.reason}`).join('; '), evidenceTimes: times }
     if (results.some((r) => r.status === 'unknown')) return { name: 'clip', status: 'unknown', reason: 'part of the clip could not be checked', evidenceTimes: times }

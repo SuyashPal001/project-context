@@ -36,3 +36,18 @@ describe('checkClip', () => {
     expect(d.gate).toHaveBeenCalledTimes(1)
   })
 })
+
+// Two remotes (Omni, 2026-10-17): the clip check counts the look's objects against the approved start photo.
+describe('checkClip counts the objects', () => {
+  it('a doubled object fails the clip', async () => {
+    const ask = vi.fn(async (parts: Array<{ image?: { data: string } }>) => ({ counts: { 'TV remote': parts[0].image?.data === 'START' ? 1 : 2 } }))
+    const r = await checkClip({ clipPath: '/c.mp4', seconds: 6, look, portrait: img, tenantId: 't', startImage: { data: 'START', mime: 'image/png' }, props: ['TV remote'] }, deps({ ask }) as never)
+    expect(r.status).toBe('fail')
+    expect(r.reason).toMatch(/objects: an object appears more often than in the start photo: 2 TV remote/)
+  })
+  it('no objects in view or no start photo: no count', async () => {
+    const ask = vi.fn()
+    await checkClip({ clipPath: '/c.mp4', seconds: 6, look, portrait: img, tenantId: 't', props: ['TV remote'] }, deps({ ask }) as never)
+    expect(ask).not.toHaveBeenCalled()
+  })
+})

@@ -11,7 +11,7 @@ import { remakeDeps, type RemakeDeps } from './deps.js'
 import { runToken } from './runTokens.js'
 import { writePlan, applyEdits } from './plan.js'
 import { estimateCost, estimateClipsCost, ledgerSummary } from './cost.js'
-import { castSheetPrompt, stylingOf, outfitOf, stillPrompt, stillGateInput, usesProduct, REFERENCE_SHEET_PROMPT, CAST_BY_IMAGE, charactersAt, characterPortraitPrompt, stillTime, type CharacterImages } from './prompts.js'
+import { castSheetPrompt, stylingOf, outfitOf, propsAt, stillPrompt, stillGateInput, usesProduct, REFERENCE_SHEET_PROMPT, CAST_BY_IMAGE, charactersAt, characterPortraitPrompt, stillTime, type CharacterImages } from './prompts.js'
 import { makeStill, type StillCtx, type StillJob } from './paidStill.js'
 import { looksUnder18 } from './stillChecks.js'
 import { boardUnits, boardPrompt, boardGateInput, boardAspect, BOARD_SLOT } from './board.js'
@@ -534,7 +534,12 @@ const clipsStep = createStep({
     const ctx: ClipCtx = {
       tenantId: a.tenantId, idToken: a.idToken, scopeId: a.scopeId, runId, exec: execFor(requestContext as Rc, runId, a.idToken),
       portrait, plan, brand: inputData.brand as Brand, size, workDir,
-      check: (clipPath: string, spec: ClipSpec, engine: 'veo' | 'omni') => checkClip({ clipPath, seconds: spec.frames / CLIP_FPS, look: spec.look, portrait, tenantId: a.tenantId, checkEnd: engine === 'veo' }, { poseClip: deps.poseClip, sample: deps.sample, gate: runGate }),
+      // Each object in view is counted per frame against the approved start photo (two remotes, 2026-10-17).
+      check: async (clipPath: string, spec: ClipSpec, engine: 'veo' | 'omni') => {
+        const props = [...new Set([spec.look.startS, (spec.look.startS + spec.look.endS) / 2, spec.look.endS - 0.01].flatMap((t) => propsAt(plan, t)))]
+        const startImage = spec.start && props.length ? await deps.fetchImage(spec.start, a.idToken).catch(() => undefined) : undefined
+        return checkClip({ clipPath, seconds: spec.frames / CLIP_FPS, look: spec.look, portrait, tenantId: a.tenantId, checkEnd: engine === 'veo', startImage, props }, { poseClip: deps.poseClip, sample: deps.sample, gate: runGate, ask: deps.ask(a.tenantId) })
+      },
     }
     const jobs = clipSpecs(plan, inputData.stills as StillResult[]).map((spec) => async (): Promise<{ result: ClipResult; ledger: LedgerEntry[] }> => {
       // One clip failing never ends the run, and every attempt it paid for stays in its ledger.
