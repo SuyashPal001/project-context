@@ -311,13 +311,13 @@ const stillsStep = createStep({
         const extra = [...images.entries()].map(([i, n]) => `the ${plan.reference.characters?.[i]?.who ?? 'other person'} is the person in image ${n}`).join('; ')
         const change = { ...base.change, ...(extra ? { extra } : {}) }
         const prompt = editShotPrompt(change)
-        return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, gate: { prompt, planLine: editShotGateLine(change, `looks[${refOf(look)}]`), look: {}, startFrameObjects: [], keyMoments: [] }, ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}) }
+        return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, guide: g, gate: { prompt, planLine: editShotGateLine(change, `looks[${refOf(look)}]`), look: {}, startFrameObjects: [], keyMoments: [] }, ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}) }
       }
       const who = personFor(look)
       const { references, images } = withCharacters([...(person && who ? [who] : []), g, ...(product ? [product] : person && anchor ? [anchor] : [])], chars)
       const prompt = stillPrompt(plan, look, kind, brand, !!product, images)
       const room = person && anchor && anchorGuide && !product ? { room: { fileId: anchor, guides: [anchorGuide, g] as [string, string] } } : {}
-      return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, gate: stillGateInput(plan, look, kind, prompt, images), ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}), ...room }
+      return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, guide: g, gate: stillGateInput(plan, look, kind, prompt, images), ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}), ...room }
     }
     const single = async (look: RemakeLook, kind: 'start' | 'end', firstTry?: { fileId: string; creditsMicro: string }, base?: Base): Promise<Made> => {
       // Never paid: a look whose people were not measured (spec §8a).

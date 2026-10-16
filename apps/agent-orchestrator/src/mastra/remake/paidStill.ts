@@ -8,6 +8,7 @@ import type { RemakeDeps } from './deps.js'
 import { comparePose } from './poseCompare.js'
 import { cropFramingFor } from './tightShots.js'
 import { personIn } from './looks.js'
+import { compareFraming } from '../tools/framingCheck.js'
 import type { stillGateInput } from './prompts.js'
 import type { LedgerEntry, RemakeLook, StillResult, StillTry } from './types.js'
 
@@ -21,7 +22,9 @@ export interface StillCtx {
 }
 export interface StillJob { look: RemakeLook; kind: 'start' | 'end'; prompt: string; references: string[]; aspectRatio: '9:16' | '16:9' | '1:1'; gate: ReturnType<typeof stillGateInput>; /** people expected in shot when other characters are in view (the pose reading misses people behind glass) */ people?: number
   /** The first kept person still, whose room this still must match when the original's frames for both (guides: the first still's, this one's) show the same place. */
-  room?: { fileId: string; guides: [string, string] } }
+  room?: { fileId: string; guides: [string, string] }
+  /** the original's frame for this still: its camera framing is checked against it (tools/framingCheck) */
+  guide?: string }
 
 export const slotFor = (n: number, kind: 'start' | 'end', attempt: number): number => n * 4 + (kind === 'end' ? 2 : 0) + attempt
 
@@ -40,6 +43,7 @@ const FIXES: Array<[RegExp, string]> = [
   [/looks like the lead/i, 'no one else looks like the person in the first image'],
   [/back to the camera|facing the camera|side-on/i, 'the person faces the camera exactly as in the second image'],
   [/room differs/i, 'the setting must match ROOM_IMAGE: the same floor, rug, furniture, walls and light'],
+  [/camera framing differs/i, 'the camera framing must match the original frame (GUIDE_IMAGE): the person\'s size and position in the frame'],
 ]
 const NEEDS_FRESH = /back to the camera|facing the camera|side-on|no person found|appears where the reference has none/i
 export const editPrompt = (fix: string, keepSetting = true): string =>
@@ -74,6 +78,11 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
     ])
     const room = job.room ? await roomCheck(still, job.room, ctx, deps) : null
     const body = job.kind === 'start' ? job.look.start : job.look.end
+    // Same camera as the original: where the person sits in the frame, against the original's frame.
+    let framing: { ok: boolean | null; why: string } | null = null
+    if (job.guide && personIn(job.look)) {
+      try { framing = compareFraming((await deps.poseImage(await deps.localFile(job.guide, ctx.idToken, ctx.scopeId))).box, pose.box) } catch { framing = { ok: null, why: '' } }
+    }
     let p = comparePose(body, job.people ?? job.look.people, pose)
     // A tighter original (selfie, close-up): crop the still around the face, free, and keep the crop
     // when it matches. A crop that can't be made keeps the still with its framing warning.
@@ -88,8 +97,8 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
         console.error('[remake] crop to the original framing failed:', err instanceof Error ? err.message : String(err))
       }
     }
-    const hard = [...looks.reasons, ...(p.status === 'fail' && p.hard ? [p.reason] : []), ...(room?.hard ? [room.hard] : [])]
-    const warnings = [...(looks.warnings ?? []), ...(p.status === 'fail' && !p.hard ? [p.reason] : []), ...(room?.warning ? [room.warning] : [])]
+    const hard = [...looks.reasons, ...(p.status === 'fail' && p.hard ? [p.reason] : []), ...(room?.hard ? [room.hard] : []), ...(framing?.ok === false && !cropped ? [`the camera framing differs from the original: ${framing.why}`] : [])]
+    const warnings = [...(looks.warnings ?? []), ...(p.status === 'fail' && !p.hard ? [p.reason] : []), ...(room?.warning ? [room.warning] : []), ...(framing?.ok === null ? ['the framing could not be compared with the original'] : [])]
     if (hard.length) return { status: 'fail', hard, warnings, reason: hard.join('; ') }
     if (p.status === 'unknown' && !warnings.length) return { status: 'unknown', hard, warnings, reason: p.reason, fileId: cropped }
     return { status: 'pass', hard, warnings, reason: warnings.join('; ') || 'passed every check', fileId: cropped }
@@ -172,9 +181,10 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps, 
       const identity = personIn(job.look) && ctx.portrait ? [job.references[0]] : []
       // A different room: the first kept still goes in as the room to copy, after the person.
       const roomRef = job.room && c.hard.some((r) => /room differs/i.test(r)) ? [job.room.fileId] : []
-      const fix = fixLine(c.hard).replace(/the first image/g, 'the second image').replace(/ROOM_IMAGE/g, `image ${2 + identity.length}`)
+      const guideRef = job.guide && c.hard.some((r) => /camera framing differs/i.test(r)) ? [job.guide] : []
+      const fix = fixLine(c.hard).replace(/the first image/g, 'the second image').replace(/ROOM_IMAGE/g, `image ${2 + identity.length}`).replace(/GUIDE_IMAGE/g, `image ${2 + identity.length + roomRef.length}`)
       prompt = editPrompt(fix, !roomRef.length)
-      references = [g.fileId, ...identity, ...roomRef]
+      references = [g.fileId, ...identity, ...roomRef, ...guideRef]
       editGate = `edit of a still that was already checked against the approved plan (the first image); the only change asked for: ${fix}; everything else is kept from the first image${identity.length ? '; the second image is the chosen person (not described in words)' : ''}${roomRef.length ? `; image ${2 + identity.length} is the first look's still, given only for its room` : ''}`
     }
   }

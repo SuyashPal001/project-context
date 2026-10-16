@@ -92,7 +92,7 @@ describe('identity: reference sheet + anchor still', () => {
   it('a failed reference sheet never ends the run: stills use the cropped portrait', async () => {
     const g: ReturnType<typeof vi.fn> = vi.fn().mockImplementation(async (input: { prompt: string }) => (/reference sheet/i.test(input.prompt) ? { refused: true, creditsUsedMicro: '0' } : { fileId: `img-${++made}`, creditsUsedMicro: '100' }))
     const { out } = await toPreview({ generateStill: g as never })
-    expect((out.stills as Array<{ status: string }>).every((s) => s.status === 'passed')).toBe(true)
+    expect((out.stills as Array<{ status: string }>).every((s) => ['passed', 'warned'].includes(s.status))).toBe(true)
     expect(g.mock.calls[2][0].referenceFileIds[0]).toMatch(/^up:/) // the first still: the cropped portrait
   })
 })

@@ -45,3 +45,11 @@ def test_route_rejects_an_unreadable_image(client, media_dir):
     p = media_dir / "bad.jpg"; p.write_bytes(b"not an image")
     r = client.post("/media/pose-image", json={"path": str(p)}, headers=H)
     assert r.status_code == 400
+
+# Framing check (2026-10-17): the camera came out closer or shifted on several runs and no check saw it.
+# The still's reading carries where the main person sits in the frame, to compare with the original's.
+def test_reading_carries_the_main_persons_box_in_frame_fractions(tmp_path, monkeypatch):
+    kp, sc = person()
+    monkeypatch.setattr(pose, "_load", lambda: (FakeDet([[10, 20, 90, 180]]), FakePose([(kp, sc)])))
+    d = pose.read_image(str(_img(tmp_path)))
+    assert d["box"] == [0.1, 0.1, 0.9, 0.9]

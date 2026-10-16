@@ -147,7 +147,7 @@ describe('the workflow makes boards, with single stills as the fallback', () => 
     const generateStill = vi.fn().mockImplementation(async (input: { prompt: string }) => ({ fileId: isBoard(input) ? 'board-1' : `img-${++made}`, creditsUsedMicro: '100' }))
     const out = await run({ generateStill: generateStill as never, cutBoard: vi.fn().mockResolvedValue(null) })
     const stills = out.steps.preview.suspendPayload!.stills as Array<{ look: number; fileId: string; status: string }>
-    expect(stills.filter((s) => s.look === 2).every((s) => s.status === 'passed' && /^img-/.test(s.fileId))).toBe(true)
+    expect(stills.filter((s) => s.look === 2).every((s) => ['passed', 'warned'].includes(s.status) && /^img-/.test(s.fileId))).toBe(true)
   }, 30_000)
   it('a board stopped by the prompt check costs nothing and falls back to single stills', async () => {
     const generateStill = vi.fn().mockImplementation(async () => ({ fileId: `img-${++made}`, creditsUsedMicro: '100' }))
