@@ -35,6 +35,7 @@ describe('a person the customer brings gets a reference sheet', () => {
     expect(sheet?.[0].referenceFileIds).toEqual(['own-person'])
     const stills = generateStill.mock.calls.filter((c) => /still|board/i.test(c[0].title))
     expect(stills.length).toBeGreaterThan(0)
-    expect(stills.every((c) => (c[0].referenceFileIds as string[])[0] === 'ref-sheet')).toBe(true)
+    // the first still of a place is drawn from the sheet; the rest there are edits of it (edit chain, 2026-10-16)
+    expect((stills[0][0].referenceFileIds as string[])[0]).toBe('ref-sheet')
   }, 30_000)
 })

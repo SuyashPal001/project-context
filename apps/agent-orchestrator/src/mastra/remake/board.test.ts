@@ -131,18 +131,17 @@ describe('the workflow makes boards, with single stills as the fallback', () => 
     await resume('plan', { decision: 'approve' })
     return (await resume('cast', { pick: 1 })) as unknown as Steps
   }
-  it('look 2 start and end come from one board; look 1 is a single still', async () => {
+  // 2026-10-16: people's stills are never drawn on a board any more. The edit chain (tools/nextShot) keeps
+  // face, hair, room and camera, and a board's narrow panels were cut to 9:16 by cropping, which zoomed the
+  // camera in. board.ts stays for its pure helpers.
+  it('people\'s stills are an edit chain, never a board', async () => {
     const generateStill = vi.fn().mockImplementation(async (input: { prompt: string }) => ({ fileId: isBoard(input) ? 'board-1' : `img-${++made}`, creditsUsedMicro: '100' }))
     const cutBoard = vi.fn().mockResolvedValue(['panel-a', 'panel-b'])
-    const out = await run({ generateStill: generateStill as never, cutBoard })
-    const boards = generateStill.mock.calls.filter((c) => isBoard(c[0]))
-    expect(boards).toHaveLength(1)
-    expect(boards[0][2]).toBe(BOARD_SLOT)
-    expect(boards[0][0]).toMatchObject({ aspectRatio: '1:1', imageSize: '2K' })
-    expect(cutBoard).toHaveBeenCalledWith('board-1', 2, '9:16', expect.anything())
-    const stills = out.steps.preview.suspendPayload!.stills as Array<{ look: number; kind: string; fileId: string }>
-    expect(stills.filter((s) => s.look === 2).map((s) => s.fileId)).toEqual(['panel-a', 'panel-b'])
-    expect(out.steps.preview.suspendPayload!.summary).toMatchObject({ spentMicro: '400' }) // casting + sheet + look 1 + one board
+    const out = await run({ generateStill: generateStill as never, cutBoard, sameSetting: vi.fn().mockResolvedValue({ same: true, differs: '' }) })
+    expect(generateStill.mock.calls.some((c) => isBoard(c[0]))).toBe(false)
+    expect(cutBoard).not.toHaveBeenCalled()
+    expect(generateStill.mock.calls.filter((c) => /^Edit the first image/.test(c[0].prompt))).toHaveLength(2) // look 2 start and end
+    expect(out.steps.preview.suspendPayload!.summary).toMatchObject({ spentMicro: '500' }) // casting + sheet + 3 stills
   }, 30_000)
   it('a board that can not be cut falls back to single stills', async () => {
     const generateStill = vi.fn().mockImplementation(async (input: { prompt: string }) => ({ fileId: isBoard(input) ? 'board-1' : `img-${++made}`, creditsUsedMicro: '100' }))

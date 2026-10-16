@@ -178,3 +178,8 @@ export function lookStylings(plan: RemakePlan): Array<{ styling: string; refs: n
   }
   return [...by.entries()].map(([styling, refs]) => ({ styling, refs })).slice(0, MAX_STYLINGS)
 }
+
+/** A look's outfit as the plan has it; '' when none. */
+export function outfitOf(plan: RemakePlan, look: RemakeLook): string {
+  return shown(plan, `looks[${refOf(look)}].outfit`, look.outfit) ?? ''
+}

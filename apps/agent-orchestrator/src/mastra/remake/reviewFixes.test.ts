@@ -65,8 +65,8 @@ describe('C1 approval card', () => {
 
 describe('I1 one still failing does not kill the run', () => {
   it('a guide frame that cannot be made fails only that still; the rest and the preview go on', async () => {
-    let calls = 0
-    const runId = await startRun(sameBody(), { ffmpeg: vi.fn().mockImplementation(async (args: string[]) => { if (args[0] === '-ss' && ++calls === 1) throw new Error('ENOENT') }) })
+    // One frame can never be made (a frame failing once is now retried by the still itself).
+    const runId = await startRun(sameBody(), { ffmpeg: vi.fn().mockImplementation(async (args: string[]) => { if (args[0] === '-ss' && /guide-1-start/.test(args[args.length - 1])) throw new Error('ENOENT') }) })
     await resume(runId, 'plan', { decision: 'approve' })
     const done = await resume(runId, 'cast', { pick: 1 })
     expect(done.status).toBe('suspended') // 3b: paused at the preview review

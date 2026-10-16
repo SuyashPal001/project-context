@@ -69,8 +69,11 @@ describe('the room edit says one thing', () => {
   })
 })
 
-describe('the workflow gives later person stills the first kept still as their room', () => {
-  it('stills after the first unit are room-checked against it; the first unit is not', async () => {
+// In the workflow the room is now kept by the edit chain (tools/nextShot): the same-place check compares the
+// original's frames to decide what is edited, never a made still (2026-10-16). makeStill's room check above
+// stays for any caller that passes job.room.
+describe('the workflow asks "same place?" of the original frames only', () => {
+  it('every same-place question compares two of the original\'s frames', async () => {
     const { InMemoryStore } = await import('@mastra/core/storage')
     const { RequestContext } = await import('@mastra/core/request-context')
     const { remakeMastra, setRemakeStorageForTests, REMAKE_WORKFLOW_ID } = await import('./instance.js')
@@ -94,10 +97,9 @@ describe('the workflow gives later person stills the first kept still as their r
       const run = await (await remakeMastra()).getWorkflow(REMAKE_WORKFLOW_ID).createRun()
       await run.start({ inputData: { tenantId: 't1', conversationId: 'c1', breakdown: b, brand: { name: 'B', product: 'p' }, castFileId: 'own' }, requestContext: rc() })
       await (await (await remakeMastra()).getWorkflow(REMAKE_WORKFLOW_ID).createRun({ runId: run.runId })).resume({ step: 'plan', resumeData: { decision: 'approve' }, requestContext: rc() })
-      // original frames compared, then each later still against the first kept still
-      const stillVsRoom = sameSetting.mock.calls.filter((c) => /^img-/.test(c[1].data))
-      expect(stillVsRoom.length).toBeGreaterThan(0)
-      expect(stillVsRoom.every((c) => c[2].data === stillVsRoom[0][2].data)).toBe(true)
+      expect(sameSetting.mock.calls.length).toBeGreaterThan(0)
+      // guide file names are cut short in the key ("...-start-gui.jpg")
+      expect(sameSetting.mock.calls.every((c) => /look-\d-start-gu/.test(c[1].data) && /look-\d-start-gu/.test(c[2].data))).toBe(true)
     } finally { setRemakeDeps(null); setRemakeStorageForTests(null) }
   }, 30_000)
 })

@@ -71,46 +71,14 @@ describe('the face check judges the face, never the styling', () => {
   })
 })
 
-describe('the workflow makes one styled picture per styling and gives it to that look\'s stills', () => {
-  afterEach(() => { setRemakeDeps(null); setRemakeStorageForTests(null) })
-  it('styled pictures are edits of the pick; each look\'s stills get theirs; checks stay on the base', async () => {
-    setRemakeStorageForTests(new InMemoryStore())
-    const b = styled()
-    let made = 0
-    const generateStill = vi.fn(async (input: { title: string; referenceFileIds?: string[] }) => ({ fileId: /styled/i.test(input.title) ? `styled-${++made}` : `img-${++made}`, creditsUsedMicro: '100' }))
-    const stillChecks = vi.fn().mockResolvedValue({ passed: true, reasons: [] })
-    setRemakeDeps({
-      ask: () => vi.fn().mockResolvedValue({ lines: [] }), generateStill: generateStill as never, stillChecks,
-      promptGate: vi.fn().mockResolvedValue({ name: 'prompt', status: 'pass', reason: '', evidenceTimes: [] }),
-      fetchImage: vi.fn(async (id: string) => ({ data: id, mime: 'image/jpeg' })), localFile: vi.fn(async (id: string) => `/m/${id}`),
-      upload: vi.fn(async (_t: string, key: string) => `up:${key.split('/').pop()}`),
-      poseImage: vi.fn().mockResolvedValue({ model: 'm', people: 1, no_person: false, main: b.pose!.looks[0].main_start }),
-      cutBoard: vi.fn().mockResolvedValue(null), sameSetting: vi.fn().mockResolvedValue({ same: true, differs: '' }),
-      ffmpeg: vi.fn().mockResolvedValue(undefined), readFile: vi.fn(() => Buffer.from('x')), renderPreview: vi.fn().mockResolvedValue('/m/p.mp4'),
-      imageRateMicro: vi.fn().mockResolvedValue(1_000_000n), clipRateMicro: vi.fn().mockResolvedValue(1_000_000n), musicRateMicro: vi.fn().mockResolvedValue(1_000_000n),
-    })
-    const rc = () => { const r = new RequestContext(); r.set('tenantId', 't1'); r.set('idToken', 'tok'); r.set('conversationId', 'c1'); r.set('sessionId', 's1'); return r }
-    const run = await (await remakeMastra()).getWorkflow(REMAKE_WORKFLOW_ID).createRun()
-    await run.start({ inputData: { tenantId: 't1', conversationId: 'c1', breakdown: b, brand, castFileId: 'own' }, requestContext: rc() })
-    await (await (await remakeMastra()).getWorkflow(REMAKE_WORKFLOW_ID).createRun({ runId: run.runId })).resume({ step: 'plan', resumeData: { decision: 'approve' }, requestContext: rc() })
-    const styledCalls = generateStill.mock.calls.filter((c) => /styled/i.test(c[0].title))
-    expect(styledCalls).toHaveLength(2)
-    expect(styledCalls.every((c) => (c[0].referenceFileIds ?? [])[0] === 'own')).toBe(true)
-    const look1 = generateStill.mock.calls.filter((c) => /look 1 /.test(c[0].title)).map((c) => (c[0].referenceFileIds ?? [])[0])
-    const look2 = generateStill.mock.calls.filter((c) => /look 2 /.test(c[0].title)).map((c) => (c[0].referenceFileIds ?? [])[0])
-    expect(new Set(look1).size).toBe(1); expect(new Set(look2).size).toBe(1)
-    expect(look1[0]).toMatch(/^styled-/); expect(look2[0]).toMatch(/^styled-/); expect(look1[0]).not.toBe(look2[0])
-    // the face check compares against the base person (the reference sheet), never a styled picture
-    expect(stillChecks.mock.calls.every((c) => !/^styled-/.test(c[2].lead?.data ?? ''))).toBe(true)
-  }, 30_000)
-})
-
-describe('the quote counts one image per styling', () => {
-  it('two stylings add two images', async () => {
+// Styled pictures were dropped the same day: each one drifted the face. The person sheet carries the reel's
+// styling and the edit chain changes it per look (editChain.test.ts), at no extra image.
+describe('the quote adds nothing for styling', () => {
+  it('two stylings add no images', async () => {
     const { estimateCost } = await import('./cost.js')
     const p = await writePlan(styled(), brand, vi.fn().mockResolvedValue({ lines: [] }))
     const plain = { ...p, lines: p.lines.map((l) => (/\.styling$/.test(l.ref) ? { ...l, action: 'drop' as const } : l)) }
-    expect(estimateCost(p, { castProvided: true, microEach: 1n }).images - estimateCost(plain, { castProvided: true, microEach: 1n }).images).toBe(2)
+    expect(estimateCost(p, { castProvided: true, microEach: 1n }).images - estimateCost(plain, { castProvided: true, microEach: 1n }).images).toBe(0)
   })
 })
 

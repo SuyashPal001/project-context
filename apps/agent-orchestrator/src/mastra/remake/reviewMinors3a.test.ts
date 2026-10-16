@@ -107,7 +107,7 @@ describe('M3/M4 stills step', () => {
     await (await wf()).w.createRun({ runId: run.runId }).then((r) => r.resume({ step: 'plan', resumeData: { decision: 'approve' }, requestContext: rc() }))
     await (await wf()).w.createRun({ runId: run.runId }).then((r) => r.resume({ step: 'cast', resumeData: { pick: 1 }, requestContext: rc() }))
     const deleted = del.mock.calls.map((c) => String((c as unknown[])[1]))
-    expect(deleted.sort()).toEqual(['id:Remake board 1 guides.jpg', 'id:Remake look 1 start guide.jpg', 'id:Remake look 2 end guide.jpg', 'id:Remake look 2 start guide.jpg'])
+    expect(deleted.sort()).toEqual(['id:Remake look 1 start guide.jpg', 'id:Remake look 2 end guide.jpg', 'id:Remake look 2 start guide.jpg']) // no boards for people since 2026-10-16
     expect(del.mock.calls.every((c) => (c as unknown[])[0] === 'JWT-SECRET-123')).toBe(true)
   })
 })

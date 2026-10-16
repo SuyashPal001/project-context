@@ -11,12 +11,14 @@ import { remakeDeps, type RemakeDeps } from './deps.js'
 import { runToken } from './runTokens.js'
 import { writePlan, applyEdits } from './plan.js'
 import { estimateCost, estimateClipsCost, ledgerSummary } from './cost.js'
-import { castSheetPrompt, lookStylings, styledPersonPrompt, stillPrompt, stillGateInput, usesProduct, REFERENCE_SHEET_PROMPT, CAST_BY_IMAGE, charactersAt, characterPortraitPrompt, stillTime, type CharacterImages } from './prompts.js'
+import { castSheetPrompt, stylingOf, outfitOf, stillPrompt, stillGateInput, usesProduct, REFERENCE_SHEET_PROMPT, CAST_BY_IMAGE, charactersAt, characterPortraitPrompt, stillTime, type CharacterImages } from './prompts.js'
 import { makeStill, type StillCtx, type StillJob } from './paidStill.js'
 import { looksUnder18 } from './stillChecks.js'
 import { boardUnits, boardPrompt, boardGateInput, boardAspect, BOARD_SLOT } from './board.js'
 import { previewSegments, previewSize, usableStill } from './preview.js'
 import { personIn, refOf } from './looks.js'
+import { editShotPrompt, editShotGateLine, placeGroups, type ShotChange } from '../tools/nextShot.js'
+import type { Img } from '../tools/tvcChecks.js'
 import { clipSpecs, lookFrames, CLIP_FPS, type ClipSpec } from './clipSpec.js'
 import { makeClip, type ClipCtx, type ClipResult } from './paidClip.js'
 import { checkClip } from './clipCheck.js'
@@ -82,8 +84,8 @@ const castStep = createStep({
       // A person the customer brings gets the same reference sheet as a picked one (fan reel 2026-10-16:
       // without it their face held less well across stills and clips).
       const exec = execFor(requestContext as Rc, runId, a.idToken)
-      const [ref, chars, styles] = await Promise.all([referenceSheet(inputData.castFileId, a, remakeDeps(), exec(1)), characterPortraits(plan, a, remakeDeps(), exec), styledPeople(plan, inputData.castFileId, a, remakeDeps(), exec)])
-      return { ...inputData, portraitFileId: inputData.castFileId, referenceSheetFileId: ref.fileId, characterFileIds: chars.fileIds, stylingFileIds: styles.fileIds, ledger: [...ref.ledger, ...chars.ledger, ...styles.ledger] }
+      const [ref, chars] = await Promise.all([referenceSheet(inputData.castFileId, a, remakeDeps(), exec(1), reelStyling(plan)), characterPortraits(plan, a, remakeDeps(), exec)])
+      return { ...inputData, portraitFileId: inputData.castFileId, referenceSheetFileId: ref.fileId, characterFileIds: chars.fileIds, ledger: [...ref.ledger, ...chars.ledger] }
     }
     const deps = remakeDeps()
     const sheetId = (suspendData?.sheetFileId as string | null | undefined) ?? null
@@ -119,8 +121,8 @@ const castStep = createStep({
       }
       const sheet: LedgerEntry = { item: 'casting sheet', attempt: 0, creditsMicro: spentSoFar, outcome: 'kept' }
       const exec = execFor(requestContext as Rc, runId, a.idToken)
-      const [ref, chars, styles] = await Promise.all([referenceSheet(id, a, deps, exec(1)), characterPortraits(plan, a, deps, exec), styledPeople(plan, id, a, deps, exec)])
-      return { ...inputData, portraitFileId: id, referenceSheetFileId: ref.fileId, characterFileIds: chars.fileIds, stylingFileIds: styles.fileIds, ledger: [sheet, ...ref.ledger, ...chars.ledger, ...styles.ledger] }
+      const [ref, chars] = await Promise.all([referenceSheet(id, a, deps, exec(1), reelStyling(plan)), characterPortraits(plan, a, deps, exec)])
+      return { ...inputData, portraitFileId: id, referenceSheetFileId: ref.fileId, characterFileIds: chars.fileIds, ledger: [sheet, ...ref.ledger, ...chars.ledger] }
     } catch (err) {
       console.error('[remake] saving the chosen person failed:', err instanceof Error ? err.message : String(err))
       return await suspend({ stage: 'cast_pick', sheetFileId: sheetId, sheetCreditsMicro: spentSoFar, error: 'the chosen person could not be saved; please pick again' })
@@ -136,31 +138,8 @@ const castStep = createStep({
 const MAX_CHARACTERS = 2
 // One picture per distinct look styling (hair, jewellery, makeup), each an EDIT of the chosen person so
 // the face stays theirs; that look's stills use it as the person. Checks stay on the base person.
-const STYLE_SLOT = 600
-async function styledPeople(plan: RemakePlan, personId: string, a: { tenantId: string }, deps: RemakeDeps, exec: ReturnType<typeof execFor>): Promise<{ fileIds: Record<string, string>; ledger: LedgerEntry[] }> {
-  const fileIds: Record<string, string> = {}
-  const ledger: LedgerEntry[] = []
-  await Promise.all(lookStylings(plan).map(async ({ styling, refs }, k) => {
-    const item = `the chosen person styled: ${styling}`
-    try {
-      const prompt = styledPersonPrompt(styling)
-      const gate = await deps.promptGate({ prompt, planLine: `edit of the chosen person's picture (the image, not described in words): only the styling changes, to ${styling}; ${refs.map((r) => `looks[${r}].styling`).join(', ')}`, look: {}, startFrameObjects: [], keyMoments: [], tenantId: a.tenantId })
-      if (gate.status !== 'pass') {
-        console.error(`[remake] ${item} not checked/passed:`, gate.status, gate.reason)
-        ledger.push({ item, attempt: 0, creditsMicro: '0', outcome: 'blocked' })
-        return
-      }
-      const slot = STYLE_SLOT + k
-      const g = await deps.generateStill({ prompt, aspectRatio: '3:4', referenceFileIds: [personId], engine: 'gemini', skipAvatarExpansion: true, title: `Remake styled person ${k + 1}` }, exec(slot), slot)
-      if (g.fileId) for (const r of refs) fileIds[String(r)] = g.fileId
-      else console.error(`[remake] ${item} not made:`, g.refusalReason ?? (g.insufficientCredits ? 'credits' : 'unknown'))
-      ledger.push({ item, attempt: 0, creditsMicro: g.creditsUsedMicro ?? '0', outcome: g.fileId ? 'kept' : 'failed' })
-    } catch (err) {
-      console.error(`[remake] ${item} failed:`, err instanceof Error ? err.message : String(err))
-    }
-  }))
-  return { fileIds, ledger }
-}
+/** The styling of the reel's first look with the person: the person sheet is drawn in it. */
+const reelStyling = (plan: RemakePlan): string => { const l = plan.looks.find(personIn); return l ? stylingOf(plan, l) : '' }
 
 async function characterPortraits(plan: RemakePlan, a: { tenantId: string }, deps: RemakeDeps, exec: ReturnType<typeof execFor>): Promise<{ fileIds: Record<string, string>; ledger: LedgerEntry[] }> {
   const fileIds: Record<string, string> = {}
@@ -194,9 +173,11 @@ async function characterPortraits(plan: RemakePlan, a: { tenantId: string }, dep
 // The chosen person's reference sheet (the TVC continuity bible, minus costume) leads every still and is the
 // face check's reference (face consistency is hard). Gated like every paid call; a sheet that can't be
 // made never ends the run: the stills fall back to the cropped portrait.
-async function referenceSheet(portraitId: string, a: { tenantId: string }, deps: RemakeDeps, exec: ReturnType<ReturnType<typeof execFor>>): Promise<{ fileId: string | null; ledger: LedgerEntry[] }> {
+async function referenceSheet(portraitId: string, a: { tenantId: string }, deps: RemakeDeps, exec: ReturnType<ReturnType<typeof execFor>>, styling = ''): Promise<{ fileId: string | null; ledger: LedgerEntry[] }> {
   try {
-    const prompt = REFERENCE_SHEET_PROMPT
+    // The person sheet carries the reel's styling (user, 2026-10-16: "a sheet with open hair"), so every
+    // still starts from the hair and jewellery the reel has.
+    const prompt = styling ? `${REFERENCE_SHEET_PROMPT} Styling in every panel: ${styling}.` : REFERENCE_SHEET_PROMPT
     const gate = await deps.promptGate({ prompt, planLine: `reference sheet of the chosen person; ${CAST_BY_IMAGE}`, look: {}, startFrameObjects: [], keyMoments: [], tenantId: a.tenantId })
     if (gate.status !== 'pass') {
       console.error('[remake] reference sheet not checked/passed:', gate.status, gate.reason)
@@ -280,16 +261,26 @@ const stillsStep = createStep({
     // The person for a look: its styled picture when the look has a styling, else the base person.
     const stylingIds = (inputData.stylingFileIds ?? {}) as Record<string, string>
     const personFor = (look: RemakeLook): string | null => stylingIds[String(refOf(look))] ?? portrait?.fileId ?? null
-    const jobFor = (look: RemakeLook, kind: 'start' | 'end', g: string): StillJob => {
+    // An edited still (tools/nextShot): the base photo first, the original's frame second; the face check
+    // still compares against the chosen person.
+    type Base = { fileId: string; change: ShotChange }
+    const jobFor = (look: RemakeLook, kind: 'start' | 'end', g: string, base?: Base): StillJob => {
       const person = personIn(look)
       const chars = person ? charsIn(look, kind) : []
+      if (base) {
+        const { references, images } = withCharacters([base.fileId, g], chars)
+        const extra = [...images.entries()].map(([i, n]) => `the ${plan.reference.characters?.[i]?.who ?? 'other person'} is the person in image ${n}`).join('; ')
+        const change = { ...base.change, ...(extra ? { extra } : {}) }
+        const prompt = editShotPrompt(change)
+        return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, gate: { prompt, planLine: editShotGateLine(change, `looks[${refOf(look)}]`), look: {}, startFrameObjects: [], keyMoments: [] }, ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}) }
+      }
       const who = personFor(look)
       const { references, images } = withCharacters([...(person && who ? [who] : []), g, ...(product ? [product] : person && anchor ? [anchor] : [])], chars)
       const prompt = stillPrompt(plan, look, kind, brand, !!product, images)
       const room = person && anchor && anchorGuide && !product ? { room: { fileId: anchor, guides: [anchorGuide, g] as [string, string] } } : {}
       return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, gate: stillGateInput(plan, look, kind, prompt, images), ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}), ...room }
     }
-    const single = async (look: RemakeLook, kind: 'start' | 'end', firstTry?: { fileId: string; creditsMicro: string }): Promise<Made> => {
+    const single = async (look: RemakeLook, kind: 'start' | 'end', firstTry?: { fileId: string; creditsMicro: string }, base?: Base): Promise<Made> => {
       // Never paid: a look whose people were not measured (spec §8a).
       if (!look.measuredPeople) return { result: { look: look.n, kind, fileId: null, status: 'blocked', reasons: ['this part of the video couldn’t be measured, so its still wasn’t made'] }, ledger: [] }
       // One still failing never ends the run: earlier stills are paid for and must reach the ledger and the preview.
@@ -298,7 +289,7 @@ const stillsStep = createStep({
         const g = await guideFor(look, kind)
         if (outOfCredits && !firstTry) return noCredits(look.n, kind)
         if (!g) return { result: { look: look.n, kind, fileId: null, status: 'blocked', reasons: ['the pose guide could not be saved'] }, ledger: [] }
-        const made = await makeStill(jobFor(look, kind, g.id), ctx, deps, firstTry)
+        const made = await makeStill(jobFor(look, kind, g.id, base), ctx, deps, firstTry)
         if (made.result.reasons.some((r) => r.includes('not enough credits'))) outOfCredits = true
         return made
       } catch (err) {
@@ -366,7 +357,64 @@ const stillsStep = createStep({
     const units = boardUnits(items, { aspectRatio: plan.aspectRatio, product: !!product })
     const runUnit = (u: Item[]): Promise<Made[]> => (u.length > 1 ? board(u) : single(u[0].look, u[0].kind).then((m) => [m]))
     const byItem = new Map<Item, Made>()
+    // The v12 way (tools/nextShot): person stills in one place of the original are an edit chain. Each
+    // place's first start still is fresh; every other start there is an edit of it (outfit, styling, pose
+    // from its frame); every end still is an edit of its own start (pose only). Not with a product photo
+    // (it needs its reference slot and a fresh draw to show exactly).
+    const runChain = async () => {
+      const starts = items.filter((it) => it.person && it.kind === 'start')
+      // A frame that can't be saved or read only means that still is drawn fresh (its own failure is
+      // reported by single(), which tries the guide again); it never stops the run.
+      const frames = await Promise.all(starts.map(async (it) => {
+        try { const g = await guideFor(it.look, 'start'); return g ? await deps.fetchImage(g.id, a.idToken) : null } catch { return null }
+      }))
+      let groups = starts.map((_, i) => i)
+      if (frames.every(Boolean)) {
+        try { groups = await placeGroups(deps.ask(a.tenantId), frames as Img[], deps.sameSetting) } catch (err) { console.error('[remake] place check failed (each still drawn fresh):', err instanceof Error ? err.message : String(err)) }
+      }
+      const firstOf = new Map<number, Item>()
+      starts.forEach((it, i) => { if (!firstOf.has(groups[i])) firstOf.set(groups[i], it) })
+      const firsts = [...firstOf.values()]
+      const fm = await Promise.all(firsts.map((it) => single(it.look, it.kind)))
+      firsts.forEach((it, k) => byItem.set(it, fm[k]))
+      const others = starts.filter((it) => !firsts.includes(it))
+      const om = await Promise.all(others.map((it) => {
+        const first = firstOf.get(groups[starts.indexOf(it)])!
+        const fileId = usableStill(byItem.get(first)!.result)
+        const styling = stylingOf(plan, it.look)
+        const change: ShotChange = { poseFromFrame: true, ...(outfitOf(plan, it.look) !== outfitOf(plan, first.look) ? { outfit: outfitOf(plan, it.look) } : {}), ...(styling && styling !== stylingOf(plan, first.look) ? { styling } : {}) }
+        return single(it.look, it.kind, undefined, fileId ? { fileId, change } : undefined)
+      }))
+      others.forEach((it, k) => byItem.set(it, om[k]))
+      // End stills: an edit of the look's own start (a continuing part starts from the previous part's end).
+      const ordered = [...plan.looks].sort((x, y) => x.startS - y.startS)
+      const startOf = (look: RemakeLook): string | null => {
+        const own = items.find((it) => it.look === look && it.kind === 'start')
+        if (own) return byItem.has(own) ? usableStill(byItem.get(own)!.result) : null
+        const prev = ordered[ordered.indexOf(look) - 1]
+        const prevEnd = prev && items.find((it) => it.look === prev && it.kind === 'end')
+        return prevEnd && byItem.has(prevEnd) ? usableStill(byItem.get(prevEnd)!.result) : null
+      }
+      const endOf = async (look: RemakeLook) => {
+        const end = items.find((it) => it.person && it.look === look && it.kind === 'end')
+        if (!end) return
+        const fileId = startOf(look)
+        byItem.set(end, await single(look, 'end', undefined, fileId ? { fileId, change: { poseFromFrame: true } } : undefined))
+      }
+      // Parallel where a look has its own start; a continuing part waits for the part before it.
+      await Promise.all(ordered.filter((l) => !l.continues).map(endOf))
+      for (const look of ordered.filter((l) => l.continues)) await endOf(look)
+      const rest = items.filter((it) => !byItem.has(it))
+      const rm = await Promise.all(rest.map((it) => single(it.look, it.kind)))
+      rest.forEach((it, k) => byItem.set(it, rm[k]))
+    }
+    // Back in plan order.
+    const finish = () => {
+      const done = items.map((it) => byItem.get(it)!)
+      return { ...inputData, stills: continueParts(plan.looks, done.map((d) => d.result)), ledger: [...(inputData.ledger as LedgerEntry[]), ...done.flatMap((d) => d.ledger)] }
+    }
     try {
+      if (!product && items.some((it) => it.person)) { await runChain(); return finish() }
       const first = units.findIndex((u) => u.some((j) => j.person))
       if (first >= 0) {
         const firstDone = await runUnit(units[first])
@@ -387,9 +435,7 @@ const stillsStep = createStep({
       deps.removeDir(dir)
       await Promise.all(guideIds.map((id) => deps.deleteFile(a.idToken, id)))
     }
-    // Back in plan order.
-    const done = items.map((it) => byItem.get(it)!)
-    return { ...inputData, stills: continueParts(plan.looks, done.map((d) => d.result)), ledger: [...(inputData.ledger as LedgerEntry[]), ...done.flatMap((d) => d.ledger)] }
+    return finish()
   },
 })
 
