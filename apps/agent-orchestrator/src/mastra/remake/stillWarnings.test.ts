@@ -73,9 +73,10 @@ describe('remakeStillChecks sorts each finding', () => {
     expect(r.reasons.join(' ')).toMatch(/appears twice/)
     expect(r.warnings.join(' ')).toMatch(/text/)
   })
-  it('a face doubt is a warning; a clone of the lead in the background is hard', async () => {
+  it('a different face and a clone of the lead in the background are both hard', async () => {
     const r = await remakeStillChecks(ask({}, { same_face: false, why: 'nose differs' }, [{ where: 'left', looks_like_lead: true }]) as never, img, { lead: img, leadInShot: true })
-    expect(r.warnings.join(' ')).toMatch(/face/i)
+    expect(r.reasons.join(' ')).toMatch(/face differs/)
+    expect(r.reasons.join(' ')).toMatch(/looks like the lead/)
     expect(r.passed).toBe(false)
   })
   it('clean still: passed, no warnings', async () => {

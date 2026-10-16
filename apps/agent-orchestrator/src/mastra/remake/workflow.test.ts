@@ -81,7 +81,7 @@ describe('video-remake workflow', () => {
     const prompts = gen.mock.calls.map((c) => c[0].prompt as string)
     expect(prompts.some((p) => p.includes('green kurta'))).toBe(true)
     expect(gen.mock.calls[1][0].referenceFileIds[0]).toMatch(/^up:/) // the cropped portrait comes first
-    expect(out.summary).toMatchObject({ spentMicro: '400', wastedMicro: '0' }) // sheet + 3 stills
+    expect(out.summary).toMatchObject({ spentMicro: '500', wastedMicro: '0' }) // casting sheet + reference sheet + 3 stills
   })
   it('skips casting for a reel with nobody in it', async () => {
     const b = breakdown(); b.pose!.looks = b.pose!.looks.map((l) => ({ ...l, people: 0, no_person: true, main_start: null, main_end: null }))

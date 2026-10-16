@@ -84,11 +84,11 @@ describe('M3/M4 stills step', () => {
   it('M3 once credits run out, the remaining stills stop: no more guides, gates or calls', async () => {
     const gen = vi.fn(async () => ({ insufficientCredits: true }))
     const gate = vi.fn(async () => { await new Promise((r) => setTimeout(r, 20)); return pass })
-    // The casting sheet's check and the first still's are quick; the other stills' are slower,
+    // The casting sheet's, the reference sheet's and the first still's checks are quick; the other stills' are slower,
     // so the first still runs out of credits while they are still being checked.
     let calls = 0
-    const gateFirstFast = vi.fn(async (...a: unknown[]) => (++calls <= 2 ? pass : gate(...(a as []))))
-    setRemakeDeps(deps({ generateStill: vi.fn(async (i: { title?: string }) => (String(i.title).includes('casting') ? { fileId: 'sheet', creditsUsedMicro: '10' } : gen())), promptGate: gateFirstFast } as never))
+    const gateFirstFast = vi.fn(async (...a: unknown[]) => (++calls <= 3 ? pass : gate(...(a as []))))
+    setRemakeDeps(deps({ generateStill: vi.fn(async (i: { title?: string }) => (String(i.title).includes('sheet') ? { fileId: 'sheet', creditsUsedMicro: '10' } : gen())), promptGate: gateFirstFast } as never))
     const run = await (await wf()).w.createRun()
     await run.start({ inputData: { tenantId: 't1', conversationId: 'c1', breakdown: sameBody(), brand }, requestContext: rc() })
     await (await wf()).w.createRun({ runId: run.runId }).then((r) => r.resume({ step: 'plan', resumeData: { decision: 'approve' }, requestContext: rc() }))

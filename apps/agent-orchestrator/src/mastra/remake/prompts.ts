@@ -30,6 +30,9 @@ export function castSheetPrompt(castTo: string): string {
   return `One photo split into three equal side-by-side panels, numbered 1, 2 and 3 in small grey corner numbers. Each panel shows a different new person who fits: ${castTo}. Each is full body, standing, facing the camera, neutral expression, plain light-grey background, soft natural light. Three clearly different faces. Not any real or famous person. No other text.`
 }
 
+/** One reference sheet of the CHOSEN person: what every still is anchored to (face consistency is hard). */
+export const REFERENCE_SHEET_PROMPT = 'A character reference sheet of the person in the image: four panels side by side on a plain light-grey background: 1) face close-up from the front, 2) face in three-quarter view, 3) face in profile, 4) full body standing, facing the camera. Exactly the same face, hair, skin tone and body in every panel, and the same clothes as in the image. Soft even light, neutral expression. No text, no numbers, no logos.'
+
 export function stillPrompt(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', brand: Brand, hasProductPhoto: boolean): string {
   const i = refOf(look)
   const person = personIn(look)
