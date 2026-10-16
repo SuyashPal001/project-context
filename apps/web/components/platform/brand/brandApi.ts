@@ -32,6 +32,16 @@ export type BrandPatch = Partial<{
 export const BRAND_QUERY_KEY = ['brand'] as const;
 export const BRAND_IMAGE_PREFIX = 'brand/';
 
+/** Shape to feed the step-by-step manual setup before any row exists yet —
+ * the first blur-save (step 1) creates the real row; until then the fields
+ * just need something well-typed to read from. */
+export const EMPTY_BRAND: BrandRecord = {
+    name: null, oneLiner: null, audience: null, region: 'GLOBAL', toneWords: [], emojiPolicy: 'minimal',
+    signaturePhrases: [], bannedPhrases: [], ctaExamples: [], voiceNotes: null, colors: {}, headlineFont: null,
+    logo: null, favicon: null, mascot: null, sourceType: null, sourceValue: null, importStatus: 'idle',
+    importedAt: null, ready: false, missing: ['name', 'audience', 'voice'], updatedAt: new Date(0).toISOString(),
+};
+
 export async function getBrand(): Promise<BrandRecord | null> {
     return (await api.get<{ data: BrandRecord | null }>('/api/v1/brand')).data;
 }

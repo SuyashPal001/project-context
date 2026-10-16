@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -7,8 +8,9 @@ import { Button } from '@/components/ui/button';
 import { PermissionGate } from '@/components/platform/PermissionGate';
 import { BrandEmptyState, FAILED_COPY } from '@/components/platform/brand/BrandEmptyState';
 import { BrandForm } from '@/components/platform/brand/BrandForm';
+import { BrandSteps } from '@/components/platform/brand/BrandSteps';
 import {
-    BRAND_IMAGE_PREFIX, BRAND_QUERY_KEY, getBrand, importBrand, importErrorMessage, patchBrand, type BrandPatch, type BrandRecord,
+    BRAND_IMAGE_PREFIX, BRAND_QUERY_KEY, EMPTY_BRAND, getBrand, importBrand, importErrorMessage, patchBrand, type BrandPatch, type BrandRecord,
 } from '@/components/platform/brand/brandApi';
 import { storeCreativeImage } from '@/components/platform/chat/creative-library/storeCreativeImage';
 
@@ -30,6 +32,7 @@ function Shimmer() {
 export default function BrandPage() {
     const { tenant } = useParams<{ tenant: string }>();
     const queryClient = useQueryClient();
+    const [manualSetup, setManualSetup] = useState(false);
     const { data: brand, isLoading, isError, refetch } = useQuery({
         queryKey: BRAND_QUERY_KEY,
         queryFn: getBrand,
@@ -90,10 +93,14 @@ export default function BrandPage() {
                             <Button variant="outline" size="sm" onClick={() => refetch()}>Retry</Button>
                         </div>
                     )
+                    : manualSetup ? (
+                        <BrandSteps brand={brand ?? EMPTY_BRAND} onSave={(p) => save.mutate(p)} onUploadImage={uploadImage}
+                            onFinish={() => setManualSetup(false)} />
+                    )
                     : importing && !hasContent ? <Shimmer />
                     : !hasContent ? (
                         <BrandEmptyState chatHref={chatHref} busy={startImport.isPending} failed={brand?.importStatus === 'failed'}
-                            onSubmit={(v) => startImport.mutate(v)} />
+                            onSubmit={(v) => startImport.mutate(v)} onStartManual={() => setManualSetup(true)} />
                     ) : (
                         <>
                             {brand!.importStatus === 'failed' && <p className="pt-4 text-sm text-destructive">{FAILED_COPY}</p>}

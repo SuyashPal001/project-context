@@ -192,6 +192,70 @@ function ColorSwatch({ role, value, onSave }: { role: string; value: string | un
     );
 }
 
+type SectionProps = { brand: BrandRecord; onSave: (patch: BrandPatch) => void };
+
+export function BasicsSection({ brand, onSave }: SectionProps) {
+    return (
+        <Section title="Basics" subtitle="What your brand is at a glance.">
+            <TextField id="brand-name" label="Brand name" hint="The name your audience knows you by." value={brand.name ?? ''} onSave={(v) => onSave({ name: v || null })} />
+            <TextField id="brand-one-liner" label="One-liner" hint="What you make, in one plain sentence." value={brand.oneLiner ?? ''} onSave={(v) => onSave({ oneLiner: v || null })} />
+            <TextField id="brand-audience" label="Audience" hint="Who it's for, in plain words." value={brand.audience ?? ''} multiline onSave={(v) => onSave({ audience: v || null })} />
+            <Row label="Region" hint="Local currency, festivals and language.">
+                <Chips options={BRAND_REGIONS} value={brand.region} onPick={(region) => onSave({ region })} />
+            </Row>
+        </Section>
+    );
+}
+
+export function VoiceSection({ brand, onSave }: SectionProps) {
+    return (
+        <Section title="Voice" subtitle="How you sound. Every caption and script follows it.">
+            <Row label="Tone words" hint="3 to 5 words for how you sound.">
+                <ToneWords words={brand.toneWords} onSave={(toneWords) => onSave({ toneWords })} />
+            </Row>
+            <Row label="Emoji">
+                <Chips options={EMOJI_POLICIES} value={brand.emojiPolicy} onPick={(emojiPolicy) => onSave({ emojiPolicy })} />
+            </Row>
+            <TextField id="brand-signature" label="Signature phrases" hint="One per line. Phrases you own." multiline
+                value={brand.signaturePhrases.join('\n')} onSave={(v) => onSave({ signaturePhrases: toLines(v) })} />
+            <TextField id="brand-banned" label="Banned phrases" hint="One per line. Words your brand never uses." multiline
+                placeholder={'GAME-CHANGER\nliterally'} value={brand.bannedPhrases.join('\n')} onSave={(v) => onSave({ bannedPhrases: toLines(v) })} />
+            <TextField id="brand-ctas" label="CTAs" hint="One per line. How you ask people to act." multiline
+                value={brand.ctaExamples.join('\n')} onSave={(v) => onSave({ ctaExamples: toLines(v) })} />
+            <TextField id="brand-notes" label="Voice notes" hint="Anything else. Markdown works." multiline
+                value={brand.voiceNotes ?? ''} onSave={(v) => onSave({ voiceNotes: v || null })} />
+        </Section>
+    );
+}
+
+export function LookSection({ brand, onSave, onUploadImage, onRefresh, refreshing }: SectionProps & {
+    onUploadImage: Props['onUploadImage']; onRefresh?: () => void; refreshing?: boolean;
+}) {
+    return (
+        <Section title="Visual identity" subtitle="The colours, type and marks Olmo puts in every image."
+            action={brand.sourceValue && brand.sourceType !== 'chat' && onRefresh ? (
+                <Button variant="ghost" size="sm" onClick={onRefresh} disabled={refreshing}>
+                    {refreshing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}Refresh
+                </Button>
+            ) : undefined}>
+            <ImageField slot="logo" label="Logo" image={brand.logo} onUpload={onUploadImage} />
+            <ImageField slot="favicon" label="Favicon" image={brand.favicon} onUpload={onUploadImage} />
+            <ImageField slot="mascot" label="Mascot" image={brand.mascot} onUpload={onUploadImage} />
+            <Row label="Colours">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {COLOR_ROLES.map((role) => (
+                        <ColorSwatch key={role} role={role} value={brand.colors[role]}
+                            onSave={(hex) => onSave({ colors: { ...brand.colors, [role]: hex } })} />
+                    ))}
+                </div>
+            </Row>
+            <Row label="Font" htmlFor="brand-font">
+                <FontField id="brand-font" value={brand.headlineFont ?? ''} onSave={(v) => onSave({ headlineFont: v || null })} />
+            </Row>
+        </Section>
+    );
+}
+
 export function BrandForm({ brand, onSave, onRefresh, onUploadImage, refreshing }: Props) {
     const name = brand.name?.trim() || 'your brand';
     const ready = [
@@ -213,53 +277,9 @@ export function BrandForm({ brand, onSave, onRefresh, onUploadImage, refreshing 
                 })}
             </div>
 
-            <Section title="Basics" subtitle="What your brand is at a glance.">
-                <TextField id="brand-name" label="Brand name" hint="The name your audience knows you by." value={brand.name ?? ''} onSave={(v) => onSave({ name: v || null })} />
-                <TextField id="brand-one-liner" label="One-liner" hint="What you make, in one plain sentence." value={brand.oneLiner ?? ''} onSave={(v) => onSave({ oneLiner: v || null })} />
-                <TextField id="brand-audience" label="Audience" hint="Who it's for, in plain words." value={brand.audience ?? ''} multiline onSave={(v) => onSave({ audience: v || null })} />
-                <Row label="Region" hint="Local currency, festivals and language.">
-                    <Chips options={BRAND_REGIONS} value={brand.region} onPick={(region) => onSave({ region })} />
-                </Row>
-            </Section>
-
-            <Section title="Voice" subtitle="How you sound. Every caption and script follows it.">
-                <Row label="Tone words" hint="3 to 5 words for how you sound.">
-                    <ToneWords words={brand.toneWords} onSave={(toneWords) => onSave({ toneWords })} />
-                </Row>
-                <Row label="Emoji">
-                    <Chips options={EMOJI_POLICIES} value={brand.emojiPolicy} onPick={(emojiPolicy) => onSave({ emojiPolicy })} />
-                </Row>
-                <TextField id="brand-signature" label="Signature phrases" hint="One per line. Phrases you own." multiline
-                    value={brand.signaturePhrases.join('\n')} onSave={(v) => onSave({ signaturePhrases: toLines(v) })} />
-                <TextField id="brand-banned" label="Banned phrases" hint="One per line. Words your brand never uses." multiline
-                    placeholder={'GAME-CHANGER\nliterally'} value={brand.bannedPhrases.join('\n')} onSave={(v) => onSave({ bannedPhrases: toLines(v) })} />
-                <TextField id="brand-ctas" label="CTAs" hint="One per line. How you ask people to act." multiline
-                    value={brand.ctaExamples.join('\n')} onSave={(v) => onSave({ ctaExamples: toLines(v) })} />
-                <TextField id="brand-notes" label="Voice notes" hint="Anything else. Markdown works." multiline
-                    value={brand.voiceNotes ?? ''} onSave={(v) => onSave({ voiceNotes: v || null })} />
-            </Section>
-
-            <Section title="Visual identity" subtitle="The colours, type and marks Olmo puts in every image."
-                action={brand.sourceValue && brand.sourceType !== 'chat' ? (
-                    <Button variant="ghost" size="sm" onClick={onRefresh} disabled={refreshing}>
-                        {refreshing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}Refresh
-                    </Button>
-                ) : undefined}>
-                <ImageField slot="logo" label="Logo" image={brand.logo} onUpload={onUploadImage} />
-                <ImageField slot="favicon" label="Favicon" image={brand.favicon} onUpload={onUploadImage} />
-                <ImageField slot="mascot" label="Mascot" image={brand.mascot} onUpload={onUploadImage} />
-                <Row label="Colours">
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                        {COLOR_ROLES.map((role) => (
-                            <ColorSwatch key={role} role={role} value={brand.colors[role]}
-                                onSave={(hex) => onSave({ colors: { ...brand.colors, [role]: hex } })} />
-                        ))}
-                    </div>
-                </Row>
-                <Row label="Font" htmlFor="brand-font">
-                    <FontField id="brand-font" value={brand.headlineFont ?? ''} onSave={(v) => onSave({ headlineFont: v || null })} />
-                </Row>
-            </Section>
+            <BasicsSection brand={brand} onSave={onSave} />
+            <VoiceSection brand={brand} onSave={onSave} />
+            <LookSection brand={brand} onSave={onSave} onUploadImage={onUploadImage} onRefresh={onRefresh} refreshing={refreshing} />
 
             {source && <p className="pt-6 text-xs text-muted-foreground">{source}</p>}
         </div>
