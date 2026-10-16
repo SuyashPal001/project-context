@@ -12,7 +12,7 @@ import { getThinkingBudget } from '../mastra/thinking.js'
 import { redactReasoningText } from '../mastra/reasoningRedaction.js'
 import { applyFolderScope, folderScopeLine } from '../folderScopeContext.js'
 import { calculateCostUsd, persistCost } from '../mastra/cost.js'
-import { fetchAgentPersonaPrompt, fetchAgentName, fetchAgentOrigin, fetchAgentPersonality, fetchAgentModelSelection, fetchAllowedSubAgents, recordUsage, resolveInvokedSkills, recordSkillRuns, toMastraSkillName } from '../usage.js'
+import { fetchAgentPersonaPrompt, fetchAgentName, fetchAgentOrigin, fetchAgentPersonality, fetchAgentModelSelection, fetchAllowedSubAgents, fetchTenantBrand, recordUsage, resolveInvokedSkills, recordSkillRuns, toMastraSkillName } from '../usage.js'
 import { fetchConversationSkillSettings, saveConversationInvokedSkills } from '../persistence.js'
 import { mergeInvokedSkills, buildSkillInvocationPrepareStep, type InvokedSkill } from '../mastra/skillInvocation.js'
 import { debitChatTurn } from '../credits.js'
@@ -465,7 +465,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // reads it and composes just that one skill instead of the agent's
     // real attached ones. The agent's persona (below) is unaffected either
     // way — it's a separate concern, read the same regardless of test mode.
-    const [skillSettings, agentPersonaPrompt, agentName, agentOrigin, personaPersonality, agentModelSelection, allowedSubAgents, threadMessageCount] = await Promise.all([
+    const [skillSettings, agentPersonaPrompt, agentName, agentOrigin, personaPersonality, agentModelSelection, allowedSubAgents, threadMessageCount, tenantBrand] = await Promise.all([
       fetchConversationSkillSettings(idToken, conversationId),
       fetchAgentPersonaPrompt(agentId, tenantId),
       fetchAgentName(agentId),
@@ -477,6 +477,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       }),
       fetchAllowedSubAgents(tenantId),
       countThreadMessages(conversationId),
+      fetchTenantBrand(tenantId).catch((err) => {
+        console.warn(`[sse:${sessionId}] fetchTenantBrand failed, continuing without brand:`, (err as Error).message)
+        return null
+      }),
     ])
     mark('agent/conversation fetches done')
     if (skillSettings.testSkillInstallId) requestContext.set('testSkillInstallId', skillSettings.testSkillInstallId)
@@ -493,6 +497,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       if (modelString) requestContext.set('selectedModel', modelString)
     }
     requestContext.set('allowedSubAgents', allowedSubAgents)
+    requestContext.set('brand', tenantBrand)
 
     const thinkingBudget = getThinkingBudget(message)
     requestContext.set('thinkingBudget', thinkingBudget)

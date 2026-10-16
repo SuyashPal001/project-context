@@ -13,7 +13,7 @@ vi.mock('@serverless-saas/credits', async (importOriginal) => ({
   isUnlimited: (t: string) => unlimited.fn(t),
 }))
 const agentCheck = vi.hoisted(() => ({ fn: vi.fn(async (_a: string, _t: string) => true) }))
-vi.mock('../usage.js', () => ({ agentBelongsToTenant: (a: string, t: string) => agentCheck.fn(a, t) }))
+vi.mock('../usage.js', () => ({ agentBelongsToTenant: (a: string, t: string) => agentCheck.fn(a, t), fetchTenantBrand: async () => null }))
 
 import { startTestMcp } from './server.js'
 import type { TestMcpConfig } from './config.js'

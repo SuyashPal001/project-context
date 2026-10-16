@@ -13,6 +13,7 @@ import { ingestRoute } from './routes/ingest.js'
 import { composioRouter } from './routes/composio.js'
 import { memoryInsightsRouter } from './routes/memoryInsights.js'
 import { productDescribeRouter } from './routes/productDescribe.js'
+import { brandImportRouter } from './routes/brandImport.js'
 
 import {
   API_BASE_URL, sessions,
@@ -37,6 +38,7 @@ app.route('', ingestRoute)
 app.route('', composioRouter)
 app.route('', memoryInsightsRouter)
 app.route('', productDescribeRouter)
+app.route('', brandImportRouter)
 
 
 await initStudio(app)

@@ -30,6 +30,7 @@ import { tenantMemoryRoutes } from './routes/tenant-memory';
 import { creativeLibraryAssetsRoutes } from './routes/creativeLibraryAssets';
 import { productsImportRoutes } from './routes/products.import';
 import { productsRoutes } from './routes/products';
+import { brandRoutes } from './routes/brand';
 
 // Internal routes
 import internalRetrieveRoute from './routes/internal/retrieve';
@@ -42,6 +43,7 @@ import internalGuardrailsRoute from './routes/internal/guardrails';
 import internalFairnessRoute from './routes/internal/fairness';
 import { handleArtifactNotify } from './routes/internal/artifacts';
 import { internalSkillsRoute } from './routes/internal/skills';
+import { internalBrandRoute } from './routes/internal/brand';
 
 // Ops handlers
 import { agentTemplatesRoutes } from './routes/agentTemplates';
@@ -93,6 +95,7 @@ export function mountApiRoutes(api: Hono<AppEnv>): void {
     api.route('/creative-library-assets', creativeLibraryAssetsRoutes);
     api.route('/products/import', productsImportRoutes);
     api.route('/products', productsRoutes);
+    api.route('/brand', brandRoutes);
 }
 
 export function mountInternalRoutes(internalApi: Hono<AppEnv>): void {
@@ -106,6 +109,7 @@ export function mountInternalRoutes(internalApi: Hono<AppEnv>): void {
     internalApi.route('/internal/fairness', internalFairnessRoute);
     internalApi.post('/internal/artifacts/notify', handleArtifactNotify);
     internalApi.route('/internal/skills', internalSkillsRoute);
+    internalApi.route('/internal/brand', internalBrandRoute);
 }
 
 export function mountOpsRoutes(opsApp: Hono<AppEnv>): void {

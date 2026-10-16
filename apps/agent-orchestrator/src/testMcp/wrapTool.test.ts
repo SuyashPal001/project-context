@@ -1,11 +1,16 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
+
+const fetchTenantBrand = vi.fn()
+vi.mock('../usage.js', () => ({ fetchTenantBrand: (...a: unknown[]) => fetchTenantBrand(...a) }))
+
 import { wrapForTest } from './wrapTool.js'
 
 const ctx = async () => ({ tenantId: 't1', userId: 'u1', agentId: 'a1', conversationId: 'c1', idToken: 'tok' })
 
 describe('wrapForTest', () => {
+  beforeEach(() => { fetchTenantBrand.mockReset(); fetchTenantBrand.mockResolvedValue(null) })
   it('runs the tool with the test tenant context, never the arguments', async () => {
     const seen: any[] = []
     const inner = createTool({ id: 'probe', description: 'd', inputSchema: z.object({ tenantId: z.string().optional() }),
@@ -26,6 +31,18 @@ describe('wrapForTest', () => {
     expect(seen[0]).toMatch(/^mcp-/)
     expect(seen[1]).toMatch(/^mcp-/)
     expect(seen[0]).not.toBe(seen[1])
+  })
+  it("loads the tenant's saved brand, and runs with null when that fails", async () => {
+    const seen: any[] = []
+    const inner = createTool({ id: 'probe', description: 'd', inputSchema: z.object({}),
+      execute: async (_i, c: any) => { seen.push(c.requestContext.get('brand')); return { ok: true } } })
+    const w = wrapForTest('probe', inner, ctx)
+    fetchTenantBrand.mockResolvedValueOnce({ name: 'Mamaearth' })
+    await w.execute({}, {} as any)
+    fetchTenantBrand.mockRejectedValueOnce(new Error('db down'))
+    await w.execute({}, {} as any)
+    expect(fetchTenantBrand).toHaveBeenCalledWith('t1')
+    expect(seen).toEqual([{ name: 'Mamaearth' }, null])
   })
   it('keeps the original schema and description', () => {
     const inner = createTool({ id: 'x', description: 'desc', inputSchema: z.object({ a: z.string() }), execute: async () => ({}) })

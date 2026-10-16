@@ -35,7 +35,7 @@ all. The `tenants` white-label fields (`brandName`, `logoFileId`,
   logo on this one" changes that ad only. No override panel.
 - **v1 is the brand page only.** naise's audit parts (social presence,
   competitors identified, SEO and AI-search gaps) are phase 2.
-- **Mastra-native.** The import is a Mastra workflow, the fill is a Mastra agent
+- **Mastra-native.** The model work is a Mastra workflow and a Mastra agent
   with `structuredOutput`, the brand reaches Olmo through `RequestContext` and the
   existing dynamic `instructions` resolver, and chat tools use `createTool`.
   Existing code is reused, not rewritten (see "Reuse").
@@ -60,7 +60,7 @@ Table `creative_brand`, one row per workspace (unique index on `tenant_id`).
 
 | Group | Column | Type | Notes |
 |---|---|---|---|
-| Basics | `name` | text, not null | |
+| Basics | `name` | text | Empty until filled; an import creates the row first. |
 | | `one_liner` | text | One plain sentence saying what the brand makes. |
 | | `audience` | text | |
 | | `region` | text, default `IN` | One of `IN`, `US`, `UK`, `AE`, `SG`, `GLOBAL`, validated in Zod (not a DB enum, so adding one is a code change). |
@@ -79,6 +79,7 @@ Table `creative_brand`, one row per workspace (unique index on `tenant_id`).
 | | `source_value` | text | The URL or handle. |
 | | `import_status` | text, default `idle` | `idle`, `importing`, `done`, `failed`. |
 | | `import_error` | text | Plain reason, for logs; never shown raw. |
+| | `import_started_at` | timestamptz | For the 3-minute stuck-run rule. |
 | | `imported_at` | timestamptz | |
 | | `edited_by_user` | text[] | Column names the user has changed by hand or through `update_brand`. |
 | | `created_by`, `created_at`, `updated_at` | | As in `creative_products`. |
@@ -97,71 +98,83 @@ Rules:
 
 ## Filling the brand
 
+Revised after reading the code (2026-10-16): the Lambda already has an
+SSRF-guarded fetch and Drive saving (`routes/products.import.ts`), and the VM
+holds vendor keys in `.env` while the Lambda would need a new secret loader and
+IAM grant. So the website read and image saving stay in the API, TikHub runs on
+the orchestrator, and the Mastra workflow does the model work.
+
 ### Starting an import
 
-`POST /brand/import` on the API Lambda, body
-`{ source: 'website' | 'instagram', value: string }`.
+`POST /brand/import` on the API Lambda, body `{ value: string }`; the API
+detects website vs Instagram from the value.
 
 1. Validate: a website must be `https://`; an Instagram value must parse to a
    handle (`@name`, `name`, or an `instagram.com/name` URL).
 2. Upsert the row with `import_status = 'importing'`, `source_type`,
-   `source_value`.
-3. Call the orchestrator's `/internal/brand/import` with the internal service
-   key. It starts `brandImportWorkflow` and returns at once.
-4. Return `202` with the row. The page and chat poll `GET /brand`.
+   `source_value`, `import_error = null`.
+3. *Website:* fetch the home page with the guarded fetch extracted from
+   `products.import.ts` (https only, SSRF check on every redirect, 8 s, 2 MB),
+   plus the first linked stylesheet (3 s, 512 KB). `extractBrandPage(html, css,
+   url)` returns raw facts: `og:site_name` / `<title>`, meta description, text
+   of `h1`–`h3`, button and link texts that look like calls to action, JSON-LD
+   `Organization.logo` and `name`, icon links, `theme-color`, CSS colour
+   custom properties and hex colours by frequency, and `font-family` values.
+   It reuses `jsonLdCandidates` from `productPageExtract.ts`.
+4. Call the orchestrator's `/internal/brand/import` (`X-Service-Key`) with
+   `{ tenantId, source, handle? , facts? }`. The orchestrator starts
+   `brandImportWorkflow` and acks at once.
+5. Return `202` with the row. The page and chat poll `GET /brand`.
 
-The import runs in the orchestrator because the work (fetch, logo save, model
-call) can exceed the web proxy's 15 s abort, and because a Mastra workflow
-gives a persisted run and a trace in `mastra_span_events` for free.
+If the page cannot be read or the orchestrator does not ack, the row is set to
+`failed` right away.
 
 ### `brandImportWorkflow` (orchestrator)
 
-New file under `apps/agent-orchestrator/src/mastra/workflows/`, registered on
-the Mastra instance like `prdWorkflow`.
+`apps/agent-orchestrator/src/mastra/workflows/brandImportWorkflow.ts`,
+registered on the Mastra instance next to `skill-draft`.
 
-Steps:
+1. **gather.** Website: passes the facts through. Instagram: one TikHub
+   user-info call (`TIKHUB_API_KEY` in the orchestrator `.env`), returning name,
+   bio, external link, profile picture URL, and the last 12 captions.
+2. **fill.** `brandFillAgent` (a Mastra `Agent` on `liteModel`, no tools)
+   called with `structuredOutput: { schema: brandFillSchema }`. The best logo
+   candidate image is sent with the text. Instructions: plain one-liner, infer
+   audience and region, 3 to 5 tone words, emoji policy from the copy, CTAs
+   from real text, colours from CSS when present else from the logo, font from
+   CSS. The schema has no `banned_phrases` and string enums only (Gemini
+   rejects numeric enums). Usage is logged with `persistCost`.
+3. **report.** POSTs the result to the API's
+   `/api/v1/internal/brand/import-result` (`x-internal-service-key`):
+   `{ tenantId, ok: true, fields, logoUrl, faviconUrl, sourceText }`, or
+   `{ tenantId, ok: false, error }` if any step threw.
 
-1. **readSource.** Gathers raw facts; no model call.
-   - *Website:* one GET of the home page, then cheerio extraction:
-     `og:site_name` / `<title>`, meta description, visible text of `h1`–`h3`
-     and buttons/links that look like calls to action, JSON-LD
-     `Organization.logo` and `name`, `<link rel=icon>` and `apple-touch-icon`,
-     `<meta name=theme-color>`, and from inline `<style>` plus the first linked
-     stylesheet: CSS custom properties holding colours and the first
-     `font-family` values.
-   - *Instagram:* one TikHub user-info call (`fetch_user_info_by_username_v2`,
-     tested 2026-10-02): full name, bio, external link, profile picture, and the
-     last 12 posts' captions and thumbnails. Needs a new secret
-     `project-context/{env}/tikhub-api-key`.
-2. **saveImages.** Downloads the best logo candidate (JSON-LD logo, else
-   `apple-touch-icon`, else the Instagram profile picture) and the favicon,
-   and stores each as a `files` row in Drive under a `brand/` folder. Uses the
-   same upload path generation tools already use. A failed download leaves the
-   field empty; it never fails the run.
-3. **fill.** `brandFillAgent` (a Mastra `Agent`, model through the inference
-   gateway, Gemini Flash) with `structuredOutput` set to the brand Zod schema
-   minus `banned_phrases`. Input is the raw facts from step 1 plus the logo
-   image. Instructions: write a one-liner in plain words, infer audience and
-   region (domain, currency, language), pick 3 to 5 tone words, pick an emoji
-   policy from the captions or copy, take CTAs from real button and caption
-   text, take colours from CSS when present and otherwise from the logo or post
-   images, take the font from CSS. Cost is recorded with `persistCost`.
-4. **merge.** Writes the result into the row, skipping every column listed in
-   `edited_by_user`, dropping signature phrases not found verbatim in the source
-   text, then sets `import_status = 'done'` and `imported_at`.
+### Saving the result (API)
 
-Any step failing sets `import_status = 'failed'` with a plain `import_error`
-for the logs. Partial results from completed steps are kept.
+`/internal/brand/import-result` downloads `logoUrl` and `faviconUrl` with the
+same guarded image import used for products (jpeg, png, webp; 8 MB), stores
+them in Drive under `brand/`, then merges:
 
-**Refresh** on the page re-runs the same import against the stored source.
-Because merge skips `edited_by_user`, the user's edits survive.
+- skips every column in `edited_by_user`;
+- drops signature phrases not found verbatim in `sourceText`;
+- never writes `banned_phrases`;
+- sets `import_status = 'done'`, `imported_at`.
+
+A failed image download leaves that field as it was. A report for a tenant
+whose row is not `importing` is ignored (a newer import or a manual edit won).
+
+**Stuck runs:** `GET /brand` reports a row that has been `importing` for more
+than 3 minutes as `failed` with a generic reason, so a crashed workflow never
+leaves the page spinning.
+
+**Refresh** re-runs the import against the stored source; edits survive.
 
 ### When there is no link
 
 Olmo runs a short interview in chat (name, who it is for, how it should sound,
 then "send your logo if you have one") and saves each answer with
-`update_brand`. Colours come from the logo if one is sent, using the same fill
-agent on the logo alone. No workflow run is needed.
+`update_brand`. A logo sent in chat is saved with `update_brand`'s `logoFileId`.
+Colours from the logo are a follow-up, not v1.
 
 ### Failures the user sees
 
@@ -210,10 +223,11 @@ No `get_brand` tool: the brand is already in the instructions.
 
 Defaults come from code, not prompt rules:
 
-- `composite_end_card` and `render_animatic` use `requestContext.brand`'s logo
-  when no logo argument is given. An explicit "no logo" from the user is passed
-  as an argument and wins.
-- Image and video prompt builders read colours and tone from the same place.
+- `composite_end_card` uses the brand logo (`requestContext.brand.logoFileId`)
+  when no `logoFileId` is given, and `noLogo: true` turns it off for one ad.
+- Colours and tone reach image and video prompts through Olmo's `## Your
+  brand` block in v1. Wiring them into the prompt builders in code is a
+  follow-up once the block is proven in live runs.
 
 ### One-off changes
 
@@ -238,8 +252,10 @@ CLAUDE.md, every query filtered by `tenantId`.
 - `PATCH /brand`: partial update, Zod-validated; adds changed columns to
   `edited_by_user`.
 - `POST /brand/import`: as above.
-- `POST /brand/images`: set or clear logo, favicon or mascot from an uploaded
-  `files` id.
+- `POST /internal/brand/import-result`: internal, as above.
+- Logo, favicon and mascot are set or cleared through `PATCH /brand`
+  (`logoFileId`, `faviconFileId`, `mascotFileId`), checked to belong to the
+  tenant.
 
 ## Page
 
@@ -278,6 +294,67 @@ Section headings with shimmer rows and "Reading yourbrand.com…". Polls
 
 Every field saves on blur via `PATCH /brand`; no Done buttons.
 
+### Mockups (approved 2026-10-16)
+
+Sidebar:
+
+```text
+  Chat
+  Drive
+  Brand        ← new
+  Skills
+  Settings ›   ("Branding" renamed "Workspace look")
+```
+
+Empty:
+
+```text
+  Brand
+  How your brand sounds and looks. Every ad Olmo makes follows it.
+  ─────────────────────────────────────────────────────────────
+        Paste your website or Instagram handle
+        [ yourbrand.com  or  @yourbrand          ]  [ Fill in ]
+        No website?  Tell Olmo about your brand →
+```
+
+Filled (sample values are illustrative):
+
+```text
+  Brand                                                    [↻ Refresh]
+  Olmo needs three things to write like Mamaearth:
+  ✓ Name   ✓ Audience   ✓ Voice
+
+  Basics
+  ─────────────────────────────────────────────────────────────
+  Brand name        Mamaearth
+  One-liner         Toxin-free skincare and haircare made with natural ingredients.
+  Audience          Women 22–35 in Indian cities who want safe, natural products.
+  Region            (●India) (US) (UK) (UAE) (Singapore) (Global)
+
+  Voice
+  ─────────────────────────────────────────────────────────────
+  Tone words        [warm ×] [caring ×] [honest ×] [upbeat ×]  + add
+  Emoji             (None) (●Minimal) (Moderate) (Expressive)
+  Signature phrases Goodness inside / Made safe
+  Banned phrases    (empty — the AI never guesses these)
+  CTAs              Shop now / Comment 'GLOW' for the link
+  Voice notes       ## What we say … ## What we avoid …
+
+  Visual identity
+  ─────────────────────────────────────────────────────────────
+  Logo / Favicon    [img] Replace · Remove
+  Mascot            Not set   Upload
+  Colours           Primary #00A651  Secondary #0B3D2E  Accent #F7B500
+                    Text #1A1A1A     Background #FFFFFF Muted #6B7280
+  Font              Poppins ▾
+  ─────────────────────────────────────────────────────────────
+  Filled from mamaearth.in · 2 days ago · Change source
+```
+
+Chat interview (no website): Olmo asks name, who it is for, how it should
+sound, then "Send your logo if you have one", saves each answer with
+`update_brand`, and ends with "Saved … See it on the Brand page →".
+
 ### Style
 
 No boxed containers: sections are a heading and rows with hairline dividers.
@@ -288,15 +365,16 @@ before pushing.
 
 | Need | Reused |
 |---|---|
-| Reading a page | `productPageExtract.ts` (cheerio, JSON-LD, og tags), moved into a shared agent-platform package so the API and orchestrator both import it, with new extractors for logo, favicon, theme-color, CSS colours and fonts. Same arrangement as `@serverless-saas/agent-credits`. |
-| Running the import | Mastra workflow, as `prdWorkflow` / `remake/workflow.ts`. |
-| Filling fields | Mastra `Agent` with `structuredOutput`, as `formatterAgent`. |
-| Model calls | Inference gateway, as every agent. |
+| Fetching a page safely | `guardedFetch`, `readCapped`, `importOneImage` moved out of `routes/products.import.ts` into `lib/safeFetch.ts`, used by both imports. |
+| Reading a page | `jsonLdCandidates` from `productPageExtract.ts`, cheerio. |
+| Running the import | Mastra workflow (`createWorkflow`/`createStep`), as `skillDraftWorkflow`. |
+| Filling fields | Mastra `Agent` with `structuredOutput`, as `skillDraftAgent` / `formatterAgent`. |
+| Model | `liteModel` from `mastra/model.ts`, through the inference gateway. |
 | Cost logging | `persistCost`. |
-| Internal auth | `isInternalServiceKey`, as `/internal/products/describe`. |
-| Per-request data to Olmo | `RequestContext` set in `chatStream.ts`, read in the existing `instructions` resolver. |
-| Chat tools | `createTool`. |
-| Images | `files` rows in Drive, as product images. |
+| Internal auth | `isInternalServiceKey` (orchestrator), `isAuthorized` (API). |
+| Per-request data to Olmo | `fetchTenantBrand` (pg pool, like `fetchAgentName`) set on `RequestContext` in `chatStream.ts`, read in the existing `instructions` resolver. |
+| Chat tools | `createTool`, calling the user API with the turn's `idToken` like `persistence.ts`. |
+| Images | `files` rows in Drive via `storageService.putFileForTenant`. |
 | Table shape | `creativeProducts.ts`. |
 
 ## Testing
@@ -318,7 +396,7 @@ before pushing.
 ## Deploy order
 
 1. Migration for `creative_brand`.
-2. Seed `project-context/dev/tikhub-api-key`.
+2. Add `TIKHUB_API_KEY` to `apps/agent-orchestrator/.env` on the VM.
 3. Orchestrator (workflow, agent, tools, instructions block), build and
    `pm2 restart`.
 4. `sam build && sam deploy` from the main checkout (API routes).

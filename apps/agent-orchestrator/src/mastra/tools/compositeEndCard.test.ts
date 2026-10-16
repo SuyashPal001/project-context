@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { RequestContext } from '@mastra/core/request-context'
-import { inputSchema, endCardGraph, cardOverlayX } from './compositeEndCard.js'
+import { inputSchema, endCardGraph, cardOverlayX, resolveEndCardLogo } from './compositeEndCard.js'
 import { marksGraph } from './packshotMarks.js'
 
 describe('compositeEndCard inputSchema', () => {
@@ -9,6 +9,23 @@ describe('compositeEndCard inputSchema', () => {
     expect(ok.success).toBe(true)
     const missing = inputSchema.safeParse({ videoFileId: 'v1', productPhotoFileId: 'p1' })
     expect(missing.success).toBe(false)
+  })
+})
+
+describe('resolveEndCardLogo', () => {
+  const brand = { logoFileId: 'brand-logo' } as never
+  it('uses the brand logo when none is given', () => {
+    expect(resolveEndCardLogo({}, brand)).toBe('brand-logo')
+  })
+  it('an explicit logo wins over the brand logo', () => {
+    expect(resolveEndCardLogo({ logoFileId: 'given' }, brand)).toBe('given')
+  })
+  it('noLogo turns it off for this ad', () => {
+    expect(resolveEndCardLogo({ noLogo: true }, brand)).toBeUndefined()
+  })
+  it('no brand and no logo means no logo', () => {
+    expect(resolveEndCardLogo({}, null)).toBeUndefined()
+    expect(resolveEndCardLogo({}, { logoFileId: null } as never)).toBeUndefined()
   })
 })
 
@@ -308,7 +325,7 @@ describe('logo and veg mark on the packshot (M3, M4)', () => {
       chooseCardColumn.mockReturnValue('left')
     }
   }
-  async function run(extra: Record<string, unknown>) {
+  async function run(extra: Record<string, unknown>, brand?: Record<string, unknown>) {
     const { compositeEndCard } = await import('./compositeEndCard.js')
     const { uploadGeneratedFile } = await import('../../persistence.js')
     const fs = await import('node:fs')
@@ -316,6 +333,7 @@ describe('logo and veg mark on the packshot (M3, M4)', () => {
     ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'carded1', name: 'carded.mp4', type: 'video/mp4', size: 8 })
     const rc = new RequestContext()
     for (const [k, v] of Object.entries({ tenantId: 't1', agentId: 'a1', conversationId: 'c1', idToken: 'tok' })) rc.set(k, v)
+    if (brand) rc.set('brand', brand)
     return compositeEndCard.execute!({ videoFileId: 'v1', productPhotoFileId: 'p1', aspectRatio: '16:9', ...extra } as never, { requestContext: rc, agent: { toolCallId: 'call-1' } } as never)
   }
   const composite = () => {
@@ -343,6 +361,26 @@ describe('logo and veg mark on the packshot (M3, M4)', () => {
     setup({ logoUnreadable: true })
     expect(await run({ logoFileId: 'logo1' })).toMatchObject({ refused: true, refusalReason: expect.stringMatching(/^LOGO_NOT_IMAGE: /) })
     expect(spendCredits).not.toHaveBeenCalled()
+  })
+  it.each([
+    ['an SVG', { logoBuf: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>') }],
+    ['a GIF', { logoBuf: Buffer.from('GIF89a......') }],
+    ['an unreadable', { logoUnreadable: true }],
+  ])('the saved brand logo being %s file makes an end card without a logo, not a refusal', async (_n, opts) => {
+    setup(opts)
+    expect(await run({}, { logoFileId: 'logo1' })).toMatchObject({ fileId: 'carded1' })
+    const { args } = composite()
+    expect(args.filter((a) => a === '-i')).toHaveLength(2)
+    expect(args).not.toContain('/tmp/logo1')
+  })
+  it('the saved brand logo being the product photo makes an end card without a logo', async () => {
+    setup()
+    expect(await run({}, { logoFileId: 'p1' })).toMatchObject({ fileId: 'carded1' })
+    expect(composite().args.filter((a) => a === '-i')).toHaveLength(2)
+  })
+  it('an explicit logo still refuses even when the brand has one', async () => {
+    setup({ logoBuf: Buffer.from('GIF89a......') })
+    expect(await run({ logoFileId: 'logo1' }, { logoFileId: 'other' })).toMatchObject({ refused: true, refusalReason: expect.stringMatching(/^LOGO_NOT_IMAGE: /) })
   })
   it('a fully opaque logo gets the plate, top centre; the veg mark sits above a 2-line disclaimer; one composite pass', async () => {
     setup()
