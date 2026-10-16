@@ -9,3 +9,15 @@ def test_finds_hard_cuts_and_not_noise(client, media_dir):
     assert len(d["cuts"]) == 2
     assert abs(d["cuts"][0] - 2.0) < 0.1 and abs(d["cuts"][1] - 4.0) < 0.1
     assert abs(d["duration_s"] - 6.0) < 0.1
+
+
+def test_fps_reads_a_rate_with_trailing_commas(monkeypatch):
+    # ffprobe's csv printed "60/1,60/1," for a 60fps Instagram reel (both rate fields, trailing comma);
+    # the parser crashed and the reel lost its cut times (local Snitch replay, 2026-10-16).
+    import subprocess
+    from media import cuts
+
+    class R:
+        stdout = "60/1,\n"
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: R())
+    assert cuts._fps("x.mp4") == 60.0
