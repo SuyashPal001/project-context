@@ -3,7 +3,8 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fitToFrames, stillToFrames, joinSegments, fitMusic, muxMusic } from './compose.js'
+// The shared media core (tools/mediaCore.ts), which the remake uses; the remake's own copy is gone.
+import { fitClipToFrames as fitToFrames, stillToFrames, joinClips, fitMusicToLength as fitMusic, setOnlyAudio as muxMusic } from '../tools/mediaCore.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'remake-compose-'))
 const ff = (args: string[]) => execFileSync('ffmpeg', ['-v', 'error', '-y', ...args])
@@ -22,7 +23,7 @@ it('trims a 24fps clip to exact 30fps frames, pads a short one, holds a still, j
   const g = await stillToFrames(null, 10, join(dir, 'g.mp4'), size)
   expect([frames(a), frames(b), frames(s), frames(g)]).toEqual([123, 90, 37, 10])
   expect(probe(b, ['-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0'])).toBe('720,1280')
-  const joined = await joinSegments([a, b, s, g], join(dir, 'joined.mp4'))
+  const joined = await joinClips([a, b, s, g], join(dir, 'joined.mp4'), size)
   expect(frames(joined)).toBe(260)
 }, 120_000)
 

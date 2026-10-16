@@ -326,7 +326,7 @@ const finishStep = createStep({
       // No real picture in any part: never deliver grey cards as a finished video, and pay
       // for no music or comparison.
       if (realParts === 0) throw new NothingToShow()
-      let video = await deps.joinSegments(parts, join(work, 'joined.mp4'))
+      let video = await deps.joinSegments(parts, join(work, 'joined.mp4'), size)
       const totalS = [...frames.values()].reduce((x, y) => x + y, 0) / CLIP_FPS
       // Music: always new (spec §9a), gated like every paid call. Its own guard: any failure
       // leaves the finished video silent, never lost.

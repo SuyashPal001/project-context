@@ -115,7 +115,7 @@ export const inputSchema = z.object({
   { message: 'TRANSITION_REQUIRES_AUDIO: transitions can only be set when preserveAudio is true — footage keeps its own audio in the short-drama-stitch use case this exists for' },
 )
 
-interface TransitionEntry {
+export interface TransitionEntry {
   type: 'xfade' | 'cut'
   name?: typeof XFADE_TRANSITION_NAMES[number]
   overlapSeconds?: number
@@ -160,8 +160,8 @@ export function chooseFrameRate(rates: number[]): number {
   return best
 }
 
-interface ClipProbe { fps: number; duration: number }
-async function probeClip(path: string): Promise<ClipProbe> {
+export interface ClipProbe { fps: number; duration: number }
+export async function probeClip(path: string): Promise<ClipProbe> {
   try {
     const { stdout } = await execFile('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type,r_frame_rate,duration', '-of', 'json', path], { timeout: FFMPEG_TIMEOUT_MS })
     const probe = JSON.parse(stdout) as { streams?: Array<{ codec_type?: string; r_frame_rate?: string; duration?: string }> }
@@ -270,6 +270,146 @@ function buildTransitionsFilterComplex(
   return parts.join('; ')
 }
 
+/** The join itself, shared by the assemble_clips tool and the remake (no download, charge or
+ *  upload here): every clip normalized to one frame rate and size, joined by cuts or the given
+ *  transitions, the result's length verified. Throws on failure (callers map the error). */
+export async function assembleLocal(opts: {
+  localPaths: string[]; outputPath: string; probes: ClipProbe[]; fps: number; colourGains: (string | null)[]
+  aspectRatio?: '16:9' | '9:16'; size?: { width: number; height: number }
+  transitions?: TransitionEntry[]; preserveAudio?: boolean; audioPath?: string | null; roomTone?: boolean; targetDurationSeconds?: number
+}): Promise<string> {
+  const { localPaths, outputPath, probes, fps, colourGains, transitions, preserveAudio, audioPath, roomTone, targetDurationSeconds } = opts
+  // Normalizes every clip to CFR 30fps and a fixed aspect ratio. Audio
+  // is stripped (-an) unless preserveAudio is set, matching talking-head/
+  // short-drama-stitch's existing silent-concat-then-lipsync flow by
+  // default. The inputSchema's refine above guarantees preserveAudio
+  // and targetDurationSeconds are never both set, so the concat label
+  // is always unambiguous: exactly one shared output when preserveAudio
+  // is false, exactly one video+audio pair when it's true.
+  const [w, h] = opts.size ? [String(opts.size.width), String(opts.size.height)] : opts.aspectRatio === '9:16' ? ['1080', '1920'] : ['1920', '1080']
+
+  const videoFilterParts = localPaths.map((_, i) => {
+    const colour = colourGains[i] ? `,${colourGains[i]}` : ''
+    return `[${i}:v]setpts=PTS-STARTPTS${colour},fps=${fps},scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}]`
+  })
+
+  let filterComplex: string
+  if (transitions && transitions.length > 0) {
+    // Every input is ffprobed for its own VIDEO-stream duration
+    // specifically — NOT `format=duration` (the container's overall
+    // duration, which is the MAX of all streams). Real uploaded
+    // footage routinely has audio and video streams of different
+    // lengths; probing the container duration and using it as the
+    // xfade offset produced a live-verified, silently WRONG offset
+    // (exit 0, no error) with several seconds of A/V desync in the
+    // final output — this is the exact silent-failure class this
+    // skill's overlapSeconds validation was written to close, and it
+    // would have been reopened here by the wrong probe field.
+    const durations: number[] = []
+    for (const p of localPaths) {
+      const { stdout: durOut } = await execFile('ffprobe', [
+        '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=duration', '-of', 'csv=p=0', p,
+      ], { timeout: FFMPEG_TIMEOUT_MS })
+      const d = parseFloat(durOut.trim())
+      if (!(d > 0)) throw new Error(`ffprobe returned an invalid video-stream duration for an input clip: ${durOut}`)
+      durations.push(d)
+    }
+    const audioFilterParts = localPaths.map((_, i) =>
+      `[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`
+    )
+    const videoLabels = localPaths.map((_, i) => `v${i}`)
+    const audioLabels = localPaths.map((_, i) => `a${i}`)
+    const transitionsGraph = buildTransitionsFilterComplex(videoLabels, audioLabels, durations, transitions as TransitionEntry[])
+    filterComplex = `${videoFilterParts.join('; ')}; ${audioFilterParts.join('; ')}; ${transitionsGraph}`
+  } else if (preserveAudio) {
+    // concat requires every input segment to agree on sample rate,
+    // channel layout and sample format — our real inputs are
+    // heterogeneous (fal.ai's lip-synced MP4, our own AAC mux, and an
+    // untouched -c:a copy from composite_end_card), so each audio
+    // stream is resampled/reformatted to one common shape BEFORE
+    // concat, not fed in raw.
+    // 40ms fades at every cut: each clip has its own room tone, and a
+    // hard audio edge made every cut jump (2026-10-05 test ads).
+    const audioFilterParts = localPaths.map((_, i) => {
+      const d = probes[i].duration
+      const fadeOut = Number.isFinite(d) && d > 0.1 ? `,afade=t=out:st=${Math.round((d - 0.04) * 100) / 100}:d=0.04` : ''
+      return `[${i}:a]asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,afade=t=in:d=0.04${fadeOut}[a${i}]`
+    })
+    const concatInputs = localPaths.map((_, i) => `[v${i}][a${i}]`).join('')
+    const joinedLabel = roomTone ? 'joined' : 'outa'
+    filterComplex = `${videoFilterParts.join('; ')}; ${audioFilterParts.join('; ')}; ${concatInputs}concat=n=${localPaths.length}:v=1:a=1[outv][${joinedLabel}]`
+    if (roomTone) {
+      const roomIdx = localPaths.length + (audioPath ? 1 : 0)
+      filterComplex += `; [${roomIdx}:a]lowpass=f=700,volume=0.5,aformat=sample_fmts=fltp:channel_layouts=stereo[room]; [joined][room]amix=inputs=2:duration=first:normalize=0[outa]`
+    }
+  } else {
+    const concatInputs = localPaths.map((_, i) => `[v${i}]`).join('')
+    // tpad must be chained inside the same filter_complex graph, not applied
+    // via a separate -vf flag — ffmpeg refuses to mix simple (-vf) and
+    // complex (-filter_complex) filtering on the same output stream. When a
+    // target duration is set, concat writes to an intermediate [cat] label
+    // and tpad consumes that to produce the final [outv].
+    // Note: stop_duration below pads BY the target amount (not TO it) — the
+    // trailing -t flag is what truncates the result to the actual target
+    // duration. Correct only because both are present; dropping -t while
+    // keeping tpad as-is would silently produce an over-long output.
+    const concatLabel = targetDurationSeconds !== undefined ? '[cat]' : '[outv]'
+    filterComplex = `${videoFilterParts.join('; ')}; ${concatInputs}concat=n=${localPaths.length}:v=1:a=0${concatLabel}`
+    if (targetDurationSeconds !== undefined) {
+      filterComplex += `; [cat]tpad=stop_mode=clone:stop_duration=${Math.max(0, targetDurationSeconds)}[outv]`
+    }
+  }
+
+  const args: string[] = ['-y']
+  for (const p of localPaths) args.push('-i', p)
+  if (audioPath) args.push('-i', audioPath)
+  if (preserveAudio && roomTone) {
+    const total = probes.reduce((s, p) => s + (Number.isFinite(p.duration) ? p.duration : 0), 0) || 60
+    args.push('-f', 'lavfi', '-t', String(Math.ceil(total) + 1), '-i', 'anoisesrc=color=brown:amplitude=0.02:sample_rate=48000')
+  }
+  args.push('-filter_complex', filterComplex, '-map', '[outv]')
+  if (preserveAudio) {
+    args.push('-map', '[outa]')
+  } else if (audioPath) {
+    // The narration rides under the joined video as its only sound track.
+    args.push('-map', `${localPaths.length}:a:0`)
+  } else {
+    args.push('-an')
+  }
+  if (!preserveAudio && targetDurationSeconds !== undefined) {
+    args.push('-t', String(targetDurationSeconds))
+  }
+  args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p')
+  if (preserveAudio || audioPath) args.push('-c:a', 'aac')
+  args.push(outputPath)
+
+  await execFile('ffmpeg', args, { timeout: FFMPEG_TIMEOUT_MS })
+
+  // Joining many short pieces once produced 17.9s for 14.8s of pieces
+  // (2026-10-05). Verify the output instead of trusting the exit code.
+  //
+  // Tolerance scales with clip count, not a flat 0.1s: a real ffmpeg
+  // run (RUN_REAL_FFMPEG=1 test) measured that AAC re-encoding pads
+  // EVERY concatenated audio segment up to its own next encoder-frame
+  // boundary (~0.02-0.03s/clip, confirmed directly against 1/2/4-clip
+  // runs) when preserveAudio or audioFileId is set — real, harmless
+  // encoder padding, not desync. A flat 0.1s tolerance false-refused a
+  // valid 4-clip preserveAudio join (measured diff 0.107s) on this
+  // task's own real-ffmpeg test. 0.1s base + 0.03s/clip stays under a
+  // 7x margin below the 3s+ drift this check exists to catch, even at
+  // the 12-clip max (tolerance 0.46s vs a 3s drift).
+  const expected = probes.reduce((s, p) => s + p.duration, 0)
+  const tolerance = 0.1 + 0.03 * localPaths.length
+  if (!transitions?.length && targetDurationSeconds === undefined && Number.isFinite(expected) && expected > 0) {
+    const { stdout: outDur } = await execFile('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', outputPath], { timeout: FFMPEG_TIMEOUT_MS })
+    const actual = parseFloat(outDur.trim())
+    if (Number.isFinite(actual) && Math.abs(actual - expected) > tolerance) {
+      throw Object.assign(new Error(`DURATION_MISMATCH: the joined video is ${actual.toFixed(2)}s but its pieces add up to ${expected.toFixed(2)}s`), { durationMismatch: true })
+    }
+  }
+  return outputPath
+}
+
 export const assembleClips = createTool({
   id: 'assemble-clips',
   description: 'Concatenates an ordered list of video clips into one video, normalized to a constant frame rate and fixed aspect ratio. Silent by default (audio stripped); pass preserveAudio: true to keep and normalize each clip\'s own audio track instead. Shared infra for talking-head, short-drama-stitch, and animation-character — not talking-head-specific.',
@@ -372,134 +512,7 @@ export const assembleClips = createTool({
     }
     const outputPath = join(workDir, 'assembled.mp4')
     try {
-      // Normalizes every clip to CFR 30fps and a fixed aspect ratio. Audio
-      // is stripped (-an) unless preserveAudio is set, matching talking-head/
-      // short-drama-stitch's existing silent-concat-then-lipsync flow by
-      // default. The inputSchema's refine above guarantees preserveAudio
-      // and targetDurationSeconds are never both set, so the concat label
-      // is always unambiguous: exactly one shared output when preserveAudio
-      // is false, exactly one video+audio pair when it's true.
-      const [w, h] = aspectRatio === '9:16' ? ['1080', '1920'] : ['1920', '1080']
-
-      const videoFilterParts = localPaths.map((_, i) => {
-        const colour = colourGains[i] ? `,${colourGains[i]}` : ''
-        return `[${i}:v]setpts=PTS-STARTPTS${colour},fps=${fps},scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}]`
-      })
-
-      let filterComplex: string
-      if (transitions && transitions.length > 0) {
-        // Every input is ffprobed for its own VIDEO-stream duration
-        // specifically — NOT `format=duration` (the container's overall
-        // duration, which is the MAX of all streams). Real uploaded
-        // footage routinely has audio and video streams of different
-        // lengths; probing the container duration and using it as the
-        // xfade offset produced a live-verified, silently WRONG offset
-        // (exit 0, no error) with several seconds of A/V desync in the
-        // final output — this is the exact silent-failure class this
-        // skill's overlapSeconds validation was written to close, and it
-        // would have been reopened here by the wrong probe field.
-        const durations: number[] = []
-        for (const p of localPaths) {
-          const { stdout: durOut } = await execFile('ffprobe', [
-            '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=duration', '-of', 'csv=p=0', p,
-          ], { timeout: FFMPEG_TIMEOUT_MS })
-          const d = parseFloat(durOut.trim())
-          if (!(d > 0)) throw new Error(`ffprobe returned an invalid video-stream duration for an input clip: ${durOut}`)
-          durations.push(d)
-        }
-        const audioFilterParts = localPaths.map((_, i) =>
-          `[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`
-        )
-        const videoLabels = localPaths.map((_, i) => `v${i}`)
-        const audioLabels = localPaths.map((_, i) => `a${i}`)
-        const transitionsGraph = buildTransitionsFilterComplex(videoLabels, audioLabels, durations, transitions as TransitionEntry[])
-        filterComplex = `${videoFilterParts.join('; ')}; ${audioFilterParts.join('; ')}; ${transitionsGraph}`
-      } else if (preserveAudio) {
-        // concat requires every input segment to agree on sample rate,
-        // channel layout and sample format — our real inputs are
-        // heterogeneous (fal.ai's lip-synced MP4, our own AAC mux, and an
-        // untouched -c:a copy from composite_end_card), so each audio
-        // stream is resampled/reformatted to one common shape BEFORE
-        // concat, not fed in raw.
-        // 40ms fades at every cut: each clip has its own room tone, and a
-        // hard audio edge made every cut jump (2026-10-05 test ads).
-        const audioFilterParts = localPaths.map((_, i) => {
-          const d = probes[i].duration
-          const fadeOut = Number.isFinite(d) && d > 0.1 ? `,afade=t=out:st=${Math.round((d - 0.04) * 100) / 100}:d=0.04` : ''
-          return `[${i}:a]asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,afade=t=in:d=0.04${fadeOut}[a${i}]`
-        })
-        const concatInputs = localPaths.map((_, i) => `[v${i}][a${i}]`).join('')
-        const joinedLabel = roomTone ? 'joined' : 'outa'
-        filterComplex = `${videoFilterParts.join('; ')}; ${audioFilterParts.join('; ')}; ${concatInputs}concat=n=${localPaths.length}:v=1:a=1[outv][${joinedLabel}]`
-        if (roomTone) {
-          const roomIdx = localPaths.length + (audioPath ? 1 : 0)
-          filterComplex += `; [${roomIdx}:a]lowpass=f=700,volume=0.5,aformat=sample_fmts=fltp:channel_layouts=stereo[room]; [joined][room]amix=inputs=2:duration=first:normalize=0[outa]`
-        }
-      } else {
-        const concatInputs = localPaths.map((_, i) => `[v${i}]`).join('')
-        // tpad must be chained inside the same filter_complex graph, not applied
-        // via a separate -vf flag — ffmpeg refuses to mix simple (-vf) and
-        // complex (-filter_complex) filtering on the same output stream. When a
-        // target duration is set, concat writes to an intermediate [cat] label
-        // and tpad consumes that to produce the final [outv].
-        // Note: stop_duration below pads BY the target amount (not TO it) — the
-        // trailing -t flag is what truncates the result to the actual target
-        // duration. Correct only because both are present; dropping -t while
-        // keeping tpad as-is would silently produce an over-long output.
-        const concatLabel = targetDurationSeconds !== undefined ? '[cat]' : '[outv]'
-        filterComplex = `${videoFilterParts.join('; ')}; ${concatInputs}concat=n=${localPaths.length}:v=1:a=0${concatLabel}`
-        if (targetDurationSeconds !== undefined) {
-          filterComplex += `; [cat]tpad=stop_mode=clone:stop_duration=${Math.max(0, targetDurationSeconds)}[outv]`
-        }
-      }
-
-      const args: string[] = ['-y']
-      for (const p of localPaths) args.push('-i', p)
-      if (audioPath) args.push('-i', audioPath)
-      if (preserveAudio && roomTone) {
-        const total = probes.reduce((s, p) => s + (Number.isFinite(p.duration) ? p.duration : 0), 0) || 60
-        args.push('-f', 'lavfi', '-t', String(Math.ceil(total) + 1), '-i', 'anoisesrc=color=brown:amplitude=0.02:sample_rate=48000')
-      }
-      args.push('-filter_complex', filterComplex, '-map', '[outv]')
-      if (preserveAudio) {
-        args.push('-map', '[outa]')
-      } else if (audioPath) {
-        // The narration rides under the joined video as its only sound track.
-        args.push('-map', `${localPaths.length}:a:0`)
-      } else {
-        args.push('-an')
-      }
-      if (!preserveAudio && targetDurationSeconds !== undefined) {
-        args.push('-t', String(targetDurationSeconds))
-      }
-      args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p')
-      if (preserveAudio || audioPath) args.push('-c:a', 'aac')
-      args.push(outputPath)
-
-      await execFile('ffmpeg', args, { timeout: FFMPEG_TIMEOUT_MS })
-
-      // Joining many short pieces once produced 17.9s for 14.8s of pieces
-      // (2026-10-05). Verify the output instead of trusting the exit code.
-      //
-      // Tolerance scales with clip count, not a flat 0.1s: a real ffmpeg
-      // run (RUN_REAL_FFMPEG=1 test) measured that AAC re-encoding pads
-      // EVERY concatenated audio segment up to its own next encoder-frame
-      // boundary (~0.02-0.03s/clip, confirmed directly against 1/2/4-clip
-      // runs) when preserveAudio or audioFileId is set — real, harmless
-      // encoder padding, not desync. A flat 0.1s tolerance false-refused a
-      // valid 4-clip preserveAudio join (measured diff 0.107s) on this
-      // task's own real-ffmpeg test. 0.1s base + 0.03s/clip stays under a
-      // 7x margin below the 3s+ drift this check exists to catch, even at
-      // the 12-clip max (tolerance 0.46s vs a 3s drift).
-      const expected = probes.reduce((s, p) => s + p.duration, 0)
-      const tolerance = 0.1 + 0.03 * localPaths.length
-      if (!transitions?.length && targetDurationSeconds === undefined && Number.isFinite(expected) && expected > 0) {
-        const { stdout: outDur } = await execFile('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', outputPath], { timeout: FFMPEG_TIMEOUT_MS })
-        const actual = parseFloat(outDur.trim())
-        if (Number.isFinite(actual) && Math.abs(actual - expected) > tolerance) {
-          throw Object.assign(new Error(`DURATION_MISMATCH: the joined video is ${actual.toFixed(2)}s but its pieces add up to ${expected.toFixed(2)}s`), { durationMismatch: true })
-        }
-      }
+      await assembleLocal({ localPaths, outputPath, probes, fps, colourGains, aspectRatio, transitions: transitions as TransitionEntry[] | undefined, preserveAudio, audioPath, roomTone, targetDurationSeconds })
     } catch (err) {
       console.error(`[session:${sessionId}] assembleClips: ffmpeg failed:`, (err as Error).message)
       if (charged) await refundAssemblyCharge(tenantId, agentId, chargeKey, rateId, rateVersion)

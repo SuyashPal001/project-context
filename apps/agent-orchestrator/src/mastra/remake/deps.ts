@@ -19,7 +19,7 @@ import { generateVeoClipItem, VEO_CLIP_MODEL } from '../tools/veoClip.js'
 import { generateSongItem } from '../tools/generateSong.js'
 import { compareToReference } from '../tools/videoBreakdown/compareToReference.js'
 import type { Breakdown } from '../tools/videoBreakdown/breakDownVideo.js'
-import { fitToFrames, stillToFrames, joinSegments, fitMusic, muxMusic } from './compose.js'
+import { fitClipToFrames, stillToFrames, joinClips, fitMusicToLength, setOnlyAudio } from '../tools/mediaCore.js'
 import { checkModel } from '../tools/videoBreakdown/models.js'
 import { imageModelFor } from '../tools/imageEngine.js'
 import { runGate, type CheckResult } from '../scorers/video/gate.js'
@@ -49,15 +49,15 @@ export interface RemakeDeps {
   generateOmniClip: (input: { prompt: string; startImageFileId: string; durationSeconds: number; aspectRatio: '9:16' | '16:9'; title: string }, exec: MediaExecContext, index: number) => Promise<{ fileId?: string; refused?: boolean; refusalReason?: string; insufficientCredits?: boolean; creditsUsedMicro?: string }>
   poseClip: (path: string, seconds: number) => Promise<PoseResult>
   sample: (path: string, times: number[]) => Promise<Img[]>
-  fitToFrames: typeof fitToFrames
+  fitToFrames: typeof fitClipToFrames
   clipRateMicro: (engine: 'veo' | 'omni') => Promise<bigint | null>
   musicRateMicro: () => Promise<bigint | null>
   generateMusic: (prompt: string, exec: MediaExecContext, runKey: string) => Promise<{ fileId?: string; refused?: boolean; refusalReason?: string; insufficientCredits?: boolean; creditsUsedMicro?: string }>
   compare: (breakdown: Breakdown, remakeFileId: string, ctx: { idToken: string; scopeId: string; conversationId: string }, tenantId: string) => Promise<{ checks: CheckResult[]; summary: string }>
   stillToFrames: typeof stillToFrames
-  joinSegments: typeof joinSegments
-  fitMusic: typeof fitMusic
-  muxMusic: typeof muxMusic
+  joinSegments: (parts: string[], out: string, size: { width: number; height: number }) => Promise<string>
+  fitMusic: typeof fitMusicToLength
+  muxMusic: typeof setOnlyAudio
   // temp working dirs: every one a run makes is removed when the step that needs it is done
   tempDir: (prefix: string) => string
   removeDir: (path: string) => void
@@ -90,7 +90,7 @@ const real: RemakeDeps = {
     const dir = mkdtempSync(join(tmpdir(), 'remake-sample-'))
     try { return await sampleFrames(path, times, dir) } finally { rmSync(dir, { recursive: true, force: true }) }
   },
-  fitToFrames: (i, f, o, s) => fitToFrames(i, f, o, s),
+  fitToFrames: (i, f, o, s) => fitClipToFrames(i, f, o, s),
   clipRateMicro: async (engine) => {
     const rate = await resolveRate('video_generation', engine === 'veo' ? VEO_CLIP_MODEL : VIDEO_MODEL)
     return rate ? costMicro(rate.schema, { count: 1 }) : null
@@ -102,9 +102,9 @@ const real: RemakeDeps = {
   generateMusic: (prompt, exec, runKey) => generateSongItem({ prompt, title: 'Remake music' }, exec, runKey),
   compare: (breakdown, remakeFileId, ctx, tenantId) => compareToReference({ fileId: breakdown.video.fileId }, remakeFileId, ctx, tenantId, breakdown),
   stillToFrames: (s, f, o, size) => stillToFrames(s, f, o, size),
-  joinSegments: (p, o) => joinSegments(p, o),
-  fitMusic: (m, s, o) => fitMusic(m, s, o),
-  muxMusic: (v, m, o) => muxMusic(v, m, o),
+  joinSegments: (p, o, size) => joinClips(p, o, size),
+  fitMusic: (m, s, o) => fitMusicToLength(m, s, o),
+  muxMusic: (v, m, o) => setOnlyAudio(v, m, o),
   tempDir: (prefix) => mkdtempSync(join(tmpdir(), prefix)),
   removeDir: (path) => { try { rmSync(path, { recursive: true, force: true }) } catch { /* best effort */ } },
   deleteFile: (idToken, fileId) => deleteFile(idToken, fileId),
