@@ -1,9 +1,5 @@
 import { api, ApiError } from '@/lib/api';
 
-export const BRAND_REGIONS = [
-    { value: 'IN', label: 'India' }, { value: 'US', label: 'US' }, { value: 'UK', label: 'UK' },
-    { value: 'AE', label: 'UAE' }, { value: 'SG', label: 'Singapore' }, { value: 'GLOBAL', label: 'Global' },
-] as const;
 export const EMOJI_POLICIES = [
     { value: 'none', label: 'None' }, { value: 'minimal', label: 'Minimal' },
     { value: 'moderate', label: 'Moderate' }, { value: 'expressive', label: 'Expressive' },
@@ -32,11 +28,12 @@ export type BrandPatch = Partial<{
 export const BRAND_QUERY_KEY = ['brand'] as const;
 export const BRAND_IMAGE_PREFIX = 'brand/';
 
-/** Shape to feed the step-by-step manual setup before any row exists yet —
- * the first blur-save (step 1) creates the real row; until then the fields
- * just need something well-typed to read from. */
+/** Shape to feed the always-visible form before any row exists yet — the
+ * first blur-save creates the real row; until then the fields just need
+ * something well-typed to read from. Region defaults to India (the page no
+ * longer shows it; Olmo can change it from chat). */
 export const EMPTY_BRAND: BrandRecord = {
-    name: null, oneLiner: null, audience: null, region: 'GLOBAL', toneWords: [], emojiPolicy: 'minimal',
+    name: null, oneLiner: null, audience: null, region: 'IN', toneWords: [], emojiPolicy: 'minimal',
     signaturePhrases: [], bannedPhrases: [], ctaExamples: [], voiceNotes: null, colors: {}, headlineFont: null,
     logo: null, favicon: null, mascot: null, sourceType: null, sourceValue: null, importStatus: 'idle',
     importedAt: null, ready: false, missing: ['name', 'audience', 'voice'], updatedAt: new Date(0).toISOString(),

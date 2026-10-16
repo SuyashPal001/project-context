@@ -5,11 +5,13 @@ import { Check, Circle, ImagePlus, Loader2, RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import {
-    BRAND_REGIONS, COLOR_ROLES, EMOJI_POLICIES, FONT_CHOICES, sourceLine,
+    COLOR_ROLES, EMOJI_POLICIES, FONT_CHOICES, sourceLine,
     type BrandPatch, type BrandRecord,
 } from './brandApi';
+import { BrandFillRow } from './BrandFillRow';
 
 type ImageSlot = 'logo' | 'favicon' | 'mascot';
 interface Props {
@@ -18,6 +20,10 @@ interface Props {
     onRefresh: () => void;
     onUploadImage: (slot: ImageSlot, file: File | null) => void;
     refreshing: boolean;
+    chatHref: string;
+    onImport: (value: string) => void;
+    importing: boolean;
+    importFailed: boolean;
 }
 
 const toLines = (v: string) => v.split('\n').map((s) => s.trim()).filter(Boolean);
@@ -200,9 +206,6 @@ export function BasicsSection({ brand, onSave }: SectionProps) {
             <TextField id="brand-name" label="Brand name" hint="The name your audience knows you by." value={brand.name ?? ''} onSave={(v) => onSave({ name: v || null })} />
             <TextField id="brand-one-liner" label="One-liner" hint="What you make, in one plain sentence." value={brand.oneLiner ?? ''} onSave={(v) => onSave({ oneLiner: v || null })} />
             <TextField id="brand-audience" label="Audience" hint="Who it's for, in plain words." value={brand.audience ?? ''} multiline onSave={(v) => onSave({ audience: v || null })} />
-            <Row label="Region" hint="Local currency, festivals and language.">
-                <Chips options={BRAND_REGIONS} value={brand.region} onPick={(region) => onSave({ region })} />
-            </Row>
         </Section>
     );
 }
@@ -228,16 +231,11 @@ export function VoiceSection({ brand, onSave }: SectionProps) {
     );
 }
 
-export function LookSection({ brand, onSave, onUploadImage, onRefresh, refreshing }: SectionProps & {
-    onUploadImage: Props['onUploadImage']; onRefresh?: () => void; refreshing?: boolean;
+export function LookSection({ brand, onSave, onUploadImage }: SectionProps & {
+    onUploadImage: Props['onUploadImage'];
 }) {
     return (
-        <Section title="Visual identity" subtitle="The colours, type and marks Olmo puts in every image."
-            action={brand.sourceValue && brand.sourceType !== 'chat' && onRefresh ? (
-                <Button variant="ghost" size="sm" onClick={onRefresh} disabled={refreshing}>
-                    {refreshing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}Refresh
-                </Button>
-            ) : undefined}>
+        <Section title="Visual identity" subtitle="The colours, type and marks Olmo puts in every image.">
             <ImageField slot="logo" label="Logo" image={brand.logo} onUpload={onUploadImage} />
             <ImageField slot="favicon" label="Favicon" image={brand.favicon} onUpload={onUploadImage} />
             <ImageField slot="mascot" label="Mascot" image={brand.mascot} onUpload={onUploadImage} />
@@ -256,32 +254,48 @@ export function LookSection({ brand, onSave, onUploadImage, onRefresh, refreshin
     );
 }
 
-export function BrandForm({ brand, onSave, onRefresh, onUploadImage, refreshing }: Props) {
-    const name = brand.name?.trim() || 'your brand';
-    const ready = [
-        { key: 'name', label: 'Name' }, { key: 'audience', label: 'Audience' }, { key: 'voice', label: 'Voice' },
-    ] as const;
+type TabKey = 'basics' | 'voice' | 'look';
+// Replaces the old "Olmo needs three things…" readiness line — each tab
+// carries its own tick, computed the same way the line used to read
+// `brand.missing`, just scoped to what that tab holds.
+const FORM_TABS: ReadonlyArray<{ key: TabKey; label: string; done: (b: BrandRecord) => boolean }> = [
+    { key: 'basics', label: 'Basics', done: (b) => !!b.name?.trim() && !!b.audience?.trim() },
+    { key: 'voice', label: 'Voice', done: (b) => b.toneWords.length > 0 },
+    { key: 'look', label: 'Look', done: (b) => !!b.logo || Object.keys(b.colors).length > 0 },
+];
+
+export function BrandForm({ brand, onSave, onRefresh, onUploadImage, refreshing, chatHref, onImport, importing, importFailed }: Props) {
     const source = sourceLine(brand);
     return (
         <div className="pb-16">
-            <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                <span>Olmo needs three things to write like {name}:</span>
-                {ready.map((r) => {
-                    const done = !brand.missing.includes(r.key);
-                    return (
-                        <span key={r.key} data-testid={`ready-${r.key}`} data-done={String(done)}
-                            className={cn('inline-flex items-center gap-1', done ? 'text-primary' : 'text-muted-foreground')}>
-                            {done ? <Check className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}{r.label}
-                        </span>
-                    );
-                })}
-            </div>
+            <BrandFillRow brand={brand} chatHref={chatHref} onSubmit={onImport} busy={importing} failed={importFailed} />
 
-            <BasicsSection brand={brand} onSave={onSave} />
-            <VoiceSection brand={brand} onSave={onSave} />
-            <LookSection brand={brand} onSave={onSave} onUploadImage={onUploadImage} onRefresh={onRefresh} refreshing={refreshing} />
+            <Tabs defaultValue="basics">
+                <TabsList variant="line" className="h-auto w-full justify-start gap-4 p-0">
+                    {FORM_TABS.map((t) => {
+                        const done = t.done(brand);
+                        return (
+                            <TabsTrigger key={t.key} value={t.key} data-testid={`tab-${t.key}`} data-done={String(done)}
+                                className="flex-none gap-1.5 px-1">
+                                {done ? <Check className="h-3.5 w-3.5 text-primary" /> : <Circle className="h-3.5 w-3.5" />}
+                                {t.label}
+                            </TabsTrigger>
+                        );
+                    })}
+                </TabsList>
+                <TabsContent value="basics"><BasicsSection brand={brand} onSave={onSave} /></TabsContent>
+                <TabsContent value="voice"><VoiceSection brand={brand} onSave={onSave} /></TabsContent>
+                <TabsContent value="look"><LookSection brand={brand} onSave={onSave} onUploadImage={onUploadImage} /></TabsContent>
+            </Tabs>
 
-            {source && <p className="pt-6 text-xs text-muted-foreground">{source}</p>}
+            {source && (
+                <div className="flex items-center gap-2 pt-6 text-xs text-muted-foreground">
+                    <span>{source}</span>
+                    <Button variant="ghost" size="sm" onClick={onRefresh} disabled={refreshing}>
+                        {refreshing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}Refresh
+                    </Button>
+                </div>
+            )}
         </div>
     );
 }

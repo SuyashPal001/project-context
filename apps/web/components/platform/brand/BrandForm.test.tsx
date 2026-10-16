@@ -12,17 +12,48 @@ const brand: BrandRecord = {
     ready: false, missing: ['audience'], updatedAt: new Date().toISOString(),
 };
 
+const baseProps = {
+    onSave: vi.fn(), onRefresh: vi.fn(), onUploadImage: vi.fn(), refreshing: false,
+    chatHref: '/t/dashboard/chat?prefill=Set%20up%20my%20brand', onImport: vi.fn(), importing: false, importFailed: false,
+};
+
 describe('BrandForm', () => {
-    it('shows readiness ticks and what is missing', () => {
-        render(<BrandForm brand={brand} onSave={vi.fn()} onRefresh={vi.fn()} onUploadImage={vi.fn()} refreshing={false} />);
-        expect(screen.getByText(/Olmo needs three things to write like Mamaearth/)).toBeTruthy();
-        expect(screen.getByTestId('ready-audience').getAttribute('data-done')).toBe('false');
-        expect(screen.getByTestId('ready-name').getAttribute('data-done')).toBe('true');
+    it('shows a tick on Basics only once name and audience are both set', () => {
+        render(<BrandForm {...baseProps} brand={brand} />);
+        expect(screen.getByTestId('tab-basics').getAttribute('data-done')).toBe('false'); // audience missing
+        render(<BrandForm {...baseProps} brand={{ ...brand, audience: 'Women in Indian cities' }} />);
+        expect(screen.getAllByTestId('tab-basics').pop()!.getAttribute('data-done')).toBe('true');
+    });
+
+    it('shows a tick on Voice once there is at least one tone word, none otherwise', () => {
+        render(<BrandForm {...baseProps} brand={brand} />);
+        expect(screen.getByTestId('tab-voice').getAttribute('data-done')).toBe('true');
+        render(<BrandForm {...baseProps} brand={{ ...brand, toneWords: [] }} />);
+        expect(screen.getAllByTestId('tab-voice').pop()!.getAttribute('data-done')).toBe('false');
+    });
+
+    it('shows a tick on Look once a logo or a colour is set', () => {
+        render(<BrandForm {...baseProps} brand={brand} />);
+        expect(screen.getByTestId('tab-look').getAttribute('data-done')).toBe('true'); // has a colour
+        render(<BrandForm {...baseProps} brand={{ ...brand, colors: {} }} />);
+        expect(screen.getAllByTestId('tab-look').pop()!.getAttribute('data-done')).toBe('false');
+    });
+
+    it('defaults to the Basics tab and shows its fields', () => {
+        render(<BrandForm {...baseProps} brand={brand} />);
+        expect(screen.getByLabelText('Brand name')).toBeTruthy();
+    });
+
+    it('clicking a tab shows that section\'s fields', () => {
+        render(<BrandForm {...baseProps} brand={brand} />);
+        expect(screen.queryByLabelText('Banned phrases')).toBeNull();
+        fireEvent.mouseDown(screen.getByRole('tab', { name: 'Voice' }));
+        expect(screen.getByLabelText('Banned phrases')).toBeTruthy();
     });
 
     it('saves a text field on blur, only when it changed', () => {
         const onSave = vi.fn();
-        render(<BrandForm brand={brand} onSave={onSave} onRefresh={vi.fn()} onUploadImage={vi.fn()} refreshing={false} />);
+        render(<BrandForm {...baseProps} brand={brand} onSave={onSave} />);
         const audience = screen.getByLabelText('Audience');
         fireEvent.blur(audience);
         expect(onSave).not.toHaveBeenCalled();
@@ -33,22 +64,22 @@ describe('BrandForm', () => {
 
     it('saves a list field one item per line', () => {
         const onSave = vi.fn();
-        render(<BrandForm brand={brand} onSave={onSave} onRefresh={vi.fn()} onUploadImage={vi.fn()} refreshing={false} />);
+        render(<BrandForm {...baseProps} brand={brand} onSave={onSave} />);
+        fireEvent.mouseDown(screen.getByRole('tab', { name: 'Voice' }));
         const banned = screen.getByLabelText('Banned phrases');
         fireEvent.change(banned, { target: { value: 'cheap\n\n literally ' } });
         fireEvent.blur(banned);
         expect(onSave).toHaveBeenCalledWith({ bannedPhrases: ['cheap', 'literally'] });
     });
 
-    it('saves a region chip immediately', () => {
-        const onSave = vi.fn();
-        render(<BrandForm brand={brand} onSave={onSave} onRefresh={vi.fn()} onUploadImage={vi.fn()} refreshing={false} />);
-        fireEvent.click(screen.getByRole('button', { name: 'UAE' }));
-        expect(onSave).toHaveBeenCalledWith({ region: 'AE' });
+    it('has no Region row or India chip', () => {
+        render(<BrandForm {...baseProps} brand={brand} />);
+        expect(screen.queryByText('Region')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'India' })).toBeNull();
     });
 
     it('shows where the brand came from', () => {
-        render(<BrandForm brand={brand} onSave={vi.fn()} onRefresh={vi.fn()} onUploadImage={vi.fn()} refreshing={false} />);
+        render(<BrandForm {...baseProps} brand={brand} />);
         expect(screen.getByText(/Filled from mamaearth\.in · today/)).toBeTruthy();
     });
 
@@ -58,7 +89,8 @@ describe('BrandForm', () => {
     // event (or blur) should save, and only when the value actually differs.
     it('does not save on every colour drag tick — only on the native change/blur, and only once', () => {
         const onSave = vi.fn();
-        render(<BrandForm brand={brand} onSave={onSave} onRefresh={vi.fn()} onUploadImage={vi.fn()} refreshing={false} />);
+        render(<BrandForm {...baseProps} brand={brand} onSave={onSave} />);
+        fireEvent.mouseDown(screen.getByRole('tab', { name: 'Look' }));
         const swatch = screen.getByLabelText('primary colour') as HTMLInputElement;
 
         // Several live drag ticks: React's onChange prop fires (updates the
@@ -80,7 +112,8 @@ describe('BrandForm', () => {
 
     it('never saves white for an unset colour the user only focused and left', () => {
         const onSave = vi.fn();
-        render(<BrandForm brand={brand} onSave={onSave} onRefresh={vi.fn()} onUploadImage={vi.fn()} refreshing={false} />);
+        render(<BrandForm {...baseProps} brand={brand} onSave={onSave} />);
+        fireEvent.mouseDown(screen.getByRole('tab', { name: 'Look' }));
         const swatch = screen.getByLabelText('accent colour') as HTMLInputElement;
         fireEvent.focus(swatch);
         fireEvent.blur(swatch, { target: { value: '#FFFFFF' } });
@@ -89,7 +122,8 @@ describe('BrandForm', () => {
 
     it('saves an unset colour once the user picks one', () => {
         const onSave = vi.fn();
-        render(<BrandForm brand={brand} onSave={onSave} onRefresh={vi.fn()} onUploadImage={vi.fn()} refreshing={false} />);
+        render(<BrandForm {...baseProps} brand={brand} onSave={onSave} />);
+        fireEvent.mouseDown(screen.getByRole('tab', { name: 'Look' }));
         const swatch = screen.getByLabelText('accent colour') as HTMLInputElement;
         fireEvent.input(swatch, { target: { value: '#123456' } });
         fireEvent.blur(swatch);
@@ -98,10 +132,11 @@ describe('BrandForm', () => {
 
     it('syncs the font field when the prop changes (e.g. after Refresh/import), unlike an uncontrolled input', () => {
         const onSave = vi.fn();
-        const { rerender } = render(<BrandForm brand={brand} onSave={onSave} onRefresh={vi.fn()} onUploadImage={vi.fn()} refreshing={false} />);
+        const { rerender } = render(<BrandForm {...baseProps} brand={brand} onSave={onSave} />);
+        fireEvent.mouseDown(screen.getByRole('tab', { name: 'Look' }));
         expect((screen.getByLabelText('Font') as HTMLInputElement).value).toBe('Poppins');
 
-        rerender(<BrandForm brand={{ ...brand, headlineFont: 'Inter' }} onSave={onSave} onRefresh={vi.fn()} onUploadImage={vi.fn()} refreshing={false} />);
+        rerender(<BrandForm {...baseProps} brand={{ ...brand, headlineFont: 'Inter' }} onSave={onSave} />);
         expect((screen.getByLabelText('Font') as HTMLInputElement).value).toBe('Inter');
     });
 });
