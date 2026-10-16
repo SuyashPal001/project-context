@@ -18,6 +18,7 @@ async function run(samePlace: boolean, styling?: string) {
   const b = breakdown()
   if (styling) b.overview.looks = b.overview.looks.map((l) => ({ ...l, styling }))
   const calls: Array<{ title: string; prompt: string; referenceFileIds?: string[] }> = []
+  const stillChecks = vi.fn().mockResolvedValue({ passed: true, reasons: [] })
   const generateStill = vi.fn(async (input: { title: string; prompt: string; referenceFileIds?: string[] }) => {
     calls.push(input)
     const id = /reference sheet/i.test(input.title) ? 'ref-sheet' : input.title.replace(/\W+/g, '-')
@@ -29,7 +30,7 @@ async function run(samePlace: boolean, styling?: string) {
     fetchImage: vi.fn(async (id: string) => ({ data: id, mime: 'image/jpeg' })), localFile: vi.fn(async (id: string) => `/m/${id}`),
     upload: vi.fn(async (_t: string, key: string) => `up:${key.split('/').pop()}`),
     poseImage: vi.fn().mockResolvedValue({ model: 'm', people: 1, no_person: false, main: b.pose!.looks[0].main_start }),
-    stillChecks: vi.fn().mockResolvedValue({ passed: true, reasons: [] }), cutBoard: vi.fn().mockResolvedValue(null),
+    stillChecks, cutBoard: vi.fn().mockResolvedValue(null),
     sameSetting: vi.fn().mockResolvedValue({ same: samePlace, differs: '' }),
     ffmpeg: vi.fn().mockResolvedValue(undefined), readFile: vi.fn(() => Buffer.from('x')), renderPreview: vi.fn().mockResolvedValue('/m/p.mp4'),
     imageRateMicro: vi.fn().mockResolvedValue(1_000_000n), clipRateMicro: vi.fn().mockResolvedValue(1_000_000n), musicRateMicro: vi.fn().mockResolvedValue(1_000_000n),
@@ -38,7 +39,7 @@ async function run(samePlace: boolean, styling?: string) {
   await r.start({ inputData: { tenantId: 't1', conversationId: 'c1', breakdown: b, brand, castFileId: 'own' }, requestContext: rc() })
   await (await (await remakeMastra()).getWorkflow(REMAKE_WORKFLOW_ID).createRun({ runId: r.runId })).resume({ step: 'plan', resumeData: { decision: 'approve' }, requestContext: rc() })
   const still = (look: number, kind: string) => calls.find((c) => c.title === `Remake look ${look} ${kind} still`)
-  return { calls, still }
+  return { calls, still, stillChecks }
 }
 
 describe('stills in one place are an edit chain', () => {
@@ -52,6 +53,15 @@ describe('stills in one place are an edit chain', () => {
     const e2 = still(2, 'end')!
     expect(e2.referenceFileIds![0]).toBe('Remake-look-2-start-still')
     expect(e2.prompt).toMatch(/^Edit the first image\. Change only: \(1\) the body pose/)
+  }, 30_000)
+  it('an edited still\'s face is checked against the photo it was edited from', async () => {
+    // fan run real6 (2026-10-17): looks 2 and 4 kept look 1's face, but a tiny face lying on the floor
+    // compared against the big sheet photo read as "a different person" on every try, and both were dropped.
+    const { stillChecks } = await run(true)
+    const call = (id: string) => stillChecks.mock.calls.find((c) => (c[1] as { data: string }).data === id)!
+    expect((call('Remake-look-2-start-still')[2] as { lead: { data: string } }).lead.data).toBe('Remake-look-1-start-still')
+    expect((call('Remake-look-2-end-still')[2] as { lead: { data: string } }).lead.data).toBe('Remake-look-2-start-still')
+    expect((call('Remake-look-1-start-still')[2] as { lead: { data: string } }).lead.data).toBe('ref-sheet')
   }, 30_000)
   it('a look in another place (the original changes place) starts fresh from the person', async () => {
     const { still } = await run(false)

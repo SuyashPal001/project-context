@@ -83,11 +83,18 @@ describe('identity: reference sheet + anchor still', () => {
     const starts = g.mock.calls.slice(2).map((c) => c[0] as { title: string; referenceFileIds: string[] }).filter((c) => / start still/.test(c.title))
     expect(starts.every((c) => c.referenceFileIds[0] === 'img-2')).toBe(true)
   })
-  it('the face is checked against the reference sheet', async () => {
+  it('the face is checked against the reference sheet, or against a photo that already passed it', async () => {
+    // An edited still is checked against the photo it was edited from (fan run real6, 2026-10-17): it
+    // passed the sheet, and a small face in the scene against the big sheet photo read as a stranger.
     const fetchImage = vi.fn().mockImplementation(async (id: string) => ({ data: id, mime: 'image/jpeg' }))
     const stillChecks = vi.fn().mockResolvedValue({ passed: true, reasons: [] })
     await toPreview({ fetchImage, stillChecks })
-    expect(stillChecks.mock.calls.every((c) => c[2].lead?.data === 'img-2')).toBe(true)
+    const checked: string[] = []
+    for (const c of stillChecks.mock.calls) {
+      expect(c[2].lead?.data === 'img-2' || checked.includes(c[2].lead?.data)).toBe(true)
+      checked.push(c[1].data)
+    }
+    expect(stillChecks.mock.calls[0][2].lead?.data).toBe('img-2')
   })
   it('a failed reference sheet never ends the run: stills use the cropped portrait', async () => {
     const g: ReturnType<typeof vi.fn> = vi.fn().mockImplementation(async (input: { prompt: string }) => (/reference sheet/i.test(input.prompt) ? { refused: true, creditsUsedMicro: '0' } : { fileId: `img-${++made}`, creditsUsedMicro: '100' }))

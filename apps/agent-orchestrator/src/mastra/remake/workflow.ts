@@ -12,7 +12,7 @@ import { runToken } from './runTokens.js'
 import { writePlan, applyEdits } from './plan.js'
 import { estimateCost, estimateClipsCost, ledgerSummary } from './cost.js'
 import { castSheetPrompt, stylingOf, outfitOf, propsAt, stillPrompt, stillGateInput, usesProduct, REFERENCE_SHEET_PROMPT, CAST_BY_IMAGE, charactersAt, characterPortraitPrompt, stillTime, type CharacterImages } from './prompts.js'
-import { makeStill, type StillCtx, type StillJob } from './paidStill.js'
+import { makeStill, editPrompt, type StillCtx, type StillJob } from './paidStill.js'
 import { looksUnder18 } from './stillChecks.js'
 import { boardUnits, boardPrompt, boardGateInput, boardAspect, BOARD_SLOT } from './board.js'
 import { previewSegments, previewSize, usableStill } from './preview.js'
@@ -311,7 +311,7 @@ const stillsStep = createStep({
         const extra = [...images.entries()].map(([i, n]) => `the ${plan.reference.characters?.[i]?.who ?? 'other person'} is the person in image ${n}`).join('; ')
         const change = { ...base.change, ...(extra ? { extra } : {}) }
         const prompt = editShotPrompt(change)
-        return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, guide: g, gate: { prompt, planLine: editShotGateLine(change, `looks[${refOf(look)}]`), look: {}, startFrameObjects: [], keyMoments: [] }, ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}) }
+        return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, guide: g, faceRef: base.fileId, gate: { prompt, planLine: editShotGateLine(change, `looks[${refOf(look)}]`), look: {}, startFrameObjects: [], keyMoments: [] }, ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}) }
       }
       const who = personFor(look)
       const { references, images } = withCharacters([...(person && who ? [who] : []), g, ...(product ? [product] : person && anchor ? [anchor] : [])], chars)
@@ -479,25 +479,37 @@ const stillsStep = createStep({
 })
 
 const previewed = stilled.extend({ previewFileId: z.string().nullable(), stop: z.boolean() })
+// A fix the user asks for on one photo at the preview (fan run real6: the dupatta over her head, and the
+// preview could only be approved or stopped). Slots 800+, two per fix (the edit and its one retry).
+const FIX_SLOT = 800
+const fixSchema = z.object({ look: z.number().int(), kind: z.enum(['start', 'end']), change: z.string() })
 const previewStep = createStep({
   id: 'preview', inputSchema: stilled, outputSchema: previewed,
-  suspendSchema: z.object({ stage: z.literal('preview_review'), previewFileId: z.string().nullable(), stills: z.array(any), summary: any, clipsEstimate: any.optional(), cantAnimate: z.string().optional() }),
-  resumeSchema: z.object({ decision: z.enum(['approve', 'stop']) }),
+  // stills/ledger: the photos as they are now, after any fix (the step's input keeps the first ones)
+  suspendSchema: z.object({ stage: z.literal('preview_review'), previewFileId: z.string().nullable(), stills: z.array(any), ledger: z.array(any).optional(), summary: any, clipsEstimate: any.optional(), cantAnimate: z.string().optional(), error: z.string().optional() }),
+  resumeSchema: z.object({ decision: z.enum(['approve', 'stop', 'fix']), fixes: z.array(fixSchema).optional() }),
   execute: async ({ inputData, requestContext, runId, resumeData, suspendData, suspend }) => {
     const a = access(requestContext as Rc, inputData.tenantId, runId)
     const deps = remakeDeps()
     const plan = inputData.plan as RemakePlan
-    const stills = inputData.stills as StillResult[]
-    const ledger = inputData.ledger as LedgerEntry[]
+    let stills = (suspendData?.stills as StillResult[] | undefined) ?? inputData.stills as StillResult[]
+    let ledger = (suspendData?.ledger as LedgerEntry[] | undefined) ?? inputData.ledger as LedgerEntry[]
     // Square: the video models make only 9:16 or 16:9 (Review Focus 2).
     // Nothing to animate when no part has a usable start still (live run 08466630 went on to
     // an all-grey "finished" video).
-    const anyStill = stills.some((s) => s.kind === 'start' && !!usableStill(s))
-    const cantAnimate = plan.aspectRatio === '1:1' ? 'Square videos can be previewed but not animated yet.'
-      : !anyStill ? 'None of the stills could be made, so there is nothing to animate yet. Change the plan and start the remake again.' : undefined
-    if (resumeData) {
-      return { ...inputData, previewFileId: (suspendData?.previewFileId as string | null | undefined) ?? null, stop: resumeData.decision === 'stop' || !!cantAnimate }
+    const cantAnimateOf = (all: StillResult[]) => plan.aspectRatio === '1:1' ? 'Square videos can be previewed but not animated yet.'
+      : !all.some((s) => s.kind === 'start' && !!usableStill(s)) ? 'None of the stills could be made, so there is nothing to animate yet. Change the plan and start the remake again.' : undefined
+    if (resumeData && resumeData.decision !== 'fix') {
+      return { ...inputData, stills, ledger, previewFileId: (suspendData?.previewFileId as string | null | undefined) ?? null, stop: resumeData.decision === 'stop' || !!cantAnimateOf(stills) }
     }
+    let error: string | undefined
+    if (resumeData?.decision === 'fix') {
+      const fixed = await fixPhotos(plan, stills, (resumeData.fixes ?? []).filter((f) => f.change.trim()), ledger, inputData, a, requestContext as Rc, runId)
+      stills = fixed.stills
+      ledger = [...ledger, ...fixed.ledger]
+      error = fixed.error
+    }
+    const cantAnimate = cantAnimateOf(stills)
     let previewFileId: string | null = null
     const previewDir = deps.tempDir('remake-preview-')
     try {
@@ -513,9 +525,43 @@ const previewStep = createStep({
     }
     // A reel that can't be animated gets no clips price (M4).
     const clipsEstimate = cantAnimate ? undefined : estimateClipsCost(clipSpecs(plan, stills), { veo: await deps.clipRateMicro('veo'), omni: await deps.clipRateMicro('omni'), music: await deps.musicRateMicro() })
-    return await suspend({ stage: 'preview_review', previewFileId, stills, summary: ledgerSummary(ledger), ...(clipsEstimate ? { clipsEstimate } : {}), ...(cantAnimate ? { cantAnimate } : {}) })
+    return await suspend({ stage: 'preview_review', previewFileId, stills, ledger, summary: ledgerSummary(ledger), ...(clipsEstimate ? { clipsEstimate } : {}), ...(cantAnimate ? { cantAnimate } : {}), ...(error ? { error } : {}) })
   },
 })
+
+// Each fix is an EDIT of the photo the user saw (edit, never regenerate), checked like any still with that
+// photo as the face to keep. A fix that can't be made leaves the photo as it was.
+async function fixPhotos(plan: RemakePlan, stills: StillResult[], fixes: Array<z.infer<typeof fixSchema>>, ledger: LedgerEntry[], inputData: { referenceSheetFileId?: string | null; portraitFileId?: string | null; tenantId: string }, a: ReturnType<typeof access>, rc: Rc, runId: string): Promise<{ stills: StillResult[]; ledger: LedgerEntry[]; error?: string }> {
+  const deps = remakeDeps()
+  const portraitId = inputData.referenceSheetFileId ?? inputData.portraitFileId
+  const ctx: StillCtx = { tenantId: a.tenantId, idToken: a.idToken, scopeId: a.scopeId, runId, conversationId: a.conversationId, exec: execFor(rc, runId, a.idToken), portrait: portraitId ? { fileId: portraitId, img: await deps.fetchImage(portraitId, a.idToken) } : null }
+  const done = ledger.filter((l) => / still change$/.test(l.item) && l.attempt === 0).length
+  const out = [...stills]
+  const spent: LedgerEntry[] = []
+  const missed: string[] = []
+  await Promise.all(fixes.map(async (f, k) => {
+    const look = plan.looks.find((l) => l.n === f.look)
+    const still = stills.find((s) => s.look === f.look && s.kind === f.kind)
+    const old = still && usableStill(still)
+    if (!look || !old) { missed.push(`look ${f.look} ${f.kind}`); return }
+    const change = f.change.trim()
+    const prompt = editPrompt(change)
+    const job: StillJob = { look, kind: f.kind, prompt, references: [old], aspectRatio: plan.aspectRatio, faceRef: old, slot: FIX_SLOT + 2 * (done + k),
+      gate: { prompt, planLine: `edit the user asked for on a photo they already saw (the first image): ${change}; everything else is kept from the first image`, look: {}, startFrameObjects: [], keyMoments: [] } }
+    try {
+      const made = await makeStill(job, ctx, deps)
+      spent.push(...made.ledger.map((l) => ({ ...l, item: `look ${f.look} ${f.kind} still change` })))
+      const now = usableStill(made.result)
+      if (!now || made.result.status === 'failed' || made.result.status === 'blocked') { missed.push(`look ${f.look} ${f.kind}`); return }
+      // A continuing part starts from this same photo: it changes with it.
+      out.forEach((s, i) => { if (s.fileId === old) out[i] = { ...made.result, look: s.look, kind: s.kind } })
+    } catch (err) {
+      console.error(`[remake] look ${f.look} ${f.kind} fix failed:`, err instanceof Error ? err.message : String(err))
+      missed.push(`look ${f.look} ${f.kind}`)
+    }
+  }))
+  return { stills: out, ledger: spent, ...(missed.length ? { error: `these photos could not be changed this time and are as they were: ${missed.join(', ')}` } : {}) }
+}
 
 const MAX_PARALLEL_CLIPS = 3
 const clipped = previewed.extend({ clips: z.array(any), clipsDir: z.string().nullable() })

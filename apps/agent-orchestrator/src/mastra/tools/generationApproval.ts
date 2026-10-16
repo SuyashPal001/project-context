@@ -175,6 +175,8 @@ const remakePreview = (args: Record<string, unknown>): string | undefined =>
         ? 'Makes a new casting sheet of 3 new people, with your note.'
       : args.action === 'change_person'
         ? 'Edits the person\'s reference sheet with your change (the same person), for you to approve.'
+        : args.action === 'fix_photo'
+          ? 'Edits the photos you asked to change (at most one automatic retry each), then shows the preview again.'
         : args.action === 'approve_person'
           ? 'Makes every still for the remake with the approved person (at most one automatic retry each), then the free preview, as estimated with the plan.'
       : args.action === 'approve_preview'

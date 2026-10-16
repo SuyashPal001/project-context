@@ -57,7 +57,7 @@ export function shapeRun(runId: string, r: RunResult): Out {
     }
     if (p.stage === 'preview_review') {
       const e = p.clipsEstimate as { clips: number; firstPassMicro: string | null; maxMicro: string | null } | undefined
-      return { success: true, runId, stage: 'preview_review', previewFileId: p.previewFileId, stills: withTryCredits(p.stills), summary: plainSummary(p.summary), ...(e ? { clipsEstimate: { clips: e.clips, firstPassCredits: credits(e.firstPassMicro), maxCredits: credits(e.maxMicro) } } : {}), ...(p.cantAnimate ? { cantAnimate: p.cantAnimate } : {}) }
+      return { success: true, runId, stage: 'preview_review', previewFileId: p.previewFileId, stills: withTryCredits(p.stills), summary: plainSummary(p.summary), ...(e ? { clipsEstimate: { clips: e.clips, firstPassCredits: credits(e.firstPassMicro), maxCredits: credits(e.maxMicro) } } : {}), ...(p.cantAnimate ? { cantAnimate: p.cantAnimate } : {}), ...(p.error ? { error: p.error } : {}) }
     }
     if (p.stage === 'person_review') return { success: true, runId, stage: 'person_review', sheetFileId: p.sheetFileId, ...(p.error ? { error: p.error } : {}) }
     return { success: true, runId, stage: 'cast_pick', sheetFileId: p.sheetFileId, ...(p.error ? { error: p.error } : {}) }
@@ -101,13 +101,13 @@ export const remakeVideoTool = createTool({
     + 'edit_plan (runId + edits) for changes; approve_plan (runId) when the user agrees. If the video has a person, approve_plan returns a casting sheet of 3 new people: show it and ask which one (pick_cast, runId + pick 1-3); if none fits, recast (runId + note in the user\'s words) makes 3 new people. '
     + 'Then (stage person_review) show the chosen person\'s sheet and ask: is this how she or he should look in the video? If yes, approve_person (runId); if the user wants a change (hair, makeup, glasses…), change_person (runId + change in the user\'s words): the sheet is edited, the person stays the same, and it comes back for review. No still is made before approve_person. '
     + 'If cast_pick comes back with an error and no sheetFileId, tell the user the error; once fixed, call pick_cast with no pick to make the sheet again. If it has an error and a sheet, ask the user to pick again. '
-    + 'Then every look gets checked stills and a free preview video (stage preview_review): share the preview, say which stills failed or were held back, the credits spent, and the cost to animate it (clipsEstimate). When a still has more than one try (tries), show every try\'s picture, the failed ones too, each with why it failed in plain words and its credits, so the user sees what was paid for; a still with status warned is kept and used, so say in one line what may be off. If it has cantAnimate, say so and stop there. If the user wants it animated, call approve_preview (runId); if they only wanted the preview, call stop. '
+    + 'Then every look gets checked stills and a free preview video (stage preview_review): share the preview, say which stills failed or were held back, the credits spent, and the cost to animate it (clipsEstimate). When a still has more than one try (tries), show every try\'s picture, the failed ones too, each with why it failed in plain words and its credits, so the user sees what was paid for; a still with status warned is kept and used, so say in one line what may be off. If it has cantAnimate, say so and stop there. If the user wants a photo changed (a pose, how the dupatta sits, the hair…), call fix_photo (runId + fixes: look, kind start or end, change in the user\'s words, one per photo): that photo is edited, checked, and the preview comes back with it; collect every change the user wants first and send them in one call. If it has an error, say which photos stayed as they were. If the user wants it animated, call approve_preview (runId); if they only wanted the preview, call stop. '
     + 'If stage final_failed comes back, share its note and say the animated parts were made but could not be joined; never start again on your own. '
     + 'When it is done (stage final_ready), share the video and its note exactly as given (what changed on purpose, what stayed a still, anything that did not pass), the credits spent, and remind the user to label it as AI-generated when they post it. '
     + 'stage working means it is still making the stills or the clips: wait and use status; never call start again while a remake for this video exists (that pays twice). '
     + 'Never describe how it works inside; use plain outcome words. status (runId) re-reads where a remake is.',
   inputSchema: z.object({
-    action: z.enum(['start', 'edit_plan', 'approve_plan', 'pick_cast', 'recast', 'approve_person', 'change_person', 'approve_preview', 'stop', 'status']),
+    action: z.enum(['start', 'edit_plan', 'approve_plan', 'pick_cast', 'recast', 'approve_person', 'change_person', 'fix_photo', 'approve_preview', 'stop', 'status']),
     url: linkSchema.optional(), fileId: z.string().optional(),
     brand: brandSchema.optional(),
     castFileId: z.string().optional().describe('start: the user\'s own person (an avatar or photo fileId); skips the casting sheet'),
@@ -116,6 +116,7 @@ export const remakeVideoTool = createTool({
     pick: z.number().int().min(1).max(3).optional(),
     note: z.string().optional().describe('recast: what the user wants different in the new people, in their words'),
     change: z.string().optional().describe('change_person: what to change on the person sheet, in the user\'s words'),
+    fixes: z.array(z.object({ look: z.number().int(), kind: z.enum(['start', 'end']), change: z.string() })).optional().describe('fix_photo: one entry per photo to change, the change in the user\'s words'),
   }),
   outputSchema: z.object({ success: z.boolean() }).passthrough(),
   requireApproval: async (input, ctx) => {
@@ -127,7 +128,7 @@ export const remakeVideoTool = createTool({
       const veo = await shouldRequireApproval({ resourceType: 'video_generation', subject: VEO_CLIP_MODEL }, ctx as never)
       return veo || shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx as never)
     }
-    if (action !== 'approve_plan' && action !== 'pick_cast' && action !== 'recast' && action !== 'change_person' && action !== 'approve_person') return false
+    if (action !== 'approve_plan' && action !== 'pick_cast' && action !== 'recast' && action !== 'change_person' && action !== 'approve_person' && action !== 'fix_photo') return false
     return shouldRequireApproval({ resourceType: 'image_generation', subject: imageModelFor('gemini').rateSubject }, ctx as never)
   },
   execute: async (input, execContext) => {
@@ -160,6 +161,7 @@ export const remakeVideoTool = createTool({
         : input.action === 'recast' ? ['cast', { recast: true, note: input.note ?? '' }]
         : input.action === 'approve_person' ? ['cast', { decision: 'approve' }]
         : input.action === 'change_person' ? ['cast', { decision: 'edit', change: input.change ?? '' }]
+        : input.action === 'fix_photo' ? ['preview', { decision: 'fix', fixes: input.fixes ?? [] }]
         : input.action === 'stop' ? ['preview', { decision: 'stop' }]
         : ['cast', input.pick ? { pick: input.pick } : {}]
       if (input.action === 'approve_preview') {

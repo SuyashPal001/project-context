@@ -24,7 +24,12 @@ export interface StillJob { look: RemakeLook; kind: 'start' | 'end'; prompt: str
   /** The first kept person still, whose room this still must match when the original's frames for both (guides: the first still's, this one's) show the same place. */
   room?: { fileId: string; guides: [string, string] }
   /** the original's frame for this still: its camera framing is checked against it (tools/framingCheck) */
-  guide?: string }
+  guide?: string
+  /** An edit of a photo that already passed: its face is the reference (same size, same scene). A tiny face
+   *  on the floor against the big sheet photo read as "a different person" on every try (fan run real6). */
+  faceRef?: string
+  /** first paid slot for a still outside the plan's own slots (a fix the user asks for at the preview) */
+  slot?: number }
 
 export const slotFor = (n: number, kind: 'start' | 'end', attempt: number): number => n * 4 + (kind === 'end' ? 2 : 0) + attempt
 
@@ -70,10 +75,11 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
   try {
     const still = await deps.fetchImage(fileId, ctx.idToken)
     const person = personIn(job.look) && !!ctx.portrait
+    const lead = job.faceRef ? await deps.fetchImage(job.faceRef, ctx.idToken) : ctx.portrait?.img
     const away = (job.kind === 'start' ? job.look.start : job.look.end)?.facing === 'back'
     const [looks, pose] = await Promise.all([
       // The original shows the person from the back: the still may show no face, so only a face or hair in view is checked.
-      deps.stillChecks(deps.ask(ctx.tenantId), still, { lead: ctx.portrait?.img, leadInShot: person && !away, ...(person && away ? { faceMayHide: true } : {}) }),
+      deps.stillChecks(deps.ask(ctx.tenantId), still, { lead, leadInShot: person && !away, ...(person && away ? { faceMayHide: true } : {}) }),
       deps.localFile(fileId, ctx.idToken, ctx.scopeId).then((p) => deps.poseImage(p)),
     ])
     const room = job.room ? await roomCheck(still, job.room, ctx, deps) : null
@@ -145,7 +151,7 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps, 
       if (last) ledger[ledger.length - 1].outcome = 'failed'
       return withTries({ result: { ...base, fileId: last?.fileId ?? null, status: 'failed', reasons: last ? [...last.reasons, 'no second try: not enough credits'] : ['not enough credits'] }, ledger })
     }
-    const slot = slotFor(job.look.n, job.kind, attempt)
+    const slot = job.slot !== undefined ? job.slot + attempt : slotFor(job.look.n, job.kind, attempt)
     // skipAvatarExpansion: images are placed by role (portrait, then pose guide); an avatar's
     // reference sheet would push the guide out of second place and change the gated prompt.
     const g = given ? { fileId: given.fileId, creditsUsedMicro: '0' } as Awaited<ReturnType<RemakeDeps['generateStill']>> : await deps.generateStill(
