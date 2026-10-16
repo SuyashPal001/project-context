@@ -7,10 +7,13 @@ const AREA: Record<string, string> = { upper: 'upper body', lower: 'legs' }
 const CAMERA: Record<string, string> = { 'pan-left': 'pans left', 'pan-right': 'pans right', 'tilt-up': 'tilts up', 'tilt-down': 'tilts down' }
 const raised = (b: BodyReading) => `${b.arms.left === 'raised'}${b.arms.right === 'raised'}`
 
+// Turned around: only when both ends were read (an unread side never buys an extra paid still).
+const turned = (a: BodyReading, b: BodyReading) => !!a.facing && !!b.facing && a.facing !== 'unknown' && b.facing !== 'unknown' && a.facing !== b.facing
+
 /** The body visibly differs between a look's start and end (so an end still is needed). */
 export function bodyChanged(a: BodyReading | null, b: BodyReading | null): boolean {
   if (!a || !b) return false
-  return a.framing !== b.framing || a.orientation !== b.orientation || a.knees !== b.knees || a.knees_toward !== b.knees_toward || raised(a) !== raised(b)
+  return a.framing !== b.framing || a.orientation !== b.orientation || turned(a, b) || a.knees !== b.knees || a.knees_toward !== b.knees_toward || raised(a) !== raised(b)
 }
 
 export function remakeLooks(b: Breakdown): RemakeLook[] {

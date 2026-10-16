@@ -20,6 +20,8 @@ export function personWords(b: BodyReading, start: BodyReading | null): string[]
   const w: string[] = []
   const knees = kneesInShot(b), feet = FEET_SHOWN.has(b.framing ?? 'unknown')
   if (known(b.framing)) w.push(FRAMING[b.framing] ?? b.framing)
+  if (b.facing === 'back') w.push('back to the camera')
+  else if (b.facing === 'side') w.push('side-on to the camera')
   if (known(b.orientation)) w.push(b.orientation === 'diagonal' && b.torso_angle_deg !== null ? `tilted about ${Math.round(Math.abs(b.torso_angle_deg))}° in frame` : ORIENTATION[b.orientation])
   if (knees && known(b.knees)) w.push(`knees ${b.knees}`)
   for (const side of ['left', 'right'] as const) {

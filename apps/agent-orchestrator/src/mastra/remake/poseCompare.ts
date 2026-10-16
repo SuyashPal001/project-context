@@ -43,6 +43,14 @@ export function comparePose(ref: BodyReading | null, refPeople: number | null, g
   if (kneesInShot(ref) && ro !== null && go !== null && known(ref.knees_toward) && known(g.knees_toward)) {
     if (Math.abs(ro - go) > LEG_APART && ref.knees_toward !== g.knees_toward) diffs.push(`knees fall to ${g.knees_toward} in the still, ${ref.knees_toward} in the reference`)
   } else if (kneesInShot(ref)) field('knee side', ref.knees_toward, g.knees_toward, (a, b) => a === b, (a, b) => `knees fall to ${b} in the still, ${a} in the reference`)
+  // Facing: front against back is a different pose (hard); side-on either way is a warning.
+  const rf = ref.facing, gf = g.facing
+  if (rf && gf && known(rf) && known(gf) && rf !== gf) {
+    const say = (f: string) => (f === 'back' ? 'back to the camera' : f === 'side' ? 'side-on to the camera' : 'facing the camera')
+    const msg = `reference ${say(rf)}, still ${say(gf)}`
+    if (rf !== 'side' && gf !== 'side') return result('fail', msg, true)
+    diffs.push(msg)
+  }
   for (const side of ['left', 'right'] as const) {
     field(`${side} arm`, ref.arms[side], g.arms[side], (a, b) => (a === 'raised') === (b === 'raised'),
       (a) => `${side} arm: ${a === 'raised' ? 'raised in the reference, not in the still' : 'raised in the still, not in the reference'}`)

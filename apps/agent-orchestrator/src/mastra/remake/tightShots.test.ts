@@ -51,3 +51,27 @@ describe('a tighter original is matched by a free crop', () => {
     expect(r.result.reasons.join(' ')).toMatch(/framing/)
   })
 })
+
+// Snitch shot 1 ends with his back to the camera; our still walked toward it and passed.
+describe('facing is read, said and checked', () => {
+  it('the prompt says when the original has its back to the camera or is side-on', async () => {
+    const { personWords } = await import('../tools/videoBreakdown/measuredLine.js')
+    expect(personWords(body({ facing: 'back' } as never), null).join(', ')).toMatch(/back to the camera/)
+    expect(personWords(body({ facing: 'side' } as never), null).join(', ')).toMatch(/side-on to the camera/)
+    expect(personWords(body({ facing: 'front' } as never), null).join(', ')).not.toMatch(/camera/)
+  })
+  it('front against back is a hard fault; side-on is a warning', async () => {
+    const { comparePose } = await import('./poseCompare.js')
+    const back = body({ facing: 'back' } as never)
+    const r = comparePose(back, 1, { people: 1, main: body({ facing: 'front' } as never) } as never)
+    expect(r).toMatchObject({ status: 'fail', hard: true })
+    expect(r.reason).toMatch(/back to the camera/)
+    const s = comparePose(back, 1, { people: 1, main: body({ facing: 'side' } as never) } as never)
+    expect(s.status).toBe('fail')
+    expect(s.hard).toBeFalsy()
+  })
+  it('turning around within a look needs an end still', async () => {
+    const { bodyChanged } = await import('./looks.js')
+    expect(bodyChanged(body({ facing: 'front' } as never), body({ facing: 'back' } as never))).toBe(true)
+  })
+})

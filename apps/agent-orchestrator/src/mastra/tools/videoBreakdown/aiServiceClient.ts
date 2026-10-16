@@ -24,6 +24,8 @@ export interface BodyReading {
   arms: { left: 'raised' | 'mid' | 'down' | 'unknown'; right: 'raised' | 'mid' | 'down' | 'unknown' }
   knees_toward: Toward; feet_toward: Toward; legs_toward: Toward
   leg_offset: number | null; frames: number
+  // front / back / side to the camera, from the shoulder order (absent on older readings)
+  facing?: 'front' | 'back' | 'side' | 'unknown'
 }
 export interface PoseKeyFrame { t_s: number; people: Array<{ box: number[]; keypoints: number[][] }> }
 export interface PoseLookResult {
