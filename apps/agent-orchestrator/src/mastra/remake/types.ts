@@ -7,7 +7,8 @@ export interface Brand { name: string; product: string; productPhotoFileId?: str
 export interface PlanLine { ref: string; action: 'keep' | 'swap' | 'drop'; to?: string; why?: string; auto?: boolean }
 
 export interface RemakeLook {
-  n: number                       // 1-based; ref index is n - 1 (overview.looks order)
+  n: number                       // 1-based shot order (slots, clips, joining)
+  ref?: number                    // the outfit look's index in overview.looks (plan lines); n - 1 when absent
   label: string; startS: number; endS: number
   outfit: string; expression: string; startPose: string; endPose: string
   measured: string | null         // the breakdown's plain "Measured:" line

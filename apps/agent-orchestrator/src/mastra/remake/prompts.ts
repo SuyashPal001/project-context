@@ -1,7 +1,7 @@
 // Every paid prompt is BUILT here from plan lines and measured readings (spec rule 7.2),
 // never written freehand. Words are general: any reel, any number of people.
 import { personWords } from '../tools/videoBreakdown/measuredLine.js'
-import { personIn } from './looks.js'
+import { personIn, refOf } from './looks.js'
 import type { Brand, PlanLine, RemakeLook, RemakePlan } from './types.js'
 
 const lineOf = (plan: RemakePlan, ref: string): PlanLine | undefined => plan.lines.find((l) => l.ref === ref)
@@ -31,7 +31,7 @@ export function castSheetPrompt(castTo: string): string {
 }
 
 export function stillPrompt(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', brand: Brand, hasProductPhoto: boolean): string {
-  const i = look.n - 1
+  const i = refOf(look)
   const person = personIn(look)
   const body = kind === 'start' ? look.start : look.end
   const pose = (kind === 'start' ? look.startPose : look.endPose) || look.startPose
@@ -72,7 +72,7 @@ export function stillPrompt(plan: RemakePlan, look: RemakeLook, kind: 'start' | 
 export const CAST_BY_IMAGE = 'the person: a new person, given by the first reference image (not described in words)'
 
 export function stillGateInput(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', prompt: string) {
-  const i = look.n - 1
+  const i = refOf(look)
   const mine = plan.lines.filter((l) => l.ref.startsWith(`looks[${i}].`) || l.ref === 'setting' || l.ref.startsWith('props['))
   const planLine = [`${kind} still of look ${look.n}`, ...(personIn(look) ? [CAST_BY_IMAGE] : []), ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}${l.why ? ` (${l.why})` : ''}`)].join('; ')
   // Only THIS still's body (start or end): the look-level "Measured:" line describes the end and

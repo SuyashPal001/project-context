@@ -1,6 +1,6 @@
 import type { Breakdown } from '../tools/videoBreakdown/breakDownVideo.js'
 import { askChecked, type AskFn } from '../tools/tvcChecks.js'
-import { remakeLooks, personIn, aspectOf } from './looks.js'
+import { remakeLooks, personIn, aspectOf, refOf } from './looks.js'
 import type { Brand, PlanLine, RemakeLook, RemakePlan, RemakeReference } from './types.js'
 
 type Ref = { ref: string; what: string }
@@ -12,7 +12,10 @@ export function planRefs(b: Breakdown, looks: RemakeLook[]): Ref[] {
     { ref: 'setting', what: Object.entries(o.setting).map(([k, v]) => `${k}: ${v}`).join('; ') },
   ]
   if (looks.some(personIn)) out.push({ ref: 'cast', what: 'the person on screen' })
-  for (const l of looks) out.push({ ref: `looks[${l.n - 1}].outfit`, what: l.outfit }, { ref: `looks[${l.n - 1}].expression`, what: l.expression })
+  for (const l of looks) {
+    if (out.some((r) => r.ref === `looks[${refOf(l)}].outfit`)) continue // a later shot of the same outfit look
+    out.push({ ref: `looks[${refOf(l)}].outfit`, what: l.outfit }, { ref: `looks[${refOf(l)}].expression`, what: l.expression })
+  }
   o.moments.forEach((m, i) => out.push({ ref: `moments[${i}]`, what: `${m.t_s}s ${m.what}` }))
   o.props.forEach((p, i) => out.push({ ref: `props[${i}]`, what: `${p.prop} (${p.where})` }))
   o.on_screen_text.forEach((t, i) => out.push({ ref: `onScreenText[${i}]`, what: t }))

@@ -98,3 +98,33 @@ describe('trick objects stay out of stills; objects are placed from the picture'
     expect(stillGateInput(p, p.looks[0], 'start', 'x').startFrameObjects).toEqual(['remote control'])
   })
 })
+
+describe('a hard cut inside one outfit look makes two shots', () => {
+  // Snitch read as ONE look 0-14.2s with a measured cut at 3.42s: the start still came from the
+  // full-body walk and the end still from the close-up chase, and one clip would morph between them.
+  it('lookSpans splits a look at a cut well inside it', async () => {
+    const { lookSpans } = await import('../tools/videoBreakdown/breakDownVideo.js')
+    const o = { looks: [{ label: 'run', approx_start_s: 0, approx_end_s: 14.2 }] } as never
+    expect(lookSpans(o, [], 15.87, [3.42])).toEqual([{ label: 'run', start_s: 0, end_s: 3.42 }, { label: 'run · shot 2', start_s: 3.42, end_s: 14.2 }])
+  })
+  const split = () => {
+    const b = breakdown()
+    const one = { ...b.overview.looks[0], label: 'run', approx_start_s: 0, approx_end_s: 10 }
+    const pl = b.pose!.looks[0]
+    return breakdown({
+      overview: { ...b.overview, looks: [one] },
+      cuts: { cuts: [4], fades: [], duration_s: 10 },
+      pose: { ...b.pose!, looks: [{ ...pl, label: 'run', start_s: 0, end_s: 4 }, { ...pl, label: 'run · shot 2', start_s: 4, end_s: 10, main_start: body({ framing: 'waist_up' }) }] },
+    } as never)
+  }
+  it('each shot is its own look, sharing the outfit', async () => {
+    const { remakeLooks } = await import('./looks.js')
+    const looks = remakeLooks(split())
+    expect(looks.map((l) => [l.n, l.ref, l.startS, l.endS, l.outfit])).toEqual([[1, 0, 0, 4, 'red dress'], [2, 0, 4, 10, 'red dress']])
+  })
+  it('one outfit swap covers both shots', async () => {
+    const p = await writePlan(split(), brand, vi.fn().mockResolvedValue({ lines: [{ ref: 'looks[0].outfit', action: 'swap', to: 'yellow tee' }] }))
+    expect(p.lines.filter((l) => l.ref.endsWith('.outfit')).map((l) => l.ref)).toEqual(['looks[0].outfit'])
+    expect(stillPrompt(p, p.looks[1], 'start', brand, false)).toContain('Outfit: yellow tee.')
+  })
+})

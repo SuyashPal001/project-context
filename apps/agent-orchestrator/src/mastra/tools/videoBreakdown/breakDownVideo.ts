@@ -58,6 +58,17 @@ export function lookSpans(overview: Pick<WatchOverview, 'looks'>, hidden: Hidden
   return overview.looks
     .map((l) => ({ label: l.label, start_s: Math.max(0, l.approx_start_s > 0 ? snap(l.approx_start_s, cuts) : 0), end_s: Math.min(durationS, l.approx_end_s < durationS ? snap(l.approx_end_s, cuts) : durationS) }))
     .filter((l) => Number.isFinite(l.start_s) && Number.isFinite(l.end_s) && l.end_s > l.start_s)
+    .flatMap((l) => splitAtCuts(l, cuts))
+}
+
+// One outfit look can span a hard cut (a new camera shot): each shot gets its own span, so it gets
+// its own stills and clip (Snitch: one look 0-14.2s over a cut at 3.42s). Same look, "· shot N".
+export const SHOT_MARK = ' · shot '
+export const lookLabelOf = (label: string): string => label.split(SHOT_MARK)[0]
+function splitAtCuts(l: { label: string; start_s: number; end_s: number }, cuts: number[]) {
+  const inside = cuts.filter((c) => c > l.start_s + SNAP_S && c < l.end_s - SNAP_S).sort((a, b) => a - b)
+  const edges = [l.start_s, ...inside, l.end_s]
+  return edges.slice(0, -1).map((s, i) => ({ label: i === 0 ? l.label : `${l.label}${SHOT_MARK}${i + 1}`, start_s: s, end_s: edges[i + 1] }))
 }
 
 // The latest breakdown per tenant scope and link, so a later comparison checks the
