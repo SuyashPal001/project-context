@@ -94,7 +94,7 @@ describe('the face check is hard again', () => {
   it('a different face fails the still', async () => {
     const ask = vi.fn(async (parts: Array<{ text?: string }>) => {
       const q = parts.map((p) => ('text' in p ? p.text : '')).join(' ')
-      if (/duplicate_object/.test(q)) return { duplicate_object: false, stray_face: false, invented_text: false, cg_effect: false, flat_background: false, what: '' }
+      if (/duplicate_object/.test(q)) return { duplicate_object: false, stray_face: false, invented_text: false, cg_effect: false, flat_background: false, drawn: false, what: '' }
       if (/same face/.test(q)) return { lead_present: true, same_face: false, why: 'different nose' }
       return { others: [] }
     })

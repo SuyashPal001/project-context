@@ -42,7 +42,7 @@ export interface RemakeDeps {
   /** A kept still cropped around the face to a tighter framing (free; crop_image's core); the new file's id. */
   cropStill?: (fileId: string, framing: CropFraming, aspectRatio: '9:16' | '16:9' | '1:1', ctx: { idToken: string; scopeId: string; tenantId: string; runId: string; conversationId?: string }) => Promise<string>
   promptGate: (input: ReturnType<typeof stillGateInput> & { tenantId: string }) => Promise<CheckResult>
-  stillChecks: (ask: AskFn, still: Img, opts: { lead?: Img; leadInShot?: boolean }) => Promise<{ passed: boolean; reasons: string[]; warnings?: string[] }>
+  stillChecks: (ask: AskFn, still: Img, opts: { lead?: Img; leadInShot?: boolean; faceMayHide?: boolean }) => Promise<{ passed: boolean; reasons: string[]; warnings?: string[] }>
   ffmpeg: (args: string[]) => Promise<void>
   readFile: (path: string) => Buffer
   renderPreview: (job: PreviewJob) => Promise<string>

@@ -16,9 +16,27 @@ function shown(plan: RemakePlan, ref: string, original: string): string | null {
 // Scene objects by name only: where they sit comes from the guide picture. Position words cover the
 // whole reel ("beside her, then in her hand") and drew one object twice (fan reel, 2026-10-16).
 // A trick object (a fan blade, a wiping hand) is added over the finished video, never drawn in a still.
-function visibleProps(plan: RemakePlan): string[] {
-  return plan.reference.props.flatMap((p, i) => (p.trick ? [] : shown(plan, `props[${i}]`, p.prop) ?? []))
+// A prop's "when" is the watch model's free text ("0:00 - 0:03.5", "3.7s-14s", "Throughout video").
+// Two times are a range; anything else (no times, one time) keeps the prop everywhere, as before.
+function whenRange(when: string): [number, number] | null {
+  const t = [...when.matchAll(/(\d+):(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*s\b/g)].map((m) => (m[3] ? Number(m[3]) : Number(m[1]) * 60 + Number(m[2])))
+  return t.length >= 2 ? [Math.min(t[0], t[1]), Math.max(t[0], t[1])] : null
 }
+const SLACK_S = 0.5
+/** Props in view at time t (metro A/B: every prop went into every still, so a phone from shot 1
+ *  appeared in the selfie shots and earbuds from the selfie shots appeared in shot 1). */
+export function propsAt(plan: RemakePlan, t: number): string[] {
+  return plan.reference.props.flatMap((p, i) => {
+    if (p.trick) return []
+    const r = whenRange(p.when ?? '')
+    if (r && (t < r[0] - SLACK_S || t > r[1] + SLACK_S)) return []
+    return shown(plan, `props[${i}]`, p.prop) ?? []
+  })
+}
+const stillTime = (look: RemakeLook, kind: 'start' | 'end'): number => (kind === 'start' ? look.guideStartS : look.guideEndS)
+// An end still with no end pose of its own (the first part of a split shot) says no pose: repeating the
+// start pose asked for the same picture twice (metro A/B: both selfie stills came out identical).
+const poseOf = (look: RemakeLook, kind: 'start' | 'end'): string => (kind === 'start' ? look.startPose : look.endPose)
 const trickProps = (plan: RemakePlan): string[] => plan.reference.props.filter((p) => p.trick).map((p) => p.prop)
 
 export function usesProduct(plan: RemakePlan, brand: Brand): boolean {
@@ -40,11 +58,11 @@ export function stillPrompt(plan: RemakePlan, look: RemakeLook, kind: 'start' | 
   const i = refOf(look)
   const person = personIn(look)
   const body = kind === 'start' ? look.start : look.end
-  const pose = (kind === 'start' ? look.startPose : look.endPose) || look.startPose
+  const pose = poseOf(look, kind)
   const outfit = shown(plan, `looks[${i}].outfit`, look.outfit)
   const expression = shown(plan, `looks[${i}].expression`, look.expression)
   const setting = shown(plan, 'setting', plan.reference.setting)
-  const props = visibleProps(plan)
+  const props = propsAt(plan, stillTime(look, kind))
   const parts: string[] = []
   if (person) {
     parts.push('The person is the person in the first image: same face, hair and body.')
@@ -86,11 +104,11 @@ export function stillGateInput(plan: RemakePlan, look: RemakeLook, kind: 'start'
   // Only THIS still's body (start or end): the look-level "Measured:" line describes the end and
   // made a correct start-still prompt read as a contradiction (live run 08466630).
   const body = kind === 'start' ? look.start : look.end
-  const pose = (kind === 'start' ? look.startPose : look.endPose) || look.startPose
+  const pose = poseOf(look, kind)
   return {
     prompt, planLine,
     look: { expression: shown(plan, `looks[${i}].expression`, look.expression) ?? undefined, pose, body_measured: body ? personWords(body, null).join(', ') : undefined } as Record<string, unknown> & { expression?: string },
-    startFrameObjects: plan.reference.props.flatMap((p, j) => (p.trick ? [] : shown(plan, `props[${j}]`, p.prop) ?? [])),
+    startFrameObjects: propsAt(plan, stillTime(look, kind)),
     keyMoments: [] as string[],
   }
 }

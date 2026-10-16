@@ -63,7 +63,7 @@ describe('a warning keeps the still without paying again', () => {
 describe('remakeStillChecks sorts each finding', () => {
   const ask = (glitch: Record<string, unknown>, face: Record<string, unknown>, others: unknown[] = []) => vi.fn(async (parts: Array<{ text?: string }>) => {
     const q = parts.map((p) => ('text' in p ? p.text : '')).join(' ')
-    if (/duplicate_object/.test(q)) return { duplicate_object: false, stray_face: false, invented_text: false, cg_effect: false, flat_background: false, what: '', ...glitch }
+    if (/duplicate_object/.test(q)) return { duplicate_object: false, stray_face: false, invented_text: false, cg_effect: false, flat_background: false, drawn: false, what: '', ...glitch }
     if (/same face/.test(q)) return { lead_present: true, same_face: true, why: '', ...face }
     return { others }
   })

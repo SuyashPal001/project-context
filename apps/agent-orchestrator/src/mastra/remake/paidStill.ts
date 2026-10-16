@@ -49,10 +49,11 @@ export function fixLine(reasons: string[]): string {
 async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: RemakeDeps): Promise<StillCheck> {
   try {
     const still = await deps.fetchImage(fileId, ctx.idToken)
-    const person = personIn(job.look)
+    const person = personIn(job.look) && !!ctx.portrait
+    const away = (job.kind === 'start' ? job.look.start : job.look.end)?.facing === 'back'
     const [looks, pose] = await Promise.all([
-      // No face check when the original shows the person from the back: there is no face to compare.
-      deps.stillChecks(deps.ask(ctx.tenantId), still, { lead: ctx.portrait?.img, leadInShot: person && !!ctx.portrait && (job.kind === 'start' ? job.look.start : job.look.end)?.facing !== 'back' }),
+      // The original shows the person from the back: the still may show no face, so only a face or hair in view is checked.
+      deps.stillChecks(deps.ask(ctx.tenantId), still, { lead: ctx.portrait?.img, leadInShot: person && !away, ...(person && away ? { faceMayHide: true } : {}) }),
       deps.localFile(fileId, ctx.idToken, ctx.scopeId).then((p) => deps.poseImage(p)),
     ])
     const body = job.kind === 'start' ? job.look.start : job.look.end
@@ -100,6 +101,7 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
       else ledger.push({ item, attempt, creditsMicro: '0', outcome: 'blocked' })
       // An unknown gate is an outage: log the raw reason, tell the user plain words (no internals).
       if (gate.status === 'unknown') console.error(`[remake] ${item} prompt check unavailable: ${gate.reason}`)
+      else if (last) console.error(`[remake] ${item} retry stopped by the prompt check: ${gate.reason}`)
       const why = gate.status === 'unknown' ? 'the still couldn’t be checked before making it, so it wasn’t made' : gate.reason
       return withTries(last
         ? { result: { ...base, fileId: last.fileId, status: 'failed', reasons: last.reasons }, ledger }
