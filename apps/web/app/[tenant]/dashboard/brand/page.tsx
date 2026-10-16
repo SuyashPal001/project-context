@@ -51,13 +51,15 @@ export default function BrandPage() {
 
     return (
         <PermissionGate resource="files" action="read">
-            <div className="mx-auto max-w-3xl">
-                <h1 className="text-3xl font-bold tracking-tight text-foreground">Brand</h1>
-                <p className="mt-1 text-sm text-muted-foreground">
-                    {importing && brand?.sourceValue
-                        ? `Reading ${brand.sourceValue.replace(/^https:\/\//, '').replace(/\/$/, '')}… fields fill in as they're found.`
-                        : `How ${brand?.name || 'your brand'} sounds and looks. Every ad Olmo makes follows it.`}
-                </p>
+            <div className="space-y-6">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight text-foreground">Brand</h1>
+                    <p className="mt-2 text-muted-foreground">
+                        {importing && brand?.sourceValue
+                            ? `Reading ${brand.sourceValue.replace(/^https:\/\//, '').replace(/\/$/, '')}… fields fill in as they're found.`
+                            : `How ${brand?.name || 'your brand'} sounds and looks. Every ad Olmo makes follows it.`}
+                    </p>
+                </div>
                 {isLoading ? null
                     : isError ? (
                         <div className="flex flex-col items-center gap-3 py-16 text-center">

@@ -25,7 +25,7 @@ export function BrandFillRow({ brand, chatHref, onSubmit, busy, failed }: {
     const submit = () => { if (value.trim() && !busy) onSubmit(value.trim()); };
 
     return (
-        <div className="flex flex-col gap-2 pb-6">
+        <div className="flex flex-col gap-2">
             <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); submit(); }}>
                 <span className="text-sm font-medium text-foreground">Fill it in for me</span>
                 <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder="yourbrand.com or @yourbrand"

@@ -47,7 +47,7 @@ describe('BrandForm', () => {
     it('clicking a tab shows that section\'s fields', () => {
         render(<BrandForm {...baseProps} brand={brand} />);
         expect(screen.queryByLabelText('Banned phrases')).toBeNull();
-        fireEvent.mouseDown(screen.getByRole('tab', { name: 'Voice' }));
+        fireEvent.click(screen.getByRole('tab', { name: 'Voice' }));
         expect(screen.getByLabelText('Banned phrases')).toBeTruthy();
     });
 
@@ -65,7 +65,7 @@ describe('BrandForm', () => {
     it('saves a list field one item per line', () => {
         const onSave = vi.fn();
         render(<BrandForm {...baseProps} brand={brand} onSave={onSave} />);
-        fireEvent.mouseDown(screen.getByRole('tab', { name: 'Voice' }));
+        fireEvent.click(screen.getByRole('tab', { name: 'Voice' }));
         const banned = screen.getByLabelText('Banned phrases');
         fireEvent.change(banned, { target: { value: 'cheap\n\n literally ' } });
         fireEvent.blur(banned);
@@ -90,7 +90,7 @@ describe('BrandForm', () => {
     it('does not save on every colour drag tick — only on the native change/blur, and only once', () => {
         const onSave = vi.fn();
         render(<BrandForm {...baseProps} brand={brand} onSave={onSave} />);
-        fireEvent.mouseDown(screen.getByRole('tab', { name: 'Look' }));
+        fireEvent.click(screen.getByRole('tab', { name: 'Look' }));
         const swatch = screen.getByLabelText('primary colour') as HTMLInputElement;
 
         // Several live drag ticks: React's onChange prop fires (updates the
@@ -113,7 +113,7 @@ describe('BrandForm', () => {
     it('never saves white for an unset colour the user only focused and left', () => {
         const onSave = vi.fn();
         render(<BrandForm {...baseProps} brand={brand} onSave={onSave} />);
-        fireEvent.mouseDown(screen.getByRole('tab', { name: 'Look' }));
+        fireEvent.click(screen.getByRole('tab', { name: 'Look' }));
         const swatch = screen.getByLabelText('accent colour') as HTMLInputElement;
         fireEvent.focus(swatch);
         fireEvent.blur(swatch, { target: { value: '#FFFFFF' } });
@@ -123,7 +123,7 @@ describe('BrandForm', () => {
     it('saves an unset colour once the user picks one', () => {
         const onSave = vi.fn();
         render(<BrandForm {...baseProps} brand={brand} onSave={onSave} />);
-        fireEvent.mouseDown(screen.getByRole('tab', { name: 'Look' }));
+        fireEvent.click(screen.getByRole('tab', { name: 'Look' }));
         const swatch = screen.getByLabelText('accent colour') as HTMLInputElement;
         fireEvent.input(swatch, { target: { value: '#123456' } });
         fireEvent.blur(swatch);
@@ -133,7 +133,7 @@ describe('BrandForm', () => {
     it('syncs the font field when the prop changes (e.g. after Refresh/import), unlike an uncontrolled input', () => {
         const onSave = vi.fn();
         const { rerender } = render(<BrandForm {...baseProps} brand={brand} onSave={onSave} />);
-        fireEvent.mouseDown(screen.getByRole('tab', { name: 'Look' }));
+        fireEvent.click(screen.getByRole('tab', { name: 'Look' }));
         expect((screen.getByLabelText('Font') as HTMLInputElement).value).toBe('Poppins');
 
         rerender(<BrandForm {...baseProps} brand={{ ...brand, headlineFont: 'Inter' }} onSave={onSave} />);

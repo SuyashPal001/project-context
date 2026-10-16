@@ -5,7 +5,7 @@ import { Check, Circle, ImagePlus, Loader2, RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
 import { cn } from '@/lib/utils';
 import {
     COLOR_ROLES, EMOJI_POLICIES, FONT_CHOICES, sourceLine,
@@ -41,14 +41,12 @@ function Row({ label, hint, htmlFor, children }: { label: string; hint?: string;
     );
 }
 
+// The tab already names the section, so only its one-line description shows here.
 function Section({ title, subtitle, action, children }: { title: string; subtitle: string; action?: ReactNode; children: ReactNode }) {
     return (
-        <section className="pt-8">
+        <section aria-label={title}>
             <div className="flex items-end justify-between gap-4 border-b border-border pb-2">
-                <div>
-                    <h2 className="text-base font-semibold text-foreground">{title}</h2>
-                    <p className="text-xs text-muted-foreground">{subtitle}</p>
-                </div>
+                <p className="text-sm text-muted-foreground">{subtitle}</p>
                 {action}
             </div>
             {children}
@@ -266,27 +264,35 @@ const FORM_TABS: ReadonlyArray<{ key: TabKey; label: string; done: (b: BrandReco
 
 export function BrandForm({ brand, onSave, onRefresh, onUploadImage, refreshing, chatHref, onImport, importing, importFailed }: Props) {
     const source = sourceLine(brand);
+    const [tab, setTab] = useState<TabKey>('basics');
     return (
-        <div className="pb-16">
+        <div className="space-y-6 pb-16">
             <BrandFillRow brand={brand} chatHref={chatHref} onSubmit={onImport} busy={importing} failed={importFailed} />
 
-            <Tabs defaultValue="basics">
-                <TabsList variant="line" className="h-auto w-full justify-start gap-4 p-0">
-                    {FORM_TABS.map((t) => {
-                        const done = t.done(brand);
-                        return (
-                            <TabsTrigger key={t.key} value={t.key} data-testid={`tab-${t.key}`} data-done={String(done)}
-                                className="flex-none gap-1.5 px-1">
-                                {done ? <Check className="h-3.5 w-3.5 text-primary" /> : <Circle className="h-3.5 w-3.5" />}
-                                {t.label}
-                            </TabsTrigger>
-                        );
-                    })}
-                </TabsList>
-                <TabsContent value="basics"><BasicsSection brand={brand} onSave={onSave} /></TabsContent>
-                <TabsContent value="voice"><VoiceSection brand={brand} onSave={onSave} /></TabsContent>
-                <TabsContent value="look"><LookSection brand={brand} onSave={onSave} onUploadImage={onUploadImage} /></TabsContent>
-            </Tabs>
+            {/* Same pill switcher as the Skills page (Mine / Explore). */}
+            <div role="tablist" className="flex w-fit gap-1 rounded-full bg-muted p-1">
+                {FORM_TABS.map((t) => {
+                    const done = t.done(brand);
+                    const active = tab === t.key;
+                    return (
+                        <button key={t.key} type="button" role="tab" aria-selected={active}
+                            data-testid={`tab-${t.key}`} data-done={String(done)} onClick={() => setTab(t.key)}
+                            className={cn(
+                                'inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors',
+                                active ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+                            )}>
+                            {done ? <Check className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+                            {t.label}
+                        </button>
+                    );
+                })}
+            </div>
+
+            <div role="tabpanel">
+                {tab === 'basics' && <BasicsSection brand={brand} onSave={onSave} />}
+                {tab === 'voice' && <VoiceSection brand={brand} onSave={onSave} />}
+                {tab === 'look' && <LookSection brand={brand} onSave={onSave} onUploadImage={onUploadImage} />}
+            </div>
 
             {source && (
                 <div className="flex items-center gap-2 pt-6 text-xs text-muted-foreground">
