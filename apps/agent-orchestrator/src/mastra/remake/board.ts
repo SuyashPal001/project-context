@@ -59,15 +59,18 @@ export function boardPrompt(plan: RemakePlan, photos: Photo[]): string {
   ].filter(Boolean).join(' ')
 }
 
-/** One prompt check for the board: every photo's plan lines and words, the person by image. */
+/** One prompt check for the board: every photo's plan lines and words, the person by image. Objects in
+ *  only some photos are listed per photo (one shared list read photo 2's earbuds as missing from photo 1),
+ *  and each photo names its outfit look (look 3 can be part 2 of looks[1]). */
 export function boardGateInput(plan: RemakePlan, photos: Photo[], prompt: string) {
   const each = photos.map((p) => stillGateInput(plan, p.look, p.kind, prompt))
   const lines = [...new Set(each.flatMap((g) => g.planLine.split('; ').slice(1).filter((l) => l !== CAST_BY_IMAGE)))]
+  const shared = each[0].startFrameObjects.filter((o) => each.every((g) => g.startFrameObjects.includes(o)))
   return {
     prompt,
-    planLine: [`one image of ${photos.length} photos side by side: ${photos.map((p) => `look ${p.look.n} ${p.kind} still`).join(', ')}`, CAST_BY_IMAGE, ...lines].join('; '),
-    look: { photos: each.map((g, i) => ({ photo: i + 1, ...g.look })) } as Record<string, unknown> & { expression?: string },
-    startFrameObjects: [...new Set(each.flatMap((g) => g.startFrameObjects))],
+    planLine: [`one image of ${photos.length} photos side by side: ${photos.map((p) => `look ${p.look.n} ${p.kind} still (looks[${refOf(p.look)}])`).join(', ')}`, CAST_BY_IMAGE, ...lines].join('; '),
+    look: { photos: each.map((g, i) => ({ photo: i + 1, ...g.look, objects: g.startFrameObjects })) } as Record<string, unknown> & { expression?: string },
+    startFrameObjects: shared,
     keyMoments: [] as string[],
   }
 }

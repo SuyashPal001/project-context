@@ -52,9 +52,20 @@ describe('the board prompt', () => {
     const p = await writePlan(breakdown(), brand, vi.fn().mockResolvedValue({ lines: [] }))
     const look = p.looks[1]
     const g = boardGateInput(p, [{ look, kind: 'start' }, { look, kind: 'end' }], 'X')
-    expect(g.planLine).toMatch(/one image of 2 photos side by side: look 2 start still, look 2 end still/)
+    expect(g.planLine).toMatch(/one image of 2 photos side by side: look 2 start still \(looks\[1\]\), look 2 end still \(looks\[1\]\)/)
     expect(g.planLine).toMatch(/not described in words/)
     expect(g.startFrameObjects).toEqual(['remote'])
+  })
+  // Metro rerun (2026-10-16): "missing: Wired EarPods in Photo 1" (photo 2's earbuds were checked
+  // against photo 1) and "Look 3 should keep its outfit" (look 3 is part 2 of looks[1]).
+  it('objects only in some photos are checked per photo; each photo names its outfit look', async () => {
+    const b = breakdown({ overview: { ...breakdown().overview, props: [{ prop: 'remote', where: 'left', when: 'all' }, { prop: 'earbuds', where: 'ears', when: '0:06 - 0:10' }] } } as never)
+    const p = await writePlan(b, brand, vi.fn().mockResolvedValue({ lines: [] }))
+    const look = { ...p.looks[1], guideStartS: 4.5, guideEndS: 9 }
+    const g = boardGateInput(p, [{ look, kind: 'start' }, { look: { ...look, n: 3 }, kind: 'end' }], 'X')
+    expect(g.startFrameObjects).toEqual(['remote'])
+    expect((g.look.photos as Array<{ objects: string[] }>).map((x) => x.objects)).toEqual([['remote'], ['remote', 'earbuds']])
+    expect(g.planLine).toMatch(/look 3 end still \(looks\[1\]\)/)
   })
 })
 

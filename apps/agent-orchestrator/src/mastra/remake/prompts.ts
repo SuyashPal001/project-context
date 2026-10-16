@@ -22,7 +22,8 @@ function whenRange(when: string): [number, number] | null {
   const t = [...when.matchAll(/(\d+):(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*s\b/g)].map((m) => (m[3] ? Number(m[3]) : Number(m[1]) * 60 + Number(m[2])))
   return t.length >= 2 ? [Math.min(t[0], t[1]), Math.max(t[0], t[1])] : null
 }
-const SLACK_S = 0.5
+// The watch model's times are rough; a little slack, but not across a cut (metro: earbuds from 3.7s drew into the 3.3s still).
+const SLACK_S = 0.25
 /** Props in view at time t (metro A/B: every prop went into every still, so a phone from shot 1
  *  appeared in the selfie shots and earbuds from the selfie shots appeared in shot 1). */
 export function propsAt(plan: RemakePlan, t: number): string[] {
