@@ -60,7 +60,7 @@ Table `creative_brand`, one row per workspace (unique index on `tenant_id`).
 
 | Group | Column | Type | Notes |
 |---|---|---|---|
-| Basics | `name` | text, not null | |
+| Basics | `name` | text | Empty until filled; an import creates the row first. |
 | | `one_liner` | text | One plain sentence saying what the brand makes. |
 | | `audience` | text | |
 | | `region` | text, default `IN` | One of `IN`, `US`, `UK`, `AE`, `SG`, `GLOBAL`, validated in Zod (not a DB enum, so adding one is a code change). |
@@ -79,6 +79,7 @@ Table `creative_brand`, one row per workspace (unique index on `tenant_id`).
 | | `source_value` | text | The URL or handle. |
 | | `import_status` | text, default `idle` | `idle`, `importing`, `done`, `failed`. |
 | | `import_error` | text | Plain reason, for logs; never shown raw. |
+| | `import_started_at` | timestamptz | For the 3-minute stuck-run rule. |
 | | `imported_at` | timestamptz | |
 | | `edited_by_user` | text[] | Column names the user has changed by hand or through `update_brand`. |
 | | `created_by`, `created_at`, `updated_at` | | As in `creative_products`. |
@@ -105,8 +106,8 @@ the orchestrator, and the Mastra workflow does the model work.
 
 ### Starting an import
 
-`POST /brand/import` on the API Lambda, body
-`{ source: 'website' | 'instagram', value: string }`.
+`POST /brand/import` on the API Lambda, body `{ value: string }`; the API
+detects website vs Instagram from the value.
 
 1. Validate: a website must be `https://`; an Instagram value must parse to a
    handle (`@name`, `name`, or an `instagram.com/name` URL).
@@ -252,8 +253,9 @@ CLAUDE.md, every query filtered by `tenantId`.
   `edited_by_user`.
 - `POST /brand/import`: as above.
 - `POST /internal/brand/import-result`: internal, as above.
-- `POST /brand/images`: set or clear logo, favicon or mascot from an uploaded
-  `files` id.
+- Logo, favicon and mascot are set or cleared through `PATCH /brand`
+  (`logoFileId`, `faviconFileId`, `mascotFileId`), checked to belong to the
+  tenant.
 
 ## Page
 
