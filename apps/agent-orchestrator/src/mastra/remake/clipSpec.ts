@@ -102,7 +102,7 @@ export function clipGateInput(plan: RemakePlan, look: RemakeLook, prompt: string
   const mine = plan.lines.filter((l) => l.ref.startsWith(`looks[${i}].`) || l.ref.startsWith('props['))
   return {
     prompt,
-    planLine: [`clip of look ${look.n}`, ...(personIn(look) ? [CAST_BY_IMAGE] : []), ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}`)].join('; '),
+    planLine: [`clip of look ${look.n}`, ...(personIn(look) ? [CAST_BY_IMAGE] : []), ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}${/\.(outfit|styling)$/.test(l.ref) ? ' (given by the start image, not described in words)' : ''}`)].join('; '),
     look: {
       expression: shown(plan, `looks[${i}].expression`, look.expression) ?? undefined, start_pose: look.startPose, end_pose: look.endPose,
       body_at_start: look.start ? personWords(look.start, null).join(', ') : undefined,

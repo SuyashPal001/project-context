@@ -120,3 +120,14 @@ describe('the clip prompt check reads what the clip will be', () => {
     expect((t.look.moves as string[]).join(' ')).toMatch(/at 2\.3s: legs/)
   })
 })
+
+// Fan reel clips (2026-10-16): look 1 was blocked "missing: looks[0].outfit: swap to …" though a clip
+// never describes the outfit: its start (and end) image shows it.
+describe('the clip check knows the look comes from the images', () => {
+  it('outfit lines say they are given by the start image', async () => {
+    const p = await plan()
+    p.lines.push({ ref: 'looks[0].outfit', action: 'swap', to: 'emerald anarkali' })
+    const line = clipGateInput(p, p.looks[0], 'x').planLine
+    expect(line).toMatch(/looks\[0\]\.outfit: swap to emerald anarkali \(given by the start image, not described in words\)/)
+  })
+})
