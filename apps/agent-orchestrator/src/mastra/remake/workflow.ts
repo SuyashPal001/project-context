@@ -79,8 +79,12 @@ const castStep = createStep({
     const plan = inputData.plan as RemakePlan
     if (!plan.needsCasting) return { ...inputData, portraitFileId: null, ledger: [] }
     if (inputData.castFileId) {
-      const chars = await characterPortraits(plan, a, remakeDeps(), execFor(requestContext as Rc, runId, a.idToken))
-      return { ...inputData, portraitFileId: inputData.castFileId, characterFileIds: chars.fileIds, ledger: chars.ledger }
+      // A person the customer brings gets the same reference sheet as a picked one (fan reel 2026-10-16:
+      // without it their face held less well across stills and clips).
+      const exec = execFor(requestContext as Rc, runId, a.idToken)
+      const ref = await referenceSheet(inputData.castFileId, a, remakeDeps(), exec(1))
+      const chars = await characterPortraits(plan, a, remakeDeps(), exec)
+      return { ...inputData, portraitFileId: inputData.castFileId, referenceSheetFileId: ref.fileId, characterFileIds: chars.fileIds, ledger: [...ref.ledger, ...chars.ledger] }
     }
     const deps = remakeDeps()
     const sheetId = (suspendData?.sheetFileId as string | null | undefined) ?? null

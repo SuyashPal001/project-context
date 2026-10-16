@@ -8,12 +8,12 @@ const plan = () => writePlan(breakdown(), { name: 'B', product: 'p' }, vi.fn().m
 describe('estimateCost', () => {
   it('counts the casting sheet plus one still per look plus end stills; max allows one retry per still', async () => {
     const e = estimateCost(await plan(), { castProvided: false, microEach: 1_000_000n })
-    expect(e.images).toBe(4) // sheet + a start + b start + b end
-    expect(e.firstPassMicro).toBe('4000000')
-    expect(e.maxMicro).toBe('7000000') // sheet once + 3 stills twice
+    expect(e.images).toBe(5) // casting sheet + reference sheet + a start + b start + b end
+    expect(e.firstPassMicro).toBe('5000000')
+    expect(e.maxMicro).toBe('8000000') // both sheets once + 3 stills twice
   })
-  it('skips the sheet when the user brings their own person', async () => {
-    expect(estimateCost(await plan(), { castProvided: true, microEach: 1_000_000n }).images).toBe(3)
+  it('skips the casting sheet, not the reference sheet, when the user brings their own person', async () => {
+    expect(estimateCost(await plan(), { castProvided: true, microEach: 1_000_000n }).images).toBe(4)
   })
   it('says unknown, never zero, when the rate is missing', async () => {
     expect(estimateCost(await plan(), { castProvided: false, microEach: null }).firstPassMicro).toBeNull()

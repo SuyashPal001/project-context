@@ -37,7 +37,7 @@ afterEach(() => { setRemakeDeps(null); setRemakeStorageForTests(null) })
 describe('remake_video', () => {
   it('start returns the plan review with a cost estimate in credits', async () => {
     const r = await exec({ action: 'start', url: 'instagram.com/p/x', brand })
-    expect(r).toMatchObject({ success: true, stage: 'plan_review', estimate: { images: 4, firstPassCredits: '4.00', maxCredits: '7.00' } })
+    expect(r).toMatchObject({ success: true, stage: 'plan_review', estimate: { images: 5, firstPassCredits: '5.00', maxCredits: '8.00' } })
     expect(r.runId).toBeTruthy()
   })
   it('start refuses a watch-only breakdown in plain words and creates no run', async () => {

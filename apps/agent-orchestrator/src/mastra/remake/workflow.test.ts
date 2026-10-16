@@ -56,7 +56,7 @@ describe('video-remake workflow', () => {
     const s = (r as unknown as Steps).steps.plan.suspendPayload!
     expect(s.stage).toBe('plan_review')
     expect((s.plan as { lines: Array<{ ref: string; to?: string }> }).lines.find((l) => l.ref === 'looks[0].outfit')?.to).toBe('yellow Bubbli tee')
-    expect(s.estimate).toMatchObject({ images: 4, firstPassMicro: '4000000' })
+    expect(s.estimate).toMatchObject({ images: 5, firstPassMicro: '5000000' })
     expect(gen).not.toHaveBeenCalled()
   })
   it('an edit re-suspends with the edited plan; approve moves to the casting sheet', async () => {
