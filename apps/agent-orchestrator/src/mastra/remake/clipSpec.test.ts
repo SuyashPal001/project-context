@@ -58,9 +58,9 @@ describe('clipPrompt', () => {
     const p = await plan()
     expect(clipPrompt(p, p.looks[0], brand, 'omni')).toMatch(/The image is the exact first frame/)
   })
-  it('the gate gets the moments inside the look', async () => {
+  it('the gate gets no reference moments: the stills and measured moves carry them (fan reel 2026-10-16: required moments blocked every clip)', async () => {
     const p = await plan()
-    expect(clipGateInput(p, p.looks[1], 'X').keyMoments).toEqual(['stands up'])
+    expect(clipGateInput(p, p.looks[1], 'X').keyMoments).toEqual([])
     expect(clipGateInput(p, p.looks[0], 'X').keyMoments).toEqual([])
   })
 })
@@ -99,5 +99,24 @@ describe('clips keep real speed (tools/clipTiming)', () => {
     expect(s).toMatch(/Finish every move by 5\.9s, then hold that last pose/)
     const o = clipPrompt(p, p.looks[1], brand, 'omni', 7, false, { mode: 'trim', startS: 0.4 })
     expect(o).toMatch(/at 2\.3s: legs/)
+  })
+})
+
+// Fan reel on the real workflow (2026-10-16): every clip was blocked before paying. The check demanded the
+// reference's moments (fan blades, text appearing), which a clip never shows (text is dropped, the trick
+// isn't built, the stills carry the look), and read the prompt's retimed move times as wrong.
+describe('the clip prompt check reads what the clip will be', () => {
+  it('no reference moments are required of a clip (like a still)', async () => {
+    const p = await plan()
+    p.reference.moments = [{ t_s: 5, what: 'A fan blade passes across the lens' }, { t_s: 6, what: 'text appears at bottom' }]
+    expect(clipGateInput(p, p.looks[1], 'x').keyMoments).toEqual([])
+  })
+  it('the move times it checks are the prompt\'s own, for the clip\'s length and fit', async () => {
+    const p = await plan()
+    const g = clipGateInput(p, p.looks[1], 'x', 8)
+    expect((g.look.moves as string[]).join(' ')).toMatch(/at 2\.6s: legs/) // 1.9s × 8/5.9, as the prompt says
+    expect(String(g.look.timing)).toMatch(/clip times/)
+    const t = clipGateInput(p, p.looks[1], 'x', 7, { mode: 'trim', startS: 0.4 })
+    expect((t.look.moves as string[]).join(' ')).toMatch(/at 2\.3s: legs/)
   })
 })

@@ -92,7 +92,12 @@ export function clipPrompt(plan: RemakePlan, look: RemakeLook, _brand: Brand, en
   return parts.join(' ')
 }
 
-export function clipGateInput(plan: RemakePlan, look: RemakeLook, prompt: string) {
+/** What the prompt check reads: the same timed moves the prompt states, and no reference moments (a clip
+ *  never describes them: dropped text and unbuilt tricks would block it, and the stills carry the rest). */
+export function clipGateInput(plan: RemakePlan, look: RemakeLook, prompt: string, clipSeconds?: number, fit?: ClipFit) {
+  const len = look.endS - look.startS
+  const trim = fit?.mode === 'trim' ? fit : null
+  const factor = trim ? 1 : clipSeconds && len > 0 ? clipSeconds / len : 1
   const i = refOf(look)
   const mine = plan.lines.filter((l) => l.ref.startsWith(`looks[${i}].`) || l.ref.startsWith('props['))
   return {
@@ -102,9 +107,10 @@ export function clipGateInput(plan: RemakePlan, look: RemakeLook, prompt: string
       expression: shown(plan, `looks[${i}].expression`, look.expression) ?? undefined, start_pose: look.startPose, end_pose: look.endPose,
       body_at_start: look.start ? personWords(look.start, null).join(', ') : undefined,
       body_at_end: look.end ? personWords(look.end, null).join(', ') : undefined,
-      moves: look.moveLines,
+      moves: scaleTimes(look.moveLines, factor, trim?.startS ?? 0),
+      timing: 'move times are clip times: the clip is retimed or trimmed to the look afterwards',
     } as Record<string, unknown> & { expression?: string },
     startFrameObjects: plan.reference.props.flatMap((p, j) => shown(plan, `props[${j}]`, p.prop) ?? []),
-    keyMoments: plan.reference.moments.filter((m) => m.t_s >= look.startS && m.t_s < look.endS).map((m) => m.what),
+    keyMoments: [] as string[],
   }
 }
