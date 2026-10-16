@@ -19,7 +19,8 @@ Rules:
 - emojiPolicy: none, minimal, moderate or expressive, from how its own copy uses emoji.
 - signaturePhrases: short phrases the brand repeats about itself, copied exactly as written. Leave empty if none repeat.
 - ctaExamples: calls to action exactly as the brand writes them (button text, "comment X for the link").
-- voiceNotes: a few short markdown bullets under "## What we say" and "## What we avoid".
+- voiceNotes: one markdown string (not an object) with a few short bullets under "## What we say" and "## What we avoid".
+- name: always give the brand's name as the brand writes it.
 - colors: hex values (#RRGGBB) for primary, secondary, accent, text, background, muted. Prefer the CSS colours and theme colour given; otherwise read them from the logo image. Leave a role as "" when unknown.
 - headlineFont: the first real font family given, else "".
 - Use "" or [] for anything the material does not show.`,
@@ -28,21 +29,39 @@ Rules:
 })
 
 // String enums only: Gemini rejects numeric enums in response schemas.
+// Forgiving on purpose: a missing field or an odd shape must not fail the whole import
+// (the first live run lost a good fill because Gemini omitted `name` and returned
+// voiceNotes as an object of sections). Missing text becomes "", bad enums fall back,
+// and the API's merge already skips empty values.
+const text = z.string().catch('')
+const textList = z.array(z.string()).catch([])
+
+/** {"What we say": ["a","b"], "What we avoid": "c"} → "## What we say\n- a\n- b\n\n## What we avoid\n- c" */
+function notesToMarkdown(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  return Object.entries(value as Record<string, unknown>)
+    .map(([heading, body]) => {
+      const items = (Array.isArray(body) ? body : [body]).filter((b): b is string => typeof b === 'string' && b.trim() !== '')
+      return `## ${heading}\n${items.map((i) => `- ${i}`).join('\n')}`
+    })
+    .join('\n\n')
+}
+
 export const brandFillOutputSchema = z.object({
-  name: z.string(),
-  oneLiner: z.string(),
-  audience: z.string(),
-  region: z.enum(['IN', 'US', 'UK', 'AE', 'SG', 'GLOBAL']),
-  toneWords: z.array(z.string()),
-  emojiPolicy: z.enum(['none', 'minimal', 'moderate', 'expressive']),
-  signaturePhrases: z.array(z.string()),
-  ctaExamples: z.array(z.string()),
-  voiceNotes: z.string(),
+  name: text,
+  oneLiner: text,
+  audience: text,
+  region: z.enum(['IN', 'US', 'UK', 'AE', 'SG', 'GLOBAL']).catch('IN'),
+  toneWords: textList,
+  emojiPolicy: z.enum(['none', 'minimal', 'moderate', 'expressive']).catch('minimal'),
+  signaturePhrases: textList,
+  ctaExamples: textList,
+  voiceNotes: z.preprocess(notesToMarkdown, z.string()).catch(''),
   colors: z.object({
-    primary: z.string(), secondary: z.string(), accent: z.string(),
-    text: z.string(), background: z.string(), muted: z.string(),
-  }),
-  headlineFont: z.string(),
+    primary: text, secondary: text, accent: text,
+    text: text, background: text, muted: text,
+  }).catch({ primary: '', secondary: '', accent: '', text: '', background: '', muted: '' }),
+  headlineFont: text,
 })
 
 export type BrandFillOutput = z.infer<typeof brandFillOutputSchema>

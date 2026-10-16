@@ -86,7 +86,7 @@ const fill = createStep({
       persistCost({ tenantId: inputData.tenantId, agentId: 'brand-fill', workflowId: 'creative-brand', model: FILL_MODEL, inputTokens: usage.inputTokens ?? 0, outputTokens: usage.outputTokens ?? 0 })
     }
     if (!result.object) throw new Error('fill returned no object')
-    return { ...inputData, fields: clampFill(result.object) }
+    return { ...inputData, fields: clampFill(brandFillOutputSchema.parse(result.object)) }
   },
 })
 

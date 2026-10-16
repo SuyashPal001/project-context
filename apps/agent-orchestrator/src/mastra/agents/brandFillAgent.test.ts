@@ -49,3 +49,26 @@ describe('clampFill', () => {
     expect(out.ctaExamples.length).toBe(10)
   })
 })
+
+describe('brandFillOutputSchema', () => {
+  // The shape Gemini actually returned on the first live import (fitnearn, 2026-10-16):
+  // no name, voiceNotes as an object of sections. That failed the whole import.
+  it('accepts a missing name and an object voiceNotes, turning the sections into markdown', async () => {
+    const { brandFillOutputSchema } = await import('./brandFillAgent.js')
+    const parsed = brandFillOutputSchema.parse({
+      oneLiner: 'Fitness classes', audience: 'Working adults', region: 'IN', toneWords: ['upbeat'],
+      emojiPolicy: 'minimal', signaturePhrases: [], ctaExamples: ['Book now'],
+      voiceNotes: { 'What we say': ['Real results', 'No shortcuts'], 'What we avoid': 'Crash diets' },
+      colors: { primary: '#00A651' }, headlineFont: 'Poppins',
+    })
+    expect(parsed.name).toBe('')
+    expect(parsed.voiceNotes).toBe('## What we say\n- Real results\n- No shortcuts\n\n## What we avoid\n- Crash diets')
+    expect(parsed.colors).toMatchObject({ primary: '#00A651', secondary: '' })
+  })
+
+  it('falls back on unknown enums and missing lists instead of failing', async () => {
+    const { brandFillOutputSchema } = await import('./brandFillAgent.js')
+    const parsed = brandFillOutputSchema.parse({ name: 'X', region: 'India', emojiPolicy: 'lots' })
+    expect(parsed).toMatchObject({ region: 'IN', emojiPolicy: 'minimal', toneWords: [], ctaExamples: [], oneLiner: '' })
+  })
+})
