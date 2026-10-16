@@ -48,7 +48,7 @@ function priceFromProduct(candidate: unknown): string | null {
   return priceFromOffer(offer);
 }
 
-function jsonLdCandidates($: ReturnType<typeof load>): unknown[] {
+export function jsonLdCandidates($: ReturnType<typeof load>): unknown[] {
   const out: unknown[] = [];
   for (const script of $('script[type="application/ld+json"]').toArray()) {
     let parsed: unknown;
