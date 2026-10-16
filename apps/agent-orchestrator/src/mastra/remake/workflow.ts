@@ -223,6 +223,8 @@ const stillsStep = createStep({
     // The anchor: the first kept person still, passed to the rest (same person, same light). Not when a
     // product photo needs the third reference slot (the product must show exactly).
     let anchor: string | null = null
+    // The anchor's own pose guide: later stills match its room only where the original's frames do too.
+    let anchorGuide: string | null = null
     // Once credits run out, the remaining stills stop before any guide, gate or call (M3).
     let outOfCredits = false
     type Made = { result: StillResult; ledger: LedgerEntry[] }
@@ -253,7 +255,8 @@ const stillsStep = createStep({
       const chars = person ? charsIn(look, kind) : []
       const { references, images } = withCharacters([...(person && portrait ? [portrait.fileId] : []), g, ...(product ? [product] : person && anchor ? [anchor] : [])], chars)
       const prompt = stillPrompt(plan, look, kind, brand, !!product, images)
-      return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, gate: stillGateInput(plan, look, kind, prompt, images), ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}) }
+      const room = person && anchor && anchorGuide && !product ? { room: { fileId: anchor, guides: [anchorGuide, g] as [string, string] } } : {}
+      return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, gate: stillGateInput(plan, look, kind, prompt, images), ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}), ...room }
     }
     const single = async (look: RemakeLook, kind: 'start' | 'end', firstTry?: { fileId: string; creditsMicro: string }): Promise<Made> => {
       // Never paid: a look whose people were not measured (spec §8a).
@@ -337,7 +340,11 @@ const stillsStep = createStep({
       if (first >= 0) {
         const firstDone = await runUnit(units[first])
         units[first].forEach((it, k) => byItem.set(it, firstDone[k]))
-        if (!product) anchor = firstDone.map((d, k) => (units[first][k].person ? usableStill(d.result) : null)).find(Boolean) ?? null
+        if (!product) {
+          const k = firstDone.findIndex((d, j) => units[first][j].person && usableStill(d.result))
+          anchor = k >= 0 ? usableStill(firstDone[k].result) : null
+          anchorGuide = k >= 0 ? guides.get(`${units[first][k].look.n}-${units[first][k].kind}`)?.id ?? null : null
+        }
       }
       const rest = units.filter((_, i) => i !== first)
       for (let i = 0; i < rest.length; i += MAX_PARALLEL) {

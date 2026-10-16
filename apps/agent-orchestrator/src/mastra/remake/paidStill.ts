@@ -19,7 +19,9 @@ export interface StillCtx {
   /** True once the run has run out of credits: checked right before each paid call. */
   outOfCredits?: () => boolean
 }
-export interface StillJob { look: RemakeLook; kind: 'start' | 'end'; prompt: string; references: string[]; aspectRatio: '9:16' | '16:9' | '1:1'; gate: ReturnType<typeof stillGateInput>; /** people expected in shot when other characters are in view (the pose reading misses people behind glass) */ people?: number }
+export interface StillJob { look: RemakeLook; kind: 'start' | 'end'; prompt: string; references: string[]; aspectRatio: '9:16' | '16:9' | '1:1'; gate: ReturnType<typeof stillGateInput>; /** people expected in shot when other characters are in view (the pose reading misses people behind glass) */ people?: number
+  /** The first kept person still, whose room this still must match when the original's frames for both (guides: the first still's, this one's) show the same place. */
+  room?: { fileId: string; guides: [string, string] } }
 
 export const slotFor = (n: number, kind: 'start' | 'end', attempt: number): number => n * 4 + (kind === 'end' ? 2 : 0) + attempt
 
@@ -37,13 +39,27 @@ const FIXES: Array<[RegExp, string]> = [
   [/appears where the reference has none/i, 'no person in this image'],
   [/looks like the lead/i, 'no one else looks like the person in the first image'],
   [/back to the camera|facing the camera|side-on/i, 'the person faces the camera exactly as in the second image'],
+  [/room differs/i, 'the setting must match ROOM_IMAGE: the same floor, rug, furniture, walls and light'],
 ]
 const NEEDS_FRESH = /back to the camera|facing the camera|side-on|no person found|appears where the reference has none/i
-export const editPrompt = (fix: string): string =>
-  `Edit the first image. Change only this: ${fix}. Keep everything else exactly: the pose, framing, setting, outfit, objects and light. No text or logos.`
+export const editPrompt = (fix: string, keepSetting = true): string =>
+  `Edit the first image. Change only this: ${fix}. Keep everything else exactly: the pose, framing, ${keepSetting ? 'setting, ' : ''}outfit, objects${keepSetting ? ' and light' : ''}. No text or logos.`
 
 export function fixLine(reasons: string[]): string {
   return [...new Set(reasons.map((r) => FIXES.find(([re]) => re.test(r))?.[1] ?? r))].join('; ')
+}
+
+// Same room as the first kept still (tools/sameSetting), only when the original's own frames for both
+// show the same place: a reel that changes place is never forced into one room. Unknown is a warning.
+async function roomCheck(still: Img, room: NonNullable<StillJob['room']>, ctx: StillCtx, deps: RemakeDeps): Promise<{ hard?: string; warning?: string } | null> {
+  const ask = deps.ask(ctx.tenantId)
+  const [g1, g2] = await Promise.all(room.guides.map((g) => deps.fetchImage(g, ctx.idToken)))
+  const original = await deps.sameSetting(ask, g1, g2)
+  if (original.same !== true) return null
+  const r = await deps.sameSetting(ask, still, await deps.fetchImage(room.fileId, ctx.idToken))
+  if (r.same === false) return { hard: `the room differs from the first look${r.differs ? `: ${r.differs}` : ''}` }
+  if (r.same === null) return { warning: 'the room could not be compared with the first look' }
+  return null
 }
 
 async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: RemakeDeps): Promise<StillCheck> {
@@ -56,6 +72,7 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
       deps.stillChecks(deps.ask(ctx.tenantId), still, { lead: ctx.portrait?.img, leadInShot: person && !away, ...(person && away ? { faceMayHide: true } : {}) }),
       deps.localFile(fileId, ctx.idToken, ctx.scopeId).then((p) => deps.poseImage(p)),
     ])
+    const room = job.room ? await roomCheck(still, job.room, ctx, deps) : null
     const body = job.kind === 'start' ? job.look.start : job.look.end
     let p = comparePose(body, job.people ?? job.look.people, pose)
     // A tighter original (selfie, close-up): crop the still around the face, free, and keep the crop
@@ -71,8 +88,8 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
         console.error('[remake] crop to the original framing failed:', err instanceof Error ? err.message : String(err))
       }
     }
-    const hard = [...looks.reasons, ...(p.status === 'fail' && p.hard ? [p.reason] : [])]
-    const warnings = [...(looks.warnings ?? []), ...(p.status === 'fail' && !p.hard ? [p.reason] : [])]
+    const hard = [...looks.reasons, ...(p.status === 'fail' && p.hard ? [p.reason] : []), ...(room?.hard ? [room.hard] : [])]
+    const warnings = [...(looks.warnings ?? []), ...(p.status === 'fail' && !p.hard ? [p.reason] : []), ...(room?.warning ? [room.warning] : [])]
     if (hard.length) return { status: 'fail', hard, warnings, reason: hard.join('; ') }
     if (p.status === 'unknown' && !warnings.length) return { status: 'unknown', hard, warnings, reason: p.reason, fileId: cropped }
     return { status: 'pass', hard, warnings, reason: warnings.join('; ') || 'passed every check', fileId: cropped }
@@ -153,10 +170,12 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps, 
       retryNote = 'retry: the prompt ends with a "Fix:" sentence saying what the previous try got wrong, in plan words (not new content)'
     } else {
       const identity = personIn(job.look) && ctx.portrait ? [job.references[0]] : []
-      const fix = fixLine(c.hard).replace(/the first image/g, 'the second image')
-      prompt = editPrompt(fix)
-      references = [g.fileId, ...identity]
-      editGate = `edit of a still that was already checked against the approved plan (the first image); the only change asked for: ${fix}; everything else is kept from the first image${identity.length ? '; the second image is the chosen person (not described in words)' : ''}`
+      // A different room: the first kept still goes in as the room to copy, after the person.
+      const roomRef = job.room && c.hard.some((r) => /room differs/i.test(r)) ? [job.room.fileId] : []
+      const fix = fixLine(c.hard).replace(/the first image/g, 'the second image').replace(/ROOM_IMAGE/g, `image ${2 + identity.length}`)
+      prompt = editPrompt(fix, !roomRef.length)
+      references = [g.fileId, ...identity, ...roomRef]
+      editGate = `edit of a still that was already checked against the approved plan (the first image); the only change asked for: ${fix}; everything else is kept from the first image${identity.length ? '; the second image is the chosen person (not described in words)' : ''}${roomRef.length ? `; image ${2 + identity.length} is the first look's still, given only for its room` : ''}`
     }
   }
   return withTries({ result: { ...base, fileId: last!.fileId, status: 'failed', reasons: last!.reasons }, ledger })

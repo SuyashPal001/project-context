@@ -10,6 +10,7 @@ import { generateImageItem, type ImageItemInput } from '../tools/generateImage.j
 import type { MediaExecContext } from '../tools/batchRunner.js'
 import { gatewayAsk, sampleFrames, type AskFn, type Img } from '../tools/tvcChecks.js'
 import { remakeStillChecks } from './stillChecks.js'
+import { sameSetting } from '../tools/sameSetting.js'
 import { fetchBase64 } from '../tools/checkClip.js'
 import { fetchPresignedUrl, downloadToSessionCache } from '../tools/mediaCache.js'
 import { uploadFileWithKey, deleteFile, generatedFileKey } from '../../persistence.js'
@@ -45,6 +46,8 @@ export interface RemakeDeps {
   cutBoard: (fileId: string, n: number, aspectRatio: '9:16' | '16:9' | '1:1', ctx: { idToken: string; scopeId: string; tenantId: string; runId: string; conversationId?: string }) => Promise<string[] | null>
   promptGate: (input: Omit<ReturnType<typeof stillGateInput>, 'look'> & { look: Record<string, unknown>; tenantId: string }) => Promise<CheckResult>
   stillChecks: (ask: AskFn, still: Img, opts: { lead?: Img; leadInShot?: boolean; faceMayHide?: boolean }) => Promise<{ passed: boolean; reasons: string[]; warnings?: string[] }>
+  /** Same place? (tools/sameSetting) — keeps later stills in the first still's room. */
+  sameSetting: typeof sameSetting
   ffmpeg: (args: string[]) => Promise<void>
   readFile: (path: string) => Buffer
   renderPreview: (job: PreviewJob) => Promise<string>
@@ -105,6 +108,7 @@ const real: RemakeDeps = {
   },
   promptGate: ({ tenantId, ...input }) => runGate(promptCheckScorer, 'prompt', { ...input, tenantId }, []),
   stillChecks: (ask, still, opts) => remakeStillChecks(ask, still, opts),
+  sameSetting: (ask, a, b) => sameSetting(ask, a, b),
   ffmpeg: async (args) => { await execFile('ffmpeg', ['-y', '-v', 'error', ...args], { timeout: 120_000 }) },
   readFile: (path) => readFileSync(path),
   renderPreview: (job) => renderPreview(job),
