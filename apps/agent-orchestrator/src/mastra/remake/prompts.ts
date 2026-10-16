@@ -34,7 +34,19 @@ export function propsAt(plan: RemakePlan, t: number): string[] {
     return shown(plan, `props[${i}]`, p.prop) ?? []
   })
 }
-const stillTime = (look: RemakeLook, kind: 'start' | 'end'): number => (kind === 'start' ? look.guideStartS : look.guideEndS)
+/** Other characters on screen at time t that the plan casts as new people (a dropped one is left out). */
+export function charactersAt(plan: RemakePlan, t: number): Array<{ i: number; who: string; to: string }> {
+  return (plan.reference.characters ?? []).flatMap((c, i) => {
+    const l = lineOf(plan, `characters[${i}]`)
+    if (!l || l.action !== 'swap' || !l.to) return []
+    const r = whenRange(c.when)
+    if (r && (t < r[0] - SLACK_S || t > r[1] + SLACK_S)) return []
+    return [{ i, who: c.who, to: l.to }]
+  })
+}
+/** Image number of each character's portrait among a still's references (character index -> image n). */
+export type CharacterImages = Map<number, number>
+export const stillTime = (look: RemakeLook, kind: 'start' | 'end'): number => (kind === 'start' ? look.guideStartS : look.guideEndS)
 // An end still with no end pose of its own (the first part of a split shot) says no pose: repeating the
 // start pose asked for the same picture twice (metro A/B: both selfie stills came out identical).
 const poseOf = (look: RemakeLook, kind: 'start' | 'end'): string => (kind === 'start' ? look.startPose : look.endPose)
@@ -57,7 +69,7 @@ export const REFERENCE_SHEET_PROMPT = "A professional CHARACTER REFERENCE SHEET 
 
 /** The words of one still, shared by a single still and a photo of a board: the person lines (pose,
  *  body, others, outfit, expression), the setting, the props in view and what not to draw. */
-export function stillBits(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end') {
+export function stillBits(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', characters?: CharacterImages) {
   const i = refOf(look)
   const body = kind === 'start' ? look.start : look.end
   const pose = poseOf(look, kind)
@@ -70,6 +82,10 @@ export function stillBits(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'e
   if (look.people && look.people > 1) person.push(`${look.people - 1} other people are in the shot as in the guide, each a different new person.`)
   if (outfit) person.push(`Outfit: ${outfit}.`)
   if (expression) person.push(`Expression: ${expression}.`)
+  for (const c of charactersAt(plan, stillTime(look, kind))) {
+    const n = characters?.get(c.i)
+    if (n) person.push(`The ${c.who} is the person in image ${n}: same face and hair; not the person in the first image.`)
+  }
   const setting = shown(plan, 'setting', plan.reference.setting)
   return {
     person,
@@ -81,9 +97,9 @@ export function stillBits(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'e
   }
 }
 
-export function stillPrompt(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', brand: Brand, hasProductPhoto: boolean): string {
+export function stillPrompt(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', brand: Brand, hasProductPhoto: boolean, characters?: CharacterImages): string {
   const person = personIn(look)
-  const b = stillBits(plan, look, kind)
+  const b = stillBits(plan, look, kind, characters)
   const parts: string[] = []
   if (person) {
     parts.push('The person is the person in the first image: same face, hair and body.')
@@ -106,14 +122,20 @@ export function stillPrompt(plan: RemakePlan, look: RemakeLook, kind: 'start' | 
 /** The person's identity is carried by the cast image, never by words in the prompt, so the
  *  cast description must not be a line the prompt is checked against (live run 08466630:
  *  "missing: A charismatic man…" blocked a correct still). */
+/** One portrait of another character, made after the lead is picked (gated like every paid image). */
+export const characterPortraitPrompt = (to: string): string =>
+  `One photo of one new person who fits: ${to}. Head and shoulders, facing the camera, neutral expression, plain light-grey background, soft natural light, photoreal. Not any real or famous person. No text.`
+
 export const CAST_BY_IMAGE = 'the person: a new person, given by the first reference image (not described in words)'
 
-export function stillGateInput(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', prompt: string) {
+export function stillGateInput(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', prompt: string, characters?: CharacterImages) {
   const i = refOf(look)
   const mine = plan.lines.filter((l) => l.ref.startsWith(`looks[${i}].`) || l.ref === 'setting' || l.ref.startsWith('props['))
   const trickRef = (ref: string) => { const m = /^props\[(\d+)\]$/.exec(ref); return !!m && !!plan.reference.props[Number(m[1])]?.trick }
   // A trick object is added over the finished video, so a still that leaves it out is right (fan rerun: "missing: props[1]").
-  const planLine = [`${kind} still of look ${look.n}`, ...(personIn(look) ? [CAST_BY_IMAGE] : []), ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}${l.why ? ` (${l.why})` : ''}${trickRef(l.ref) ? ' (the trick: added over the finished video, never drawn in a still)' : ''}`)].join('; ')
+  // A character in view is given by their portrait, like the lead: never a line the prompt is checked against in words.
+  const others = charactersAt(plan, stillTime(look, kind)).filter((c) => characters?.get(c.i)).map((c) => `characters[${c.i}]: swap to ${c.to} (given by image ${characters!.get(c.i)}, not described in words)`)
+  const planLine = [`${kind} still of look ${look.n}`, ...(personIn(look) ? [CAST_BY_IMAGE] : []), ...others, ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}${l.why ? ` (${l.why})` : ''}${trickRef(l.ref) ? ' (the trick: added over the finished video, never drawn in a still)' : ''}`)].join('; ')
   // Only THIS still's body (start or end): the look-level "Measured:" line describes the end and
   // made a correct start-still prompt read as a contradiction (live run 08466630).
   const body = kind === 'start' ? look.start : look.end

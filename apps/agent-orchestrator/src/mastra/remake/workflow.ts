@@ -11,7 +11,7 @@ import { remakeDeps, type RemakeDeps } from './deps.js'
 import { runToken } from './runTokens.js'
 import { writePlan, applyEdits } from './plan.js'
 import { estimateCost, estimateClipsCost, ledgerSummary } from './cost.js'
-import { castSheetPrompt, stillPrompt, stillGateInput, usesProduct, REFERENCE_SHEET_PROMPT, CAST_BY_IMAGE } from './prompts.js'
+import { castSheetPrompt, stillPrompt, stillGateInput, usesProduct, REFERENCE_SHEET_PROMPT, CAST_BY_IMAGE, charactersAt, characterPortraitPrompt, stillTime, type CharacterImages } from './prompts.js'
 import { makeStill, type StillCtx, type StillJob } from './paidStill.js'
 import { boardUnits, boardPrompt, boardGateInput, boardAspect, BOARD_SLOT } from './board.js'
 import { previewSegments, previewSize, usableStill } from './preview.js'
@@ -66,7 +66,7 @@ const planStep = createStep({
 })
 
 // the casting sheet's charge rides along so the cost meter counts it
-const casted = planned.extend({ portraitFileId: z.string().nullable(), referenceSheetFileId: z.string().nullable().optional(), ledger: z.array(any) })
+const casted = planned.extend({ portraitFileId: z.string().nullable(), referenceSheetFileId: z.string().nullable().optional(), characterFileIds: z.record(z.string(), z.string()).optional(), ledger: z.array(any) })
 const castStep = createStep({
   id: 'cast', inputSchema: planned, outputSchema: casted,
   // sheetFileId null = no sheet yet (it was blocked or could not be made); `error` is plain words.
@@ -77,7 +77,10 @@ const castStep = createStep({
     const a = access(requestContext as Rc, inputData.tenantId, runId)
     const plan = inputData.plan as RemakePlan
     if (!plan.needsCasting) return { ...inputData, portraitFileId: null, ledger: [] }
-    if (inputData.castFileId) return { ...inputData, portraitFileId: inputData.castFileId, ledger: [] }
+    if (inputData.castFileId) {
+      const chars = await characterPortraits(plan, a, remakeDeps(), execFor(requestContext as Rc, runId, a.idToken))
+      return { ...inputData, portraitFileId: inputData.castFileId, characterFileIds: chars.fileIds, ledger: chars.ledger }
+    }
     const deps = remakeDeps()
     const sheetId = (suspendData?.sheetFileId as string | null | undefined) ?? null
     const spentSoFar = (suspendData?.sheetCreditsMicro as string | undefined) ?? '0'
@@ -108,7 +111,8 @@ const castStep = createStep({
       if (!id) throw new Error('upload returned no file')
       const sheet: LedgerEntry = { item: 'casting sheet', attempt: 0, creditsMicro: spentSoFar, outcome: 'kept' }
       const ref = await referenceSheet(id, a, deps, execFor(requestContext as Rc, runId, a.idToken)(1))
-      return { ...inputData, portraitFileId: id, referenceSheetFileId: ref.fileId, ledger: [sheet, ...ref.ledger] }
+      const chars = await characterPortraits(plan, a, deps, execFor(requestContext as Rc, runId, a.idToken))
+      return { ...inputData, portraitFileId: id, referenceSheetFileId: ref.fileId, characterFileIds: chars.fileIds, ledger: [sheet, ...ref.ledger, ...chars.ledger] }
     } catch (err) {
       console.error('[remake] saving the chosen person failed:', err instanceof Error ? err.message : String(err))
       return await suspend({ stage: 'cast_pick', sheetFileId: sheetId, sheetCreditsMicro: spentSoFar, error: 'the chosen person could not be saved; please pick again' })
@@ -117,6 +121,39 @@ const castStep = createStep({
     }
   },
 })
+
+// One portrait per other character the plan casts (the girl in the metro reel's train window was drawn
+// with the lead's face). Slots 2-3, so at most two; gated like every paid image; one that can't be made
+// only leaves that character uncast (their stills go on without the portrait).
+const MAX_CHARACTERS = 2
+async function characterPortraits(plan: RemakePlan, a: { tenantId: string }, deps: RemakeDeps, exec: ReturnType<typeof execFor>): Promise<{ fileIds: Record<string, string>; ledger: LedgerEntry[] }> {
+  const fileIds: Record<string, string> = {}
+  const ledger: LedgerEntry[] = []
+  const cast = (plan.reference.characters ?? []).flatMap((c, i) => {
+    const l = plan.lines.find((x) => x.ref === `characters[${i}]`)
+    return l?.action === 'swap' && l.to ? [{ i, who: c.who, to: l.to }] : []
+  }).slice(0, MAX_CHARACTERS)
+  await Promise.all(cast.map(async (c, k) => {
+    const item = `portrait of the ${c.who}`
+    try {
+      const prompt = characterPortraitPrompt(c.to)
+      const gate = await deps.promptGate({ prompt, planLine: `character portrait; characters[${c.i}]: swap to ${c.to}`, look: {}, startFrameObjects: [], keyMoments: [], tenantId: a.tenantId })
+      if (gate.status !== 'pass') {
+        console.error(`[remake] ${item} not checked/passed:`, gate.status, gate.reason)
+        ledger.push({ item, attempt: 0, creditsMicro: '0', outcome: 'blocked' })
+        return
+      }
+      const slot = 2 + k
+      const g = await deps.generateStill({ prompt, aspectRatio: '3:4', engine: 'gemini', skipAvatarExpansion: true, title: `Remake character ${k + 1}` }, exec(slot), slot)
+      if (g.fileId) fileIds[String(c.i)] = g.fileId
+      else console.error(`[remake] ${item} not made:`, g.refusalReason ?? (g.insufficientCredits ? 'credits' : 'unknown'))
+      ledger.push({ item, attempt: 0, creditsMicro: g.creditsUsedMicro ?? '0', outcome: g.fileId ? 'kept' : 'failed' })
+    } catch (err) {
+      console.error(`[remake] ${item} failed:`, err instanceof Error ? err.message : String(err))
+    }
+  }))
+  return { fileIds, ledger }
+}
 
 // The chosen person's reference sheet (the TVC continuity bible, minus costume) leads every still and is the
 // face check's reference (face consistency is hard). Gated like every paid call; a sheet that can't be
@@ -193,11 +230,21 @@ const stillsStep = createStep({
       }
       return guides.get(key)!
     }
+    // Other characters in view: their portraits go after the still's own references, named by image number.
+    const charIds = (inputData.characterFileIds ?? {}) as Record<string, string>
+    const charsIn = (look: RemakeLook, kind: 'start' | 'end') => charactersAt(plan, stillTime(look, kind)).filter((c) => charIds[String(c.i)])
+    const withCharacters = (refs: string[], chars: Array<{ i: number }>): { references: string[]; images: CharacterImages } => {
+      const images: CharacterImages = new Map()
+      const references = [...refs]
+      for (const c of chars) { references.push(charIds[String(c.i)]); images.set(c.i, references.length) }
+      return { references, images }
+    }
     const jobFor = (look: RemakeLook, kind: 'start' | 'end', g: string): StillJob => {
       const person = personIn(look)
-      const references = [...(person && portrait ? [portrait.fileId] : []), g, ...(product ? [product] : person && anchor ? [anchor] : [])]
-      const prompt = stillPrompt(plan, look, kind, brand, !!product)
-      return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, gate: stillGateInput(plan, look, kind, prompt) }
+      const chars = person ? charsIn(look, kind) : []
+      const { references, images } = withCharacters([...(person && portrait ? [portrait.fileId] : []), g, ...(product ? [product] : person && anchor ? [anchor] : [])], chars)
+      const prompt = stillPrompt(plan, look, kind, brand, !!product, images)
+      return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, gate: stillGateInput(plan, look, kind, prompt, images), ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}) }
     }
     const single = async (look: RemakeLook, kind: 'start' | 'end', firstTry?: { fileId: string; creditsMicro: string }): Promise<Made> => {
       // Never paid: a look whose people were not measured (spec §8a).
@@ -233,15 +280,17 @@ const stillsStep = createStep({
         const strip = await deps.upload(a.idToken, generatedFileKey(a.conversationId, `remake ${runId} board ${i} guides`, 'jpg'), `Remake board ${i + 1} guides.jpg`, deps.readFile(stripPath), 'image/jpeg')
         if (!strip) return singles()
         guideIds.push(strip)
-        const prompt = boardPrompt(plan, unit)
-        const gate = await deps.promptGate({ ...boardGateInput(plan, unit, prompt), tenantId: a.tenantId })
+        const chars = [...new Map(unit.flatMap((u) => charsIn(u.look, u.kind)).map((c) => [c.i, c])).values()]
+        const { references, images } = withCharacters([portrait.fileId, strip], chars)
+        const prompt = boardPrompt(plan, unit, images)
+        const gate = await deps.promptGate({ ...boardGateInput(plan, unit, prompt, images), tenantId: a.tenantId })
         if (gate.status !== 'pass') {
           console.error(`[remake] board of ${label} stopped by the prompt check (single stills instead): ${gate.reason}`)
           return singles()
         }
         if (outOfCredits) return singles()
         const slot = BOARD_SLOT + i
-        made = await deps.generateStill({ prompt, aspectRatio: boardAspect(unit.length), imageSize: '2K', referenceFileIds: [portrait.fileId, strip], engine: 'gemini', skipAvatarExpansion: true, title: `Remake board ${i + 1}` }, ctx.exec(slot), slot)
+        made = await deps.generateStill({ prompt, aspectRatio: boardAspect(unit.length), imageSize: '2K', referenceFileIds: references, engine: 'gemini', skipAvatarExpansion: true, title: `Remake board ${i + 1}` }, ctx.exec(slot), slot)
         if (!made.fileId) {
           if (made.insufficientCredits) outOfCredits = true
           else console.error(`[remake] board of ${label} not made: ${made.refusalReason ?? 'unknown'}`)

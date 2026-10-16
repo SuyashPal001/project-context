@@ -29,6 +29,8 @@ export interface RemakeReference {
   setting: string
   props: Array<{ prop: string; where: string; when: string; trick?: boolean }>
   moments: Array<{ t_s: number; what: string }>
+  /** Other people the story needs; each is cast as a new person. Missing on older plans. */
+  characters?: Array<{ who: string; when: string; where: string }>
   musicMood: string
   music: { mood: string; genre: string; instruments: string; hasVocals: boolean | null; songName: string | null }
   videoFileId: string

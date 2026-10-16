@@ -19,7 +19,7 @@ export interface StillCtx {
   /** True once the run has run out of credits: checked right before each paid call. */
   outOfCredits?: () => boolean
 }
-export interface StillJob { look: RemakeLook; kind: 'start' | 'end'; prompt: string; references: string[]; aspectRatio: '9:16' | '16:9' | '1:1'; gate: ReturnType<typeof stillGateInput> }
+export interface StillJob { look: RemakeLook; kind: 'start' | 'end'; prompt: string; references: string[]; aspectRatio: '9:16' | '16:9' | '1:1'; gate: ReturnType<typeof stillGateInput>; /** people expected in shot when other characters are in view (the pose reading misses people behind glass) */ people?: number }
 
 export const slotFor = (n: number, kind: 'start' | 'end', attempt: number): number => n * 4 + (kind === 'end' ? 2 : 0) + attempt
 
@@ -57,7 +57,7 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
       deps.localFile(fileId, ctx.idToken, ctx.scopeId).then((p) => deps.poseImage(p)),
     ])
     const body = job.kind === 'start' ? job.look.start : job.look.end
-    let p = comparePose(body, job.look.people, pose)
+    let p = comparePose(body, job.people ?? job.look.people, pose)
     // A tighter original (selfie, close-up): crop the still around the face, free, and keep the crop
     // when it matches. A crop that can't be made keeps the still with its framing warning.
     let cropped: string | undefined
@@ -65,7 +65,7 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
     if (crop && p.status !== 'pass' && !p.hard && deps.cropStill) {
       try {
         const id = await deps.cropStill(fileId, crop, job.aspectRatio, ctx)
-        const q = comparePose(body, job.look.people, await deps.poseImage(await deps.localFile(id, ctx.idToken, ctx.scopeId)))
+        const q = comparePose(body, job.people ?? job.look.people, await deps.poseImage(await deps.localFile(id, ctx.idToken, ctx.scopeId)))
         if (q.status !== 'fail') { p = q; cropped = id }
       } catch (err) {
         console.error('[remake] crop to the original framing failed:', err instanceof Error ? err.message : String(err))

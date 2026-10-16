@@ -20,6 +20,7 @@ Return ONLY JSON with these keys:
  "story": {"setup": "how it opens", "cause": "what action drives the change", "payoff": "how it ends"},
  "moments": [{"t_s": 0, "what": "every meaningful action or event, including small ones inside a shot (a gesture, a prop used, a switch pressed, text appearing)", "why_it_matters": "its job in the story"}],
  "setting": {"floor": "", "rug": "", "furniture": "", "light": "", "framing": "how much of the frame the subject fills"},
+ "characters": [{"who": "short description of each OTHER person the story needs (someone the main person reacts to, talks to or looks at), not the main person and not passers-by", "when": "m:ss - m:ss on screen", "where": "where in the frame"}],
  "props": [{"prop": "", "where": "", "when": "", "stays_in_place": true, "part_of_trick": "true ONLY when this object IS the trick (it covers the camera, wipes the frame or hides the change), not something that is simply in the scene"}],
  "trick": "the single mechanic that makes this video work, including what covers the camera and from where, if anything",
  "sound": "music / voice / sound effects summary", "voice_lines": "verbatim spoken words or null",
@@ -37,6 +38,8 @@ export interface WatchOverview {
   moments: Array<{ t_s: number; what: string; why_it_matters: string; measured?: boolean }>
   setting: Record<string, string>
   props: Array<{ prop: string; where: string; when: string; stays_in_place?: boolean; part_of_trick?: boolean }>
+  /** Other people the story needs (not the main person, not passers-by). Missing on older breakdowns. */
+  characters?: Array<{ who: string; when: string; where: string }>
   trick: string; sound: string; voice_lines: string | null; on_screen_text: string[]
   music: { mood: string; genre: string; instruments: string; has_vocals: boolean | null; song_name: string | null }
   keep_for_clone: string[]; swap_for_clone: string[]; never_copy: string[]
@@ -57,6 +60,7 @@ export function normalizeOverview(v: Record<string, unknown>): WatchOverview {
     story: { setup: str(story.setup), cause: str(story.cause), payoff: str(story.payoff) },
     moments: arr(v.moments), setting: (v.setting && typeof v.setting === 'object' ? v.setting : {}) as Record<string, string>,
     props: arr(v.props), trick: str(v.trick), sound: str(v.sound),
+    characters: arr<Record<string, unknown>>(v.characters).filter((c) => c && typeof c === 'object' && str(c.who).trim()).map((c) => ({ who: str(c.who), when: str(c.when), where: str(c.where) })),
     music: (() => { const m = (v.music && typeof v.music === 'object' ? v.music : {}) as Record<string, unknown>; return { mood: str(m.mood), genre: str(m.genre), instruments: str(m.instruments), has_vocals: typeof m.has_vocals === 'boolean' ? m.has_vocals : null, song_name: typeof m.song_name === 'string' && m.song_name ? m.song_name : null } })(),
     voice_lines: typeof v.voice_lines === 'string' ? v.voice_lines : null,
     on_screen_text: arr<string>(v.on_screen_text).filter((t) => typeof t === 'string'),

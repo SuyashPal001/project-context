@@ -12,6 +12,7 @@ export function planRefs(b: Breakdown, looks: RemakeLook[]): Ref[] {
     { ref: 'setting', what: Object.entries(o.setting).map(([k, v]) => `${k}: ${v}`).join('; ') },
   ]
   if (looks.some(personIn)) out.push({ ref: 'cast', what: 'the person on screen' })
+  ;(o.characters ?? []).forEach((c, i) => out.push({ ref: `characters[${i}]`, what: c.who }))
   for (const l of looks) {
     if (out.some((r) => r.ref === `looks[${refOf(l)}].outfit`)) continue // a later shot of the same outfit look
     out.push({ ref: `looks[${refOf(l)}].outfit`, what: l.outfit }, { ref: `looks[${refOf(l)}].expression`, what: l.expression })
@@ -49,6 +50,11 @@ export function enforceRules(lines: PlanLine[], refs: Ref[], ctx: { brand: Brand
       if (!l.auto) warnings.push(`${ref}: the reference's own text is never copied, so it is left out`)
       l = { ref, action: 'drop', why: 'the reference text is never copied' }
     }
+    // Another person in the story is a new person too; dropping them is the user's call.
+    if (ref.startsWith('characters[') && l.action === 'keep') {
+      const what = refs.find((r) => r.ref === ref)?.what
+      l = { ref, action: 'swap', to: `a new person: ${what || 'the same role in the story'}` }
+    }
     if (ref === 'cast' && l.action !== 'swap') {
       if (!l.auto) warnings.push('cast: the person is always a new person')
       l = { ref, action: 'swap', to: `a new person who fits ${ctx.brand.audience ?? ctx.brand.name}` }
@@ -67,6 +73,7 @@ export function referenceOf(b: Breakdown): RemakeReference {
     // part_of_trick may come back as true or "true"; only a plain yes counts.
     props: o.props.map((p) => ({ prop: p.prop, where: p.where, when: p.when, ...(p.part_of_trick === true || String(p.part_of_trick) === 'true' ? { trick: true } : {}) })),
     moments: o.moments.map((m) => ({ t_s: m.t_s, what: m.what })),
+    characters: o.characters ?? [],
     musicMood: [o.music.mood, o.music.genre].filter(Boolean).join(', '),
     music: { mood: o.music.mood, genre: o.music.genre, instruments: o.music.instruments, hasVocals: o.music.has_vocals, songName: o.music.song_name },
     videoFileId: b.video.fileId, durationS: b.video.durationS, width: b.video.width, height: b.video.height,
@@ -83,7 +90,7 @@ export async function writePlan(b: Breakdown, brand: Brand, ask: AskFn): Promise
 - keep: the remake copies it as it is (structure, poses, timing, story beats)
 - swap: the remake replaces it with the brand's version; say exactly what in "to"
 - drop: leave it out; say why in "why"
-Rules: the person on screen is always a new person who fits the brand (describe age range and style only; never a real or famous person; no names). Outfits and props usually swap toward the brand's product and style. Moments, poses and the story's structure are kept. Never write the name of a real person or a character.
+Rules: the person on screen, and every other character, is always a new person who fits the brand (describe age range and style only; never a real or famous person; no names). Outfits and props usually swap toward the brand's product and style. Moments, poses and the story's structure are kept. Never write the name of a real person or a character.
 BRAND: ${brandText(brand)}
 REFS: ${JSON.stringify(refs)}
 Reply ONLY JSON {"lines":[{"ref":"","action":"keep|swap|drop","to":"","why":""}]}` }], [{ key: 'lines', type: 'array' }])

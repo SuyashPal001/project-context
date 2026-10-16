@@ -4,7 +4,7 @@
 // one edit retry as a single still. The prompt is built from the same still words, never written freehand.
 // Never the word "storyboard": it drew a cartoon in the A/B.
 import { refOf } from './looks.js'
-import { CAST_BY_IMAGE, stillBits, stillGateInput } from './prompts.js'
+import { CAST_BY_IMAGE, stillBits, stillGateInput, type CharacterImages } from './prompts.js'
 import type { RemakeLook, RemakePlan } from './types.js'
 
 /** Charge slot of board i (stills use n*4+…, clips 1000+). */
@@ -41,8 +41,8 @@ export function boardUnits<T extends { look: RemakeLook; person: boolean }>(jobs
 
 type Photo = { look: RemakeLook; kind: 'start' | 'end' }
 
-export function boardPrompt(plan: RemakePlan, photos: Photo[]): string {
-  const bits = photos.map((p) => stillBits(plan, p.look, p.kind))
+export function boardPrompt(plan: RemakePlan, photos: Photo[], characters?: CharacterImages): string {
+  const bits = photos.map((p) => stillBits(plan, p.look, p.kind, characters))
   const n = photos.length
   const trick = [...new Set(bits.flatMap((b) => b.trick))]
   return [
@@ -62,8 +62,8 @@ export function boardPrompt(plan: RemakePlan, photos: Photo[]): string {
 /** One prompt check for the board: every photo's plan lines and words, the person by image. Objects in
  *  only some photos are listed per photo (one shared list read photo 2's earbuds as missing from photo 1),
  *  and each photo names its outfit look (look 3 can be part 2 of looks[1]). */
-export function boardGateInput(plan: RemakePlan, photos: Photo[], prompt: string) {
-  const each = photos.map((p) => stillGateInput(plan, p.look, p.kind, prompt))
+export function boardGateInput(plan: RemakePlan, photos: Photo[], prompt: string, characters?: CharacterImages) {
+  const each = photos.map((p) => stillGateInput(plan, p.look, p.kind, prompt, characters))
   const lines = [...new Set(each.flatMap((g) => g.planLine.split('; ').slice(1).filter((l) => l !== CAST_BY_IMAGE)))]
   const shared = each[0].startFrameObjects.filter((o) => each.every((g) => g.startFrameObjects.includes(o)))
   return {
