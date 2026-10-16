@@ -1,11 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../db', () => ({ db: {} }));
 vi.mock('@serverless-saas/storage', () => ({ storageService: { getDownloadUrl: vi.fn() } }));
 
-import { toBrandRecord, effectiveImportStatus, mergeImport, IMPORT_STALE_MS } from '../lib/brandRecords';
+import { toBrandRecord, effectiveImportStatus, mergeImport, IMPORT_STALE_MS, applyImportResult, markImportFailed } from '../lib/brandRecords';
 import { brandFillSchema, brandPatchSchema } from '../lib/brandSchema';
 import type { CreativeBrand } from '@serverless-saas/agent-schema/creativeBrand';
+import { db } from '../db';
 
 const NOW = new Date('2026-10-16T12:00:00.000Z');
 const row = (over: Partial<CreativeBrand> = {}): CreativeBrand => ({
@@ -75,5 +76,65 @@ describe('brandPatchSchema', () => {
   it('rejects unknown keys and clears with null', () => {
     expect(brandPatchSchema.safeParse({ nope: 1 }).success).toBe(false);
     expect(brandPatchSchema.parse({ oneLiner: '' })).toEqual({ oneLiner: null });
+  });
+});
+
+describe('applyImportResult', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns ignored when the update matched 0 rows (concurrent status flip)', async () => {
+    const testRow = row({ importStatus: 'importing' });
+    const whereChain = { limit: vi.fn().mockResolvedValue([testRow]) };
+    const fromChain = { where: vi.fn().mockReturnValue(whereChain) };
+    (db as any).select = vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue(fromChain) });
+
+    const updateWhereChain = {
+      where: vi.fn().mockReturnThis(),
+      returning: vi.fn().mockResolvedValue([]),
+    };
+    (db as any).update = vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue(updateWhereChain) });
+
+    const result = await applyImportResult('t1', fill(), 'goodness inside', {});
+    expect(result).toBe('ignored');
+  });
+
+  it('returns applied when the update matched and updated a row', async () => {
+    const testRow = row({ importStatus: 'importing' });
+    const whereChain = { limit: vi.fn().mockResolvedValue([testRow]) };
+    const fromChain = { where: vi.fn().mockReturnValue(whereChain) };
+    (db as any).select = vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue(fromChain) });
+
+    const updateWhereChain = {
+      where: vi.fn().mockReturnThis(),
+      returning: vi.fn().mockResolvedValue([{ id: 'b1' }]),
+    };
+    (db as any).update = vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue(updateWhereChain) });
+
+    const result = await applyImportResult('t1', fill(), 'goodness inside', {});
+    expect(result).toBe('applied');
+  });
+});
+
+describe('markImportFailed', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('only updates rows with importStatus=importing', async () => {
+    const mockChain = {
+      where: vi.fn().mockResolvedValue(undefined),
+    };
+    const mockSet = vi.fn().mockReturnValue(mockChain);
+    const mockUpdate = vi.fn().mockReturnValue({ set: mockSet });
+    (db as any).update = mockUpdate;
+
+    await markImportFailed('t1', 'some error');
+
+    expect(mockUpdate).toHaveBeenCalledWith(expect.anything());
+    expect(mockSet).toHaveBeenCalledWith({ importStatus: 'failed', importError: 'some error' });
+    const whereCall = mockChain.where.mock.calls[0][0];
+    expect(whereCall).toBeDefined();
   });
 });

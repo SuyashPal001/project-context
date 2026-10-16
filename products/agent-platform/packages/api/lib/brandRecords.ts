@@ -79,7 +79,10 @@ export async function getBrand(tenantId: string): Promise<BrandRecord | null> {
   if (!row) return null;
   const url = async (fileId: string | null) => {
     if (!fileId) return null;
-    try { return await storageService.getDownloadUrl(tenantId, fileId); } catch { return null; }
+    try { return await storageService.getDownloadUrl(tenantId, fileId); } catch (err) {
+      console.warn('Failed to get download URL', { tenantId, fileId, error: err instanceof Error ? err.message : String(err) });
+      return null;
+    }
   };
   const [logo, favicon, mascot] = await Promise.all([url(row.logoFileId), url(row.faviconFileId), url(row.mascotFileId)]);
   return toBrandRecord(row, { logo, favicon, mascot });
@@ -99,7 +102,7 @@ export async function startImport(tenantId: string, userId: string, source: { ty
 export async function markImportFailed(tenantId: string, reason: string): Promise<void> {
   await db.update(creativeBrand)
     .set({ importStatus: 'failed', importError: reason.slice(0, 500) })
-    .where(eq(creativeBrand.tenantId, tenantId));
+    .where(and(eq(creativeBrand.tenantId, tenantId), eq(creativeBrand.importStatus, 'importing')));
 }
 
 /** Saves the user's fields and records them in edited_by_user. Creates the row (source 'chat') if none. */
@@ -133,7 +136,8 @@ export async function applyImportResult(
     ...(images.faviconFileId && !edited.has('favicon') ? { faviconFileId: images.faviconFileId } : {}),
     importStatus: 'done', importError: null, importedAt: new Date(),
   };
-  await db.update(creativeBrand).set(set)
-    .where(and(eq(creativeBrand.tenantId, tenantId), eq(creativeBrand.importStatus, 'importing')));
-  return 'applied';
+  const result = await db.update(creativeBrand).set(set)
+    .where(and(eq(creativeBrand.tenantId, tenantId), eq(creativeBrand.importStatus, 'importing')))
+    .returning({ id: creativeBrand.id });
+  return result.length > 0 ? 'applied' : 'ignored';
 }
