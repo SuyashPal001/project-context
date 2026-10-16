@@ -42,6 +42,7 @@ type StillCheck = { status: CheckResult['status']; hard: string[]; warnings: str
 const FIXES: Array<[RegExp, string]> = [
   [/face differs/i, 'the face must be exactly the person in the first image'],
   [/appears twice/i, 'show each object only once'],
+  [/caption text over the photo/i, 'remove the caption text printed over the photo'],
   [/extra person|only \d+ person/i, 'exactly as many people as the second image shows'],
   [/no person found/i, 'the person is in the shot as in the second image'],
   [/appears where the reference has none/i, 'no person in this image'],

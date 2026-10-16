@@ -61,7 +61,7 @@ describe('the face check judges the face, never the styling', () => {
     expect(LEAD_FACE_ONLY_QUESTION).toMatch(/hairstyle, jewellery, makeup/)
     const ask = vi.fn(async (parts: Array<{ text?: string }>) => {
       const q = parts.map((x) => x.text ?? '').join(' ')
-      if (/duplicate_object/.test(q)) return { duplicate_object: false, stray_face: false, invented_text: false, cg_effect: false, flat_background: false, drawn: false, what: '' }
+      if (/duplicate_object/.test(q)) return { duplicate_object: false, stray_face: false, invented_text: false, cg_effect: false, flat_background: false, drawn: false, caption_text: false, face_covered: false, what: '' }
       if (/same_face/.test(q)) return { lead_present: true, same_face: true, why: '' }
       return { others: [] }
     })

@@ -63,7 +63,7 @@ describe('a warning keeps the still without paying again', () => {
 describe('remakeStillChecks sorts each finding', () => {
   const ask = (glitch: Record<string, unknown>, face: Record<string, unknown>, others: unknown[] = []) => vi.fn(async (parts: Array<{ text?: string }>) => {
     const q = parts.map((p) => ('text' in p ? p.text : '')).join(' ')
-    if (/duplicate_object/.test(q)) return { duplicate_object: false, stray_face: false, invented_text: false, cg_effect: false, flat_background: false, drawn: false, what: '', ...glitch }
+    if (/duplicate_object/.test(q)) return { duplicate_object: false, stray_face: false, invented_text: false, cg_effect: false, flat_background: false, drawn: false, caption_text: false, face_covered: false, what: '', ...glitch }
     if (/same face/.test(q)) return { lead_present: true, same_face: true, why: '', ...face }
     return { others }
   })
@@ -101,4 +101,25 @@ describe('every paid try is visible with its reason and cost', () => {
     const out = shapeRun('r', { status: 'suspended', steps: { preview: { suspendPayload: { stage: 'preview_review', previewFileId: 'p', stills, summary: { spentMicro: '26800000', wastedMicro: '13400000', failed: [], blocked: [] } } } } }) as unknown as { stills: Array<{ tries: unknown[] }> }
     expect(out.stills[0].tries).toEqual([{ fileId: 'still-1', kept: false, why: ['two remotes'], credits: '13.40' }, { fileId: 'still-2', kept: true, why: [], credits: '13.40' }])
   }, 30_000)
+})
+
+// Fan run real9/10 (2026-10-17): photos made from the original's frames kept its caption ("Fan trend but
+// make it desi"), and one end photo put the dupatta over her face like the blade covering her there.
+describe('caption text and a covered face', () => {
+  const answer = (o: Record<string, unknown>) => vi.fn(async () => ({ duplicate_object: false, stray_face: false, invented_text: false, cg_effect: false, flat_background: false, drawn: false, caption_text: false, face_covered: false, ...o }))
+  it('a caption printed over the photo is a hard fault', async () => {
+    const v = await remakeStillChecks(answer({ caption_text: true, what: 'Fan trend but make it desi' }), img, {})
+    expect(v.passed).toBe(false)
+    expect(v.reasons[0]).toMatch(/caption text over the photo/)
+  })
+  it('a caption is fixed by an edit that removes it', async () => {
+    const d = deps({ stillChecks: vi.fn().mockResolvedValueOnce({ passed: false, reasons: ['caption text over the photo (Fan trend)'], warnings: [] }).mockResolvedValue({ passed: true, reasons: [], warnings: [] }) })
+    await makeStill(job, ctx, d)
+    expect((d.generateStill as ReturnType<typeof vi.fn>).mock.calls[1][0].prompt).toMatch(/Change only this: remove the caption text printed over the photo/)
+  })
+  it('a face covered by cloth or an object is a warning the user sees', async () => {
+    const v = await remakeStillChecks(answer({ face_covered: true }), img, {})
+    expect(v.passed).toBe(true)
+    expect(v.warnings.join(' ')).toMatch(/face is covered/)
+  })
 })

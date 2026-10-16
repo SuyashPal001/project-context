@@ -4,12 +4,14 @@
 // sheet (front, 3/4, profile, full body), not a small front crop. The TVC checks are unchanged.
 import { askChecked, checkLeadClone, checkLeadFace, GLITCH_QUESTION, type AskFn, type Img } from '../tools/tvcChecks.js'
 
-const HARD_GLITCHES = ['duplicate_object', 'stray_face', 'cg_effect', 'flat_background', 'drawn'] as const
-const WARN_GLITCHES = ['invented_text'] as const
-const SAY: Record<string, string> = { duplicate_object: 'an object appears twice', stray_face: 'a face where none belongs', cg_effect: 'a cartoon or CG effect', flat_background: 'a flat graphic background', invented_text: 'made-up text on a sign or object', drawn: 'not a real photo' }
+const HARD_GLITCHES = ['duplicate_object', 'stray_face', 'cg_effect', 'flat_background', 'drawn', 'caption_text'] as const
+const WARN_GLITCHES = ['invented_text', 'face_covered'] as const
+const SAY: Record<string, string> = { duplicate_object: 'an object appears twice', stray_face: 'a face where none belongs', cg_effect: 'a cartoon or CG effect', flat_background: 'a flat graphic background', invented_text: 'made-up text on a sign or object', drawn: 'not a real photo', caption_text: 'caption text over the photo', face_covered: 'the face is covered by cloth or an object' }
 // The TVC question plus one remake question: a whole still drawn as a cartoon or illustration passed
 // every check (metro A/B, storyboard panels); cg_effect only asks about effects inside a photo.
-const REMAKE_GLITCH_QUESTION = GLITCH_QUESTION.replace(' Reply ONLY JSON {', ', drawn (the whole image is a drawing, illustration, cartoon, painting or 3D render, not a real photograph). Reply ONLY JSON {"drawn":true|false,')
+// caption_text: photos made from the original's frames copied its caption (fan run real10); face_covered: a
+// blade over her head in the original came out as a dupatta over her face (a warning: a veil can be the look).
+const REMAKE_GLITCH_QUESTION = GLITCH_QUESTION.replace(' Reply ONLY JSON {', ', drawn (the whole image is a drawing, illustration, cartoon, painting or 3D render, not a real photograph), caption_text (a caption, subtitle or any words printed over the photo, as on a video, not on an object in the scene), face_covered (the main person\'s face is covered or hidden by cloth, a veil or an object). Reply ONLY JSON {"drawn":true|false,"caption_text":true|false,"face_covered":true|false,')
 // The original shows the person from the back, so the still may show no face at all; a face or hair
 // that IS in view must still be the chosen person (metro A/B: the original man's face passed in profile).
 export const VISIBLE_FACE_QUESTION = 'Image L is the lead actor. Image F is a still from the ad. Is any part of the person\'s face or hair visible in Image F (profile and side views count; the back of a head shows hair)? If so, is it CLEARLY a different person from Image L, judged by the face only (hairstyle, jewellery and makeup change per look and do not count)? If you cannot tell (too little shows), answer false. Reply ONLY JSON {"face_visible":true|false,"clearly_different":true|false,"why":"short"}'

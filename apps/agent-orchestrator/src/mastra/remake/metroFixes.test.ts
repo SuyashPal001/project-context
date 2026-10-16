@@ -44,7 +44,7 @@ describe('an end still never repeats the start pose', () => {
 })
 
 const img = { data: 'AA', mime: 'image/jpeg' }
-const glitchFree = { duplicate_object: false, stray_face: false, invented_text: false, cg_effect: false, flat_background: false, drawn: false, what: '' }
+const glitchFree = { duplicate_object: false, stray_face: false, invented_text: false, cg_effect: false, flat_background: false, drawn: false, caption_text: false, face_covered: false, what: '' }
 const asker = (o: { glitch?: Record<string, unknown>; visible?: Record<string, unknown> } = {}) => vi.fn(async (parts: Array<{ text?: string }>) => {
   const q = parts.map((p) => ('text' in p ? p.text : '')).join(' ')
   if (/duplicate_object/.test(q)) return { ...glitchFree, ...o.glitch }
@@ -55,7 +55,7 @@ const asker = (o: { glitch?: Record<string, unknown>; visible?: Record<string, u
 
 describe('a drawn still is a hard fault', () => {
   it('a cartoon or illustration fails', async () => {
-    const r = await remakeStillChecks(asker({ glitch: { drawn: true, what: 'illustration' } }) as never, img, { lead: img, leadInShot: true })
+    const r = await remakeStillChecks(asker({ glitch: { drawn: true, caption_text: false, face_covered: false, what: 'illustration' } }) as never, img, { lead: img, leadInShot: true })
     expect(r.passed).toBe(false)
     expect(r.reasons.join(' ')).toMatch(/not a real photo/)
   })

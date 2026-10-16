@@ -22,6 +22,10 @@ describe('editShotPrompt', () => {
     expect(pose).not.toMatch(/outfit to/)
     expect(pose).toMatch(/\(1\) the body pose/)
   })
+  it('a pose from a frame copies nothing that covers the person there (a blade, a cloth)', () => {
+    // fan run real9: the blade over her head in the original came out as a dupatta over her face
+    expect(editShotPrompt({ poseFromFrame: true })).toMatch(/nothing that covers or hides the person there is copied: the face and hair stay uncovered/)
+  })
   it('the check line says it is an edit of an approved photo with the pose from a frame', () => {
     expect(editShotGateLine({ outfit: 'a red saree', poseFromFrame: true }, 'looks[1]')).toMatch(/edit of the previous approved photo \(the first image\).*only: looks\[1\] outfit to a red saree; the pose of the person in the second image.*everything else kept/)
   })
