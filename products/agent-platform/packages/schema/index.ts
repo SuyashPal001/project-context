@@ -8,6 +8,7 @@ export * from './conversations';
 export * from './creativeTemplates';
 export * from './creativeLibraryAssets';
 export * from './creativeProducts';
+export * from './creativeBrand';
 export * from './skills';
 export * from './documents';
 export * from './knowledge';
