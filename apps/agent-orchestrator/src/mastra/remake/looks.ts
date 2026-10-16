@@ -16,8 +16,8 @@ export function bodyChanged(a: BodyReading | null, b: BodyReading | null): boole
   return a.framing !== b.framing || a.orientation !== b.orientation || turned(a, b) || a.knees !== b.knees || a.knees_toward !== b.knees_toward || raised(a) !== raised(b)
 }
 
-// A moment this far inside a shot gets its own still (each part stays long enough to animate).
-const MOMENT_EDGE_S = 1
+// A beat this far inside a shot gets its own still: each part stays long enough to animate (fan v8: a 1.3s part).
+const MOMENT_EDGE_S = 2
 
 /** Splits a person shot at a story beat (setup, cause or payoff; small gestures don't count) well inside it (metro reel: holding the phone up to the window
  *  at 2.2s sat between shot 1's start and end stills, so only the clip could show it). The first part
@@ -30,7 +30,7 @@ function splitAtMoments(looks: RemakeLook[], moments: Breakdown['overview']['mom
     return t >= from && t < to ? [x.replace(/^at \d+(?:\.\d+)?s/, `at ${(t - by).toFixed(1)}s`)] : []
   })
   for (const l of looks) {
-    const m = (l.people ?? 0) > 0 ? moments.find((x) => (x.story_beat === true || String(x.story_beat) === 'true') && x.t_s >= l.startS + MOMENT_EDGE_S && x.t_s <= l.endS - MOMENT_EDGE_S) : undefined
+    const m = (l.people ?? 0) > 0 ? moments.find((x) => (x.story_beat === true || String(x.story_beat) === 'true') && x.t_s >= l.startS + MOMENT_EDGE_S - 1e-9 && x.t_s <= l.endS - MOMENT_EDGE_S + 1e-9) : undefined
     if (!m) { out.push(l); continue }
     const t = m.t_s, cut = t - l.startS
     out.push(

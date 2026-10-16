@@ -33,3 +33,13 @@ describe('a moment inside a shot gets its own still', () => {
     expect(remakeLooks(withMoment(3.5))).toHaveLength(2)
   })
 })
+
+// Fan rerun v8 (2026-10-16): a beat at 1.3s in a 0-5.4s shot left a 1.3s part (a 4s clip squeezed 3x);
+// the remote pointed at the fan at 3.0s is the beat that should split it.
+describe('each part is long enough to animate', () => {
+  it('a beat that would leave a part under 2s is skipped for a later one', () => {
+    const b = breakdown()
+    const looks = remakeLooks(breakdown({ overview: { ...b.overview, moments: [{ t_s: 1.3, what: 'text appears', why_it_matters: 'x', story_beat: true }, { t_s: 2.1, what: 'points the remote at the fan', why_it_matters: 'x', story_beat: true }] } } as never))
+    expect(looks[0]).toMatchObject({ startS: 0, endS: 2.1, endPose: 'points the remote at the fan' })
+  })
+})
