@@ -58,7 +58,9 @@ export function enforceRules(lines: PlanLine[], refs: Ref[], ctx: { brand: Brand
 export function referenceOf(b: Breakdown): RemakeReference {
   const o = b.overview
   return {
-    setting: Object.entries(o.setting).map(([k, v]) => `${k}: ${v}`).join('; '),
+    // Framing is per shot (the guide frame and measured body carry it); a reel-wide framing note in
+    // the setting contradicted every still it was copied into (live Snitch run, 2026-10-16).
+    setting: Object.entries(o.setting).filter(([k]) => !/framing|camera|shot/i.test(k)).map(([k, v]) => `${k}: ${v}`).join('; '),
     props: o.props.map((p) => ({ prop: p.prop, where: p.where, when: p.when })),
     moments: o.moments.map((m) => ({ t_s: m.t_s, what: m.what })),
     musicMood: [o.music.mood, o.music.genre].filter(Boolean).join(', '),

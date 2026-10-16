@@ -176,6 +176,16 @@ describe('lookSpans', () => {
     const o = { looks: [{ label: 'a', approx_start_s: 0, approx_end_s: 4 }, { label: 'b', approx_start_s: 9, approx_end_s: 9 }] } as any
     expect(lookSpans(o, [], 10)).toEqual([{ label: 'a', start_s: 0, end_s: 4 }])
   })
+  // Live Snitch run: the watch said look 1 ends at 3.7s, the measured cut is 3.43s, so look 1's
+  // end guide frame (3.63s) came from look 2's shot.
+  it('snaps a rough look edge to a measured cut close by', () => {
+    const o = { looks: [{ label: 'a', approx_start_s: 0, approx_end_s: 3.7 }, { label: 'b', approx_start_s: 3.7, approx_end_s: 14.3 }] } as any
+    expect(lookSpans(o, [], 15.87, [3.43])).toEqual([{ label: 'a', start_s: 0, end_s: 3.43 }, { label: 'b', start_s: 3.43, end_s: 14.3 }])
+  })
+  it('leaves an edge alone when no cut is close', () => {
+    const o = { looks: [{ label: 'a', approx_start_s: 0, approx_end_s: 3.7 }] } as any
+    expect(lookSpans(o, [], 10, [6])).toEqual([{ label: 'a', start_s: 0, end_s: 3.7 }])
+  })
 })
 
 describe('watch-only fallback (YouTube blocks the server download)', () => {

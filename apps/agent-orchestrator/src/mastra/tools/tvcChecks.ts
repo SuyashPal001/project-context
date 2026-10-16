@@ -181,7 +181,7 @@ export async function checkLeadClone(ask: AskFn, lead: Img, frames: Img[]): Prom
   return { passed: clones.length === 0, reason: clones.length ? `LEAD_CLONED: a background person looks like the lead (${clones.join('; ')}).` : 'No lookalikes.' }
 }
 
-export const LEAD_FACE_QUESTION = 'Image L is the lead actor. Image F is a still from the ad. Is the lead in Image F with the same face and hair? Reply ONLY JSON {"lead_present":true|false,"same_face":true|false,"why":"short"}'
+export const LEAD_FACE_QUESTION = 'Image L is the lead actor. Image F is a still from the ad. Is the lead in Image F with the same face and hair? Judge the face and hair only: glasses, earphones, hats and clothes do not count. Reply ONLY JSON {"lead_present":true|false,"same_face":true|false,"why":"short"}'
 
 export async function checkLeadFace(ask: AskFn, lead: Img, frame: Img): Promise<{ passed: boolean; reason: string }> {
   const v = await ask([{ text: 'Image L:' }, { image: lead }, { text: 'Image F:' }, { image: frame }, { text: LEAD_FACE_QUESTION }])

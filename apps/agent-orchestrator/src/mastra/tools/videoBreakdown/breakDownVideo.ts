@@ -41,14 +41,22 @@ export function fillMissingShots(bounds: number[], shots: Shot[]): Shot[] {
 
 // Each look's span: from the hidden cuts and their labels when there are any,
 // else the looks' own rough bounds (empty ones dropped).
-export function lookSpans(overview: Pick<WatchOverview, 'looks'>, hidden: HiddenCutsResult['hidden_cuts'], durationS: number): Array<{ label: string; start_s: number; end_s: number }> {
+// The watch's look edges are rough; a measured hard cut within SNAP_S of an edge is the real edge
+// (live Snitch run: edge 3.7s vs cut 3.43s put look 1's end guide frame in look 2's shot).
+const SNAP_S = 0.6
+const snap = (t: number, cuts: number[]): number => {
+  const near = cuts.filter((c) => Math.abs(c - t) <= SNAP_S).sort((a, b) => Math.abs(a - t) - Math.abs(b - t))[0]
+  return near ?? t
+}
+
+export function lookSpans(overview: Pick<WatchOverview, 'looks'>, hidden: HiddenCutsResult['hidden_cuts'], durationS: number, cuts: number[] = []): Array<{ label: string; start_s: number; end_s: number }> {
   const hc = [...hidden].sort((a, b) => a.at_s - b.at_s)
   if (hc.length && hc.every((h) => h.from && h.to)) {
     const bounds = [0, ...hc.map((h) => h.at_s), durationS]
     return bounds.slice(0, -1).map((b, i) => ({ label: i === 0 ? hc[0].from : hc[i - 1].to, start_s: b, end_s: bounds[i + 1] }))
   }
   return overview.looks
-    .map((l) => ({ label: l.label, start_s: Math.max(0, l.approx_start_s), end_s: Math.min(durationS, l.approx_end_s) }))
+    .map((l) => ({ label: l.label, start_s: Math.max(0, l.approx_start_s > 0 ? snap(l.approx_start_s, cuts) : 0), end_s: Math.min(durationS, l.approx_end_s < durationS ? snap(l.approx_end_s, cuts) : durationS) }))
     .filter((l) => Number.isFinite(l.start_s) && Number.isFinite(l.end_s) && l.end_s > l.start_s)
 }
 
@@ -153,7 +161,7 @@ async function breakDownFetched(video: FetchedVideo, tenantId?: string): Promise
     // Leg side and body angle are MEASURED from the frames; Gemini's reading was wrong
     // for most looks on the golden set (spec §8a: no paid step from a model's guess).
     // Started now, awaited after the shot descriptions: CPU pose overlaps the Gemini call.
-    const spans = lookSpans(overview, hidden, video.durationS)
+    const spans = lookSpans(overview, hidden, video.durationS, cuts?.cuts ?? [])
     if (spans.length) {
       posePending = aiService<PoseResult>('/media/pose', { path: video.filePath, looks: spans, exclude })
         .catch((e: Error) => { logStep('pose', e); warnings.push('body readings unavailable this time; leg sides are estimates'); return null })

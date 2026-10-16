@@ -14,7 +14,7 @@ export function bodyChanged(a: BodyReading | null, b: BodyReading | null): boole
 }
 
 export function remakeLooks(b: Breakdown): RemakeLook[] {
-  const spans = new Map(lookSpans(b.overview, b.hidden_cuts, b.video.durationS).map((s) => [s.label, s]))
+  const spans = new Map(lookSpans(b.overview, b.hidden_cuts, b.video.durationS, b.cuts?.cuts ?? []).map((s) => [s.label, s]))
   const measured = new Map((b.pose?.looks ?? []).map((l) => [l.label, l]))
   return b.overview.looks.flatMap((l, i) => {
     const m = measured.get(l.label)

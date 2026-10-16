@@ -44,8 +44,8 @@ export function stillPrompt(plan: RemakePlan, look: RemakeLook, kind: 'start' | 
     // A kept setting IS the guide frame's setting; excluding it contradicted the plan (real checker, 2026-10-16).
     const settingKept = (lineOf(plan, 'setting')?.action ?? 'keep') === 'keep'
     parts.push(settingKept
-      ? 'Copy ONLY the body pose, camera framing and setting from the second image; not its person, face, outfit or any text.'
-      : 'Copy ONLY the body pose and camera framing from the second image; not its person, face, outfit, setting or any text.')
+      ? 'Copy ONLY the body pose, camera framing and setting from the second image; not its person, face, outfit, accessories or any text.'
+      : 'Copy ONLY the body pose and camera framing from the second image; not its person, face, outfit, accessories, setting or any text.')
     if (pose) parts.push(`Pose: ${pose}.`)
     const words = body ? personWords(body, null) : []
     if (words.length) parts.push(`Body: ${words.join(', ')}.`)

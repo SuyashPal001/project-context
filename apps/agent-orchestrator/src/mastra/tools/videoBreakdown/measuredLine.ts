@@ -9,19 +9,30 @@ const AREA: Record<string, string> = { upper: 'upper body', lower: 'legs' }
 const dir = (d: string) => d.split(' + ').map((x) => x.replace('image-', '')).join(' and ')
 const known = (v: string | null | undefined) => v && v !== 'unknown'
 
+// Legs out of shot were still "read" (keypoints guessed off-frame) and the words made an image
+// model draw a full body for a waist-up shot (live Snitch run, 2026-10-16).
+const KNEES_SHOWN = new Set(['full_body', 'knees_up', 'unknown'])
+const FEET_SHOWN = new Set(['full_body', 'unknown'])
+export const kneesInShot = (b: BodyReading): boolean => KNEES_SHOWN.has(b.framing ?? 'unknown')
+// A knee side just past the "center" line is a stride, not a pose to copy (live Snitch run: -0.091
+// failed stills reading -0.017 and +0.062). Only a clear lean (kneeling, lying, lunging) counts.
+const CLEAR_LEAN = 0.15
+export const kneeSideClear = (b: BodyReading): boolean => kneesInShot(b) && (b.leg_offset === null || b.leg_offset === undefined || Math.abs(b.leg_offset) >= CLEAR_LEAN)
+
 export function personWords(b: BodyReading, start: BodyReading | null): string[] {
   const w: string[] = []
+  const knees = kneesInShot(b), feet = FEET_SHOWN.has(b.framing ?? 'unknown')
   if (known(b.framing)) w.push(FRAMING[b.framing] ?? b.framing)
   if (known(b.orientation)) w.push(b.orientation === 'diagonal' && b.torso_angle_deg !== null ? `tilted about ${Math.round(Math.abs(b.torso_angle_deg))}° in frame` : ORIENTATION[b.orientation])
-  if (known(b.knees)) w.push(`knees ${b.knees}`)
+  if (knees && known(b.knees)) w.push(`knees ${b.knees}`)
   for (const side of ['left', 'right'] as const) {
     if (b.arms?.[side] === 'raised') w.push(`${side} arm raised`)
   }
-  if (known(b.knees_toward) && b.knees_toward !== 'center') {
+  if (kneeSideClear(b) && known(b.knees_toward) && b.knees_toward !== 'center') {
     const before = start && known(start.knees_toward) && start.knees_toward !== b.knees_toward ? ` (at the start: ${start.knees_toward})` : ''
     w.push(`knees fall to ${b.knees_toward}${before}`)
   }
-  if (known(b.feet_toward) && b.feet_toward !== 'center' && b.feet_toward !== b.knees_toward) w.push(`feet to ${b.feet_toward}`)
+  if (feet && known(b.feet_toward) && b.feet_toward !== 'center' && b.feet_toward !== b.knees_toward) w.push(`feet to ${b.feet_toward}`)
   return w
 }
 

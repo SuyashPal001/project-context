@@ -1,7 +1,7 @@
 import { it, expect } from 'vitest'
 import { measuredLine } from './measuredLine.js'
 
-const body = (o: Record<string, unknown> = {}) => ({ framing: 'full_body', orientation: 'vertical', torso_angle_deg: 2, knees: 'bent', arms: { left: 'down', right: 'raised' }, knees_toward: 'image-right', feet_toward: 'center', legs_toward: 'image-right', leg_offset: 0.1, frames: 5, ...o })
+const body = (o: Record<string, unknown> = {}) => ({ framing: 'full_body', orientation: 'vertical', torso_angle_deg: 2, knees: 'bent', arms: { left: 'down', right: 'raised' }, knees_toward: 'image-right', feet_toward: 'center', legs_toward: 'image-right', leg_offset: 0.3, frames: 5, ...o })
 const look = (o: Record<string, unknown> = {}) => ({ label: 'a', start_s: 0, end_s: 5, frames_used: 20, people: 1, people_max: 1, no_person: false, main_start: body({ knees_toward: 'center', legs_toward: 'center' }), main_end: body(), leg_side_start: 'center', leg_side_end: 'image-right', body_angle_end: 2, key_frames: [], ...o }) as any
 
 it('says what was measured, in plain words, with the moves inside the look', () => {
