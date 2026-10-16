@@ -43,6 +43,7 @@ import internalGuardrailsRoute from './routes/internal/guardrails';
 import internalFairnessRoute from './routes/internal/fairness';
 import { handleArtifactNotify } from './routes/internal/artifacts';
 import { internalSkillsRoute } from './routes/internal/skills';
+import { internalBrandRoute } from './routes/internal/brand';
 
 // Ops handlers
 import { agentTemplatesRoutes } from './routes/agentTemplates';
@@ -108,6 +109,7 @@ export function mountInternalRoutes(internalApi: Hono<AppEnv>): void {
     internalApi.route('/internal/fairness', internalFairnessRoute);
     internalApi.post('/internal/artifacts/notify', handleArtifactNotify);
     internalApi.route('/internal/skills', internalSkillsRoute);
+    internalApi.route('/internal/brand', internalBrandRoute);
 }
 
 export function mountOpsRoutes(opsApp: Hono<AppEnv>): void {
