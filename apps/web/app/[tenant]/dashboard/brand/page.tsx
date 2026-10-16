@@ -3,6 +3,7 @@
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
 import { PermissionGate } from '@/components/platform/PermissionGate';
 import { BrandEmptyState, FAILED_COPY } from '@/components/platform/brand/BrandEmptyState';
 import { BrandForm } from '@/components/platform/brand/BrandForm';
@@ -29,7 +30,7 @@ function Shimmer() {
 export default function BrandPage() {
     const { tenant } = useParams<{ tenant: string }>();
     const queryClient = useQueryClient();
-    const { data: brand, isLoading } = useQuery({
+    const { data: brand, isLoading, isError, refetch } = useQuery({
         queryKey: BRAND_QUERY_KEY,
         queryFn: getBrand,
         refetchInterval: (q) => ((q.state.data as BrandRecord | null | undefined)?.importStatus === 'importing' ? POLL_MS : false),
@@ -60,7 +61,18 @@ export default function BrandPage() {
 
     const chatHref = `/${tenant}/dashboard/chat?prefill=${encodeURIComponent('Set up my brand')}`;
     const importing = brand?.importStatus === 'importing';
-    const hasContent = !!brand && (!!brand.name || brand.toneWords.length > 0 || !!brand.logo);
+    // A brand filled entirely through chat (no site/handle, no logo) can have
+    // only audience/oneLiner/voice fields set — checking just name/toneWords/
+    // logo sent that case to the empty state even though the record exists
+    // and has real content to edit.
+    const hasContent = !!brand && (
+        !!brand.name || !!brand.oneLiner || !!brand.audience
+        || brand.toneWords.length > 0 || brand.signaturePhrases.length > 0
+        || brand.bannedPhrases.length > 0 || brand.ctaExamples.length > 0
+        || !!brand.voiceNotes || Object.keys(brand.colors).length > 0
+        || !!brand.headlineFont || !!brand.logo
+        || brand.sourceType === 'chat'
+    );
 
     return (
         <PermissionGate resource="files" action="read">
@@ -72,6 +84,12 @@ export default function BrandPage() {
                         : `How ${brand?.name || 'your brand'} sounds and looks. Every ad Olmo makes follows it.`}
                 </p>
                 {isLoading ? null
+                    : isError ? (
+                        <div className="flex flex-col items-center gap-3 py-16 text-center">
+                            <p className="text-sm text-muted-foreground">Couldn't load your brand. Try again.</p>
+                            <Button variant="outline" size="sm" onClick={() => refetch()}>Retry</Button>
+                        </div>
+                    )
                     : importing && !hasContent ? <Shimmer />
                     : !hasContent ? (
                         <BrandEmptyState chatHref={chatHref} busy={startImport.isPending} failed={brand?.importStatus === 'failed'}

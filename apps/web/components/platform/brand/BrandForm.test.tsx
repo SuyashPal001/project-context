@@ -51,4 +51,39 @@ describe('BrandForm', () => {
         render(<BrandForm brand={brand} onSave={vi.fn()} onRefresh={vi.fn()} onUploadImage={vi.fn()} refreshing={false} />);
         expect(screen.getByText(/Filled from mamaearth\.in · today/)).toBeTruthy();
     });
+
+    // Fix round 1, item 2: <input type="color"> fires React's onChange — bound
+    // to the native `input` event — once per drag tick while the OS picker is
+    // open. A PATCH per tick would hammer the API, so only the native `change`
+    // event (or blur) should save, and only when the value actually differs.
+    it('does not save on every colour drag tick — only on the native change/blur, and only once', () => {
+        const onSave = vi.fn();
+        render(<BrandForm brand={brand} onSave={onSave} onRefresh={vi.fn()} onUploadImage={vi.fn()} refreshing={false} />);
+        const swatch = screen.getByLabelText('primary colour') as HTMLInputElement;
+
+        // Several live drag ticks: React's onChange prop fires (updates the
+        // swatch + hex label), but nothing is saved yet.
+        fireEvent.input(swatch, { target: { value: '#111111' } });
+        fireEvent.input(swatch, { target: { value: '#222222' } });
+        fireEvent.input(swatch, { target: { value: '#333333' } });
+        expect(onSave).not.toHaveBeenCalled();
+
+        // The picker closes on the settled colour: one native `change`.
+        fireEvent.change(swatch, { target: { value: '#333333' } });
+        expect(onSave).toHaveBeenCalledTimes(1);
+        expect(onSave).toHaveBeenCalledWith({ colors: { primary: '#333333' } });
+
+        // A blur right after, for the same colour, must not double-save.
+        fireEvent.blur(swatch, { target: { value: '#333333' } });
+        expect(onSave).toHaveBeenCalledTimes(1);
+    });
+
+    it('syncs the font field when the prop changes (e.g. after Refresh/import), unlike an uncontrolled input', () => {
+        const onSave = vi.fn();
+        const { rerender } = render(<BrandForm brand={brand} onSave={onSave} onRefresh={vi.fn()} onUploadImage={vi.fn()} refreshing={false} />);
+        expect((screen.getByLabelText('Font') as HTMLInputElement).value).toBe('Poppins');
+
+        rerender(<BrandForm brand={{ ...brand, headlineFont: 'Inter' }} onSave={onSave} onRefresh={vi.fn()} onUploadImage={vi.fn()} refreshing={false} />);
+        expect((screen.getByLabelText('Font') as HTMLInputElement).value).toBe('Inter');
+    });
 });

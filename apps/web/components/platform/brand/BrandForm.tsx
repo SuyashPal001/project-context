@@ -67,6 +67,23 @@ function TextField({ id, label, hint, value, multiline, placeholder, onSave }: {
     );
 }
 
+/** Same blur-to-save-on-change contract as TextField, with a datalist of
+ * suggestions. A plain `defaultValue` Input went stale after Refresh/import
+ * replaced `brand.headlineFont` out from under it — this re-syncs the draft
+ * whenever the prop changes, exactly like TextField does. */
+function FontField({ id, value, onSave }: { id: string; value: string; onSave: (v: string) => void }) {
+    const [draft, setDraft] = useState(value);
+    useEffect(() => setDraft(value), [value]);
+    const blur = () => { const v = draft.trim(); if (v !== value.trim()) onSave(v); };
+    return (
+        <>
+            <Input id={id} list={`${id}-list`} value={draft} aria-label="Font"
+                onChange={(e) => setDraft(e.target.value)} onBlur={blur} />
+            <datalist id={`${id}-list`}>{FONT_CHOICES.map((f) => <option key={f} value={f} />)}</datalist>
+        </>
+    );
+}
+
 function Chips<T extends string>({ options, value, onPick }: { options: ReadonlyArray<{ value: T; label: string }>; value: string; onPick: (v: T) => void }) {
     return (
         <div className="flex flex-wrap gap-2">
@@ -124,14 +141,47 @@ function ImageField({ slot, label, image, onUpload }: { slot: ImageSlot; label: 
     );
 }
 
+/**
+ * `<input type="color">` fires React's `onChange` — bound to the native
+ * `input` event — once per drag tick while the OS colour picker is open. A
+ * PATCH per tick would hammer the API, so `onChange` only updates the local
+ * draft (what the swatch + hex label show live); saving happens on the
+ * native `change` event (picker closed, colour committed) or on blur,
+ * wired directly via `addEventListener` since React's `onChange` prop can't
+ * distinguish `input` from `change`. A ref tracks the last value actually
+ * saved so change-then-blur for the same colour never double-PATCHes.
+ */
 function ColorSwatch({ role, value, onSave }: { role: string; value: string | undefined; onSave: (hex: string) => void }) {
+    const [draft, setDraft] = useState(value);
+    useEffect(() => setDraft(value), [value]);
+    const inputRef = useRef<HTMLInputElement>(null);
+    const lastSavedRef = useRef(value);
+    useEffect(() => { lastSavedRef.current = value; }, [value]);
+
+    const commit = (hex: string) => {
+        const upper = hex.toUpperCase();
+        if (upper !== (lastSavedRef.current ?? '').toUpperCase()) {
+            lastSavedRef.current = upper;
+            onSave(upper);
+        }
+    };
+
+    useEffect(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        const onNativeChange = (e: Event) => commit((e.target as HTMLInputElement).value);
+        el.addEventListener('change', onNativeChange);
+        return () => el.removeEventListener('change', onNativeChange);
+    }, []);
+
     return (
         <label className="flex items-center gap-2 text-xs">
-            <input type="color" aria-label={`${role} colour`} value={value ?? '#FFFFFF'}
-                onChange={(e) => onSave(e.target.value.toUpperCase())}
+            <input ref={inputRef} type="color" aria-label={`${role} colour`} value={draft ?? '#FFFFFF'}
+                onChange={(e) => setDraft(e.target.value.toUpperCase())}
+                onBlur={(e) => commit(e.target.value)}
                 className="h-7 w-7 cursor-pointer rounded border border-border bg-transparent p-0" />
             <span className="capitalize text-foreground">{role}</span>
-            <span className="text-muted-foreground">{value ?? 'Not set'}</span>
+            <span className="text-muted-foreground">{draft ?? 'Not set'}</span>
         </label>
     );
 }
@@ -201,9 +251,7 @@ export function BrandForm({ brand, onSave, onRefresh, onUploadImage, refreshing 
                     </div>
                 </Row>
                 <Row label="Font" htmlFor="brand-font">
-                    <Input id="brand-font" list="brand-fonts" defaultValue={brand.headlineFont ?? ''} aria-label="Font"
-                        onBlur={(e) => { const v = e.target.value.trim(); if (v !== (brand.headlineFont ?? '')) onSave({ headlineFont: v || null }); }} />
-                    <datalist id="brand-fonts">{FONT_CHOICES.map((f) => <option key={f} value={f} />)}</datalist>
+                    <FontField id="brand-font" value={brand.headlineFont ?? ''} onSave={(v) => onSave({ headlineFont: v || null })} />
                 </Row>
             </Section>
 
