@@ -1,0 +1,72 @@
+{
+  "_note": "synthetic — replace with a real TikHub response before release",
+  "code": 200,
+  "data": {
+    "data": {
+      "user": {
+        "username": "glowroot.skin",
+        "full_name": "Glowroot Skincare",
+        "biography": "Plant-powered skincare made in India 🌿\nGoodness Inside, Always.\nComment GLOW for the link",
+        "external_url": "https://glowroot.example/",
+        "profile_pic_url": "https://scontent.cdninstagram.com/v/glowroot-profile.jpg",
+        "profile_pic_url_hd": "https://scontent.cdninstagram.com/v/glowroot-profile-hd.jpg",
+        "edge_owner_to_timeline_media": {
+          "edges": [
+            {
+              "node": {
+                "edge_media_to_caption": {
+                  "edges": [
+                    {
+                      "node": {
+                        "text": "Goodness Inside, Always. Our new Vitamin C serum is here ✨ Comment GLOW for the link"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "node": {
+                "edge_media_to_caption": {
+                  "edges": [
+                    {
+                      "node": {
+                        "text": "Toxin-free, cruelty-free, made for Indian skin. Shop now at the link in bio."
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "node": {
+                "edge_media_to_caption": {
+                  "edges": [
+                    {
+                      "node": {
+                        "text": "Real routines, real skin. No filters, just Goodness Inside."
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "node": {
+                "edge_media_to_caption": {
+                  "edges": [
+                    {
+                      "node": {
+                        "text": "New drop: the Niacinamide + Zinc face wash. Comment GLOW for the link."
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

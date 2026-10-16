@@ -20,6 +20,7 @@ import { directorAgent } from './agents/directorAgent.js'
 import { producerAgent } from './agents/producerAgent.js'
 
 import { skillDraftWorkflow } from './workflows/skillDraftWorkflow.js'
+import { brandImportWorkflow } from './workflows/brandImportWorkflow.js'
 import { canvasComplianceScorer, clarificationToolUsageScorer, noProviderDisclosureScorer, propCountScorer, samePersonScorer, expressionScorer, poseLegsScorer, emptyHandScorer, promptCheckScorer } from './scorers/index.js'
 
 // ---------------------------------------------------------------------------
@@ -37,6 +38,7 @@ export const mastra = new Mastra({
   workflows: {
     documentIngestion: ingestionWorkflow,
     'skill-draft': skillDraftWorkflow,
+    brandImport: brandImportWorkflow,
   },
   scorers: {
     canvasCompliance: canvasComplianceScorer,
