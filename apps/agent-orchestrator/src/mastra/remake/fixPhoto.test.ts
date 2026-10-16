@@ -46,6 +46,10 @@ describe('fixing one photo at the preview', () => {
     const r = await resume('preview', { decision: 'fix', fixes: [{ look: 1, kind: 'start', change: 'the dupatta on her shoulders, not over her head' }] })
     const edit = [...generateStill.mock.calls].reverse().find((c) => c[0].referenceFileIds?.[0] === old)!
     expect(edit[0].prompt).toMatch(/^Edit the first image\. Change only this: the dupatta on her shoulders, not over her head\./)
+    // a user's change often is the outfit or the pose: the edit keeps the person and the scene, never
+    // "the pose, outfit" (fan run real9: the veil and the straight knees were kept, word for word)
+    expect(edit[0].prompt).not.toMatch(/Keep everything else exactly: the pose/)
+    expect(edit[0].prompt).toMatch(/same person and face, the room, the light and the camera framing/)
     expect(r.status).toBe('suspended')
     const shaped = shapeRun(runId, r as never) as unknown as { stage: string; stills: Array<{ look: number; kind: string; fileId: string }> }
     expect(shaped.stage).toBe('preview_review')
@@ -71,5 +75,11 @@ describe('fixing one photo at the preview', () => {
     expect(out.stills.find((s) => s.look === 1 && s.kind === 'start')!.fileId).toBe(fixedId)
     expect(fixedId).not.toBe(old)
     expect(out.ledger.some((l) => l.item === 'look 1 start still change')).toBe(true)
+  }, 30_000)
+  it('a fix that fails says why', async () => {
+    const { stillChecks, resume, runId } = await atPreview()
+    stillChecks.mockResolvedValue({ passed: false, reasons: ['the face differs from the chosen person: hidden by a veil'] })
+    const r = await resume('preview', { decision: 'fix', fixes: [{ look: 1, kind: 'start', change: 'no veil' }] })
+    expect((shapeRun(runId, r as never) as unknown as { error: string }).error).toMatch(/look 1 start \(the face differs from the chosen person/)
   }, 30_000)
 })

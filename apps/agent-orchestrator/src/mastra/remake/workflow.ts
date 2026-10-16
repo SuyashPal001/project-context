@@ -12,7 +12,7 @@ import { runToken } from './runTokens.js'
 import { writePlan, applyEdits } from './plan.js'
 import { estimateCost, estimateClipsCost, ledgerSummary } from './cost.js'
 import { castSheetPrompt, stylingOf, outfitOf, propsAt, stillPrompt, stillGateInput, usesProduct, REFERENCE_SHEET_PROMPT, CAST_BY_IMAGE, charactersAt, characterPortraitPrompt, stillTime, type CharacterImages } from './prompts.js'
-import { makeStill, editPrompt, type StillCtx, type StillJob } from './paidStill.js'
+import { makeStill, type StillCtx, type StillJob } from './paidStill.js'
 import { looksUnder18 } from './stillChecks.js'
 import { boardUnits, boardPrompt, boardGateInput, boardAspect, BOARD_SLOT } from './board.js'
 import { previewSegments, previewSize, usableStill } from './preview.js'
@@ -545,14 +545,16 @@ async function fixPhotos(plan: RemakePlan, stills: StillResult[], fixes: Array<z
     const old = still && usableStill(still)
     if (!look || !old) { missed.push(`look ${f.look} ${f.kind}`); return }
     const change = f.change.trim()
-    const prompt = editPrompt(change)
+    // A user's change is often the outfit or the pose itself, so only the person and the scene are kept
+    // (editPrompt's "keep the pose, outfit" kept the veil and the straight knees word for word, fan run real9).
+    const prompt = `Edit the first image. Change only this: ${change}. Keep the same person and face, the room, the light and the camera framing; everything the change does not name stays as it is. No text or logos.`
     const job: StillJob = { look, kind: f.kind, prompt, references: [old], aspectRatio: plan.aspectRatio, faceRef: old, slot: FIX_SLOT + 2 * (done + k),
       gate: { prompt, planLine: `edit the user asked for on a photo they already saw (the first image): ${change}; everything else is kept from the first image`, look: {}, startFrameObjects: [], keyMoments: [] } }
     try {
       const made = await makeStill(job, ctx, deps)
       spent.push(...made.ledger.map((l) => ({ ...l, item: `look ${f.look} ${f.kind} still change` })))
       const now = usableStill(made.result)
-      if (!now || made.result.status === 'failed' || made.result.status === 'blocked') { missed.push(`look ${f.look} ${f.kind}`); return }
+      if (!now || made.result.status === 'failed' || made.result.status === 'blocked') { missed.push(`look ${f.look} ${f.kind}${made.result.reasons.length ? ` (${made.result.reasons.join('; ')})` : ''}`); return }
       // A continuing part starts from this same photo: it changes with it.
       out.forEach((s, i) => { if (s.fileId === old) out[i] = { ...made.result, look: s.look, kind: s.kind } })
     } catch (err) {
