@@ -63,3 +63,29 @@ describe('the person is approved before any still', () => {
     expect(stills(generateStill)[0][0].referenceFileIds[0]).toBe('sheet-2')
   }, 30_000)
 })
+
+// "None of them": the user can ask for three new people, with a note, before picking (2026-10-17).
+describe('a new casting sheet when none of the three fit', () => {
+  it('recast makes a new sheet with the user\'s note and keeps the cost of both', async () => {
+    setRemakeStorageForTests(new InMemoryStore())
+    const b = breakdown()
+    let n = 0
+    const generateStill = vi.fn(async (input: { title: string; prompt: string }) => ({ fileId: `img-${++n}`, creditsUsedMicro: '100' }))
+    setRemakeDeps({
+      ask: () => vi.fn().mockResolvedValue({ lines: [] }), generateStill: generateStill as never,
+      promptGate: vi.fn().mockResolvedValue({ name: 'prompt', status: 'pass', reason: '', evidenceTimes: [] }),
+      imageRateMicro: vi.fn().mockResolvedValue(1_000_000n), clipRateMicro: vi.fn().mockResolvedValue(1_000_000n), musicRateMicro: vi.fn().mockResolvedValue(1_000_000n),
+    })
+    const r = await (await remakeMastra()).getWorkflow(REMAKE_WORKFLOW_ID).createRun()
+    await r.start({ inputData: { tenantId: 't1', conversationId: 'c1', breakdown: b, brand, reviewPerson: true }, requestContext: rc() })
+    const resume = async (step: string, data: unknown) => (await (await remakeMastra()).getWorkflow(REMAKE_WORKFLOW_ID).createRun({ runId: r.runId })).resume({ step, resumeData: data, requestContext: rc() })
+    await resume('plan', { decision: 'approve' })
+    const again = await resume('cast', { recast: true, note: 'more glamorous' })
+    const sheets = generateStill.mock.calls.filter((c) => /casting sheet/i.test(c[0].title))
+    expect(sheets).toHaveLength(2)
+    expect(sheets[1][0].prompt).toMatch(/The user asked for: more glamorous\./)
+    expect(shapeRun(r.runId, again as never)).toMatchObject({ stage: 'cast_pick', sheetFileId: 'img-2' })
+    const p = (again as unknown as { steps: Record<string, { suspendPayload?: { sheetCreditsMicro?: string } }> }).steps.cast.suspendPayload!
+    expect(p.sheetCreditsMicro).toBe('200')
+  }, 30_000)
+})

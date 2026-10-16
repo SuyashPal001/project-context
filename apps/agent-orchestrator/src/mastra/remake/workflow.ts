@@ -76,7 +76,7 @@ const castStep = createStep({
   // cast_pick: choose one of three; person_review: approve the chosen person's sheet (or ask for a change)
   suspendSchema: z.object({ stage: z.enum(['cast_pick', 'person_review']), sheetFileId: z.string().nullable(), sheetCreditsMicro: z.string().optional(), error: z.string().optional(), out: any.optional() }),
   // no pick = make the sheet again (only when there is none); a pick crops that panel
-  resumeSchema: z.object({ pick: z.number().int().min(1).max(3).optional(), decision: z.enum(['approve', 'edit']).optional(), change: z.string().optional() }),
+  resumeSchema: z.object({ pick: z.number().int().min(1).max(3).optional(), decision: z.enum(['approve', 'edit']).optional(), change: z.string().optional(), /** none of the three fit: a new sheet, steered by the note */ recast: z.boolean().optional(), note: z.string().optional() }),
   execute: async ({ inputData, resumeData, suspendData, suspend, requestContext, runId }) => {
     const a = access(requestContext as Rc, inputData.tenantId, runId)
     const plan = inputData.plan as RemakePlan
@@ -109,10 +109,10 @@ const castStep = createStep({
     const deps = remakeDeps()
     const sheetId = (suspendData?.sheetFileId as string | null | undefined) ?? null
     const spentSoFar = (suspendData?.sheetCreditsMicro as string | undefined) ?? '0'
-    if (!sheetId) {
+    if (!sheetId || resumeData?.recast) {
       // A failure here never ends the run: the user can fix the plan or add credits and ask again.
       const castTo = plan.lines.find((l) => l.ref === 'cast')?.to ?? 'a new person'
-      const prompt = castSheetPrompt(castTo)
+      const prompt = castSheetPrompt(castTo, resumeData?.recast ? resumeData.note : undefined)
       const gate = await deps.promptGate({ prompt, planLine: `casting sheet; cast: swap to ${castTo}`, look: {}, startFrameObjects: [], keyMoments: [], tenantId: a.tenantId })
       if (gate.status !== 'pass') {
         if (gate.status === 'unknown') console.error('[remake] casting sheet prompt check unavailable:', gate.reason)

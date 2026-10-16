@@ -56,8 +56,8 @@ export function usesProduct(plan: RemakePlan, brand: Brand): boolean {
   return plan.lines.some((l) => l.action === 'swap' && !!l.to && l.to.toLowerCase().includes(name))
 }
 
-export function castSheetPrompt(castTo: string): string {
-  return `One photo split into three equal side-by-side panels, numbered 1, 2 and 3 in small grey corner numbers. Each panel shows a different new person who fits: ${castTo}. Each is clearly an adult, mid-20s or older. Each is full body, standing, facing the camera, neutral expression, in plain everyday styling: simply worn hair, no jewellery, light natural makeup, plain clothes; plain light-grey background, soft natural light. Three clearly different faces. Not any real or famous person. No other text.`
+export function castSheetPrompt(castTo: string, note?: string): string {
+  return `One photo split into three equal side-by-side panels, numbered 1, 2 and 3 in small grey corner numbers. Each panel shows a different new person who fits: ${castTo}. ${note?.trim() ? `The user asked for: ${note.trim().replace(/[.\s]+$/, '')}. ` : ''}Each is clearly an adult, mid-20s or older. They are attractive, camera-ready models, as cast for a fashion ad. Each is full body, standing, facing the camera, a relaxed confident expression, with groomed hair worn simply, light polished makeup, no jewellery, plain neutral clothes; plain light-grey background, soft flattering studio light. Three clearly different faces. Not any real or famous person. No other text.`
 }
 
 /** The chosen person's continuity bible: what every still is anchored to (face consistency is hard).

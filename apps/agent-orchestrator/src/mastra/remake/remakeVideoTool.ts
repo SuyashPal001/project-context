@@ -98,7 +98,7 @@ export const remakeVideoTool = createTool({
   id: 'remake_video',
   description: 'Remake a reference video for the user\'s brand, step by step, with the user approving each paid step. '
     + 'start (link or fileId + brand: name, product, optional productPhotoFileId/audience/notes; optional castFileId when the user brings their own person): returns the remake plan (each part of the video kept, swapped or dropped) and the cost of the stills. Show the plan in plain words and ask for changes. '
-    + 'edit_plan (runId + edits) for changes; approve_plan (runId) when the user agrees. If the video has a person, approve_plan returns a casting sheet of 3 new people: show it and ask which one (pick_cast, runId + pick 1-3). '
+    + 'edit_plan (runId + edits) for changes; approve_plan (runId) when the user agrees. If the video has a person, approve_plan returns a casting sheet of 3 new people: show it and ask which one (pick_cast, runId + pick 1-3); if none fits, recast (runId + note in the user\'s words) makes 3 new people. '
     + 'Then (stage person_review) show the chosen person\'s sheet and ask: is this how she or he should look in the video? If yes, approve_person (runId); if the user wants a change (hair, makeup, glasses…), change_person (runId + change in the user\'s words): the sheet is edited, the person stays the same, and it comes back for review. No still is made before approve_person. '
     + 'If cast_pick comes back with an error and no sheetFileId, tell the user the error; once fixed, call pick_cast with no pick to make the sheet again. If it has an error and a sheet, ask the user to pick again. '
     + 'Then every look gets checked stills and a free preview video (stage preview_review): share the preview, say which stills failed or were held back, the credits spent, and the cost to animate it (clipsEstimate). When a still has more than one try (tries), show every try\'s picture, the failed ones too, each with why it failed in plain words and its credits, so the user sees what was paid for; a still with status warned is kept and used, so say in one line what may be off. If it has cantAnimate, say so and stop there. If the user wants it animated, call approve_preview (runId); if they only wanted the preview, call stop. '
@@ -107,13 +107,14 @@ export const remakeVideoTool = createTool({
     + 'stage working means it is still making the stills or the clips: wait and use status; never call start again while a remake for this video exists (that pays twice). '
     + 'Never describe how it works inside; use plain outcome words. status (runId) re-reads where a remake is.',
   inputSchema: z.object({
-    action: z.enum(['start', 'edit_plan', 'approve_plan', 'pick_cast', 'approve_person', 'change_person', 'approve_preview', 'stop', 'status']),
+    action: z.enum(['start', 'edit_plan', 'approve_plan', 'pick_cast', 'recast', 'approve_person', 'change_person', 'approve_preview', 'stop', 'status']),
     url: linkSchema.optional(), fileId: z.string().optional(),
     brand: brandSchema.optional(),
     castFileId: z.string().optional().describe('start: the user\'s own person (an avatar or photo fileId); skips the casting sheet'),
     runId: z.string().optional(),
     edits: z.array(lineSchema).optional(),
     pick: z.number().int().min(1).max(3).optional(),
+    note: z.string().optional().describe('recast: what the user wants different in the new people, in their words'),
     change: z.string().optional().describe('change_person: what to change on the person sheet, in the user\'s words'),
   }),
   outputSchema: z.object({ success: z.boolean() }).passthrough(),
@@ -126,7 +127,7 @@ export const remakeVideoTool = createTool({
       const veo = await shouldRequireApproval({ resourceType: 'video_generation', subject: VEO_CLIP_MODEL }, ctx as never)
       return veo || shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx as never)
     }
-    if (action !== 'approve_plan' && action !== 'pick_cast' && action !== 'change_person' && action !== 'approve_person') return false
+    if (action !== 'approve_plan' && action !== 'pick_cast' && action !== 'recast' && action !== 'change_person' && action !== 'approve_person') return false
     return shouldRequireApproval({ resourceType: 'image_generation', subject: imageModelFor('gemini').rateSubject }, ctx as never)
   },
   execute: async (input, execContext) => {
@@ -156,6 +157,7 @@ export const remakeVideoTool = createTool({
       const [step, resumeData] = input.action === 'edit_plan' ? ['plan', { decision: 'edit', edits: input.edits ?? [] }]
         : input.action === 'approve_plan' ? ['plan', { decision: 'approve' }]
         : input.action === 'approve_preview' ? ['preview', { decision: 'approve' }]
+        : input.action === 'recast' ? ['cast', { recast: true, note: input.note ?? '' }]
         : input.action === 'approve_person' ? ['cast', { decision: 'approve' }]
         : input.action === 'change_person' ? ['cast', { decision: 'edit', change: input.change ?? '' }]
         : input.action === 'stop' ? ['preview', { decision: 'stop' }]

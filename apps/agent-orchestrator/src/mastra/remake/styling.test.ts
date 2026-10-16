@@ -37,8 +37,8 @@ describe('styling is per look, not part of the person', () => {
     expect(to).toMatch(/elegant South Asian woman in her mid-20s/)
     expect(to).not.toMatch(/makeup|styling|jewell?ery|hair/i)
   })
-  it('the casting sheet and the reference sheet show plain styling and never lock the hair', () => {
-    expect(castSheetPrompt('a woman')).toMatch(/plain everyday styling: simply worn hair, no jewellery, light natural makeup/)
+  it('the casting sheet and the reference sheet keep styling open and never lock the hair', () => {
+    expect(castSheetPrompt('a woman')).toMatch(/groomed hair worn simply, light polished makeup, no jewellery/) // ad casting, 2026-10-17
     expect(REFERENCE_SHEET_PROMPT).not.toMatch(/Skin tone · Age · Hair/)
     expect(REFERENCE_SHEET_PROMPT).toMatch(/Hair, jewellery and makeup are styling/)
   })
@@ -96,5 +96,20 @@ describe('styling is kept from the reference unless the user changes it', () => 
     const p = await writePlan(styled(), brand, vi.fn().mockResolvedValue({ lines: [] }))
     const e = applyEdits(p, [{ ref: 'looks[0].styling', action: 'swap', to: 'hair in a bun' }], brand)
     expect(stylingOf(e, e.looks[0])).toBe('hair in a bun')
+  })
+})
+
+// Fan run 2026-10-17: plain casting (no makeup, everyday clothes) gave three ordinary-looking women; the
+// user: "none of it is attractive". Casting is a fashion-ad casting: attractive and camera-ready, groomed,
+// light polished makeup, no jewellery, plain clothes; styling stays open for each look.
+describe('casting looks like an ad casting', () => {
+  it('attractive, camera-ready models with polished but open styling', () => {
+    const p = castSheetPrompt('a woman')
+    expect(p).toMatch(/attractive, camera-ready models, as cast for a fashion ad/)
+    expect(p).toMatch(/groomed hair worn simply, light polished makeup, no jewellery, plain neutral clothes/)
+    expect(p).not.toMatch(/light natural makeup, plain clothes/)
+  })
+  it('a note from the user steers a new casting', () => {
+    expect(castSheetPrompt('a woman', 'more glamorous, fuller face')).toMatch(/The user asked for: more glamorous, fuller face\./)
   })
 })
