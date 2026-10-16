@@ -117,7 +117,7 @@ const castStep = createStep({
   },
 })
 
-// The chosen person's reference sheet (front, 3/4, profile, full body) leads every still and is the
+// The chosen person's reference sheet (the TVC continuity bible, minus costume) leads every still and is the
 // face check's reference (face consistency is hard). Gated like every paid call; a sheet that can't be
 // made never ends the run: the stills fall back to the cropped portrait.
 async function referenceSheet(portraitId: string, a: { tenantId: string }, deps: RemakeDeps, exec: ReturnType<ReturnType<typeof execFor>>): Promise<{ fileId: string | null; ledger: LedgerEntry[] }> {
@@ -128,7 +128,7 @@ async function referenceSheet(portraitId: string, a: { tenantId: string }, deps:
       console.error('[remake] reference sheet not checked/passed:', gate.status, gate.reason)
       return { fileId: null, ledger: [{ item: 'reference sheet', attempt: 0, creditsMicro: '0', outcome: 'blocked' }] }
     }
-    const g = await deps.generateStill({ prompt, aspectRatio: '16:9', referenceFileIds: [portraitId], engine: 'gemini', skipAvatarExpansion: true, title: 'Remake reference sheet' }, exec, 1)
+    const g = await deps.generateStill({ prompt, aspectRatio: '3:4', imageSize: '2K', referenceFileIds: [portraitId], engine: 'gemini', skipAvatarExpansion: true, title: 'Remake reference sheet' }, exec, 1)
     if (!g.fileId) console.error('[remake] reference sheet not made:', g.refusalReason ?? (g.insufficientCredits ? 'credits' : 'unknown'))
     return { fileId: g.fileId ?? null, ledger: [{ item: 'reference sheet', attempt: 0, creditsMicro: g.creditsUsedMicro ?? '0', outcome: g.fileId ? 'kept' : 'failed' }] }
   } catch (err) {

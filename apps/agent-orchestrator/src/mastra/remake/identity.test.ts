@@ -103,3 +103,18 @@ describe('the face check is hard again', () => {
     expect(r.reasons.join(' ')).toMatch(/face/)
   })
 })
+
+describe('the reference sheet follows the TVC continuity bible, minus the costume', () => {
+  it('has the turnaround, face details, expressions and body poses; the outfit is not locked', async () => {
+    const { REFERENCE_SHEET_PROMPT } = await import('./prompts.js')
+    for (const part of [/FULL-BODY TURNAROUND/, /FACE & IDENTITY DETAILS/, /EXPRESSION SHEET/, /POSE & BODY LANGUAGE/, /DO NOT CHANGE/]) expect(REFERENCE_SHEET_PROMPT).toMatch(part)
+    expect(REFERENCE_SHEET_PROMPT).not.toMatch(/COSTUME DETAILS|Costume ·|Jewellery ·/)
+  })
+  it('is made at 3:4 and 2K, like the TVC sheet', async () => {
+    const g = vi.fn().mockImplementation(async () => ({ fileId: `img-${++made}`, creditsUsedMicro: '100' }))
+    const { runId } = await start({ generateStill: g as never })
+    await resume(runId, 'plan', { decision: 'approve' })
+    await resume(runId, 'cast', { pick: 1 })
+    expect(g.mock.calls[1][0]).toMatchObject({ aspectRatio: '3:4', imageSize: '2K' })
+  })
+})
