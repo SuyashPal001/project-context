@@ -325,9 +325,10 @@ def read_image(path: str) -> dict:
     if not persons:
         return {"model": MODEL_NAME, "people": 0, "no_person": True, "main": None}
     main = max(persons, key=lambda p: _box_area(p[2]))
-    # where the main person sits in the frame (fractions), so a still's framing can be compared with the original's
+    # where the main person sits in the frame (fractions), so a still's framing can be compared with the original's;
+    # head_seen: the box's top edge is the head only when it is seen (something in front can cut the box short)
     return {"model": MODEL_NAME, "people": len(persons), "no_person": False, "main": read_person(main[0], main[1], h / w, main[2]),
-            "box": [round(float(v), 3) for v in main[2]]}
+            "box": [round(float(v), 3) for v in main[2]], "head_seen": bool((np.asarray(main[1])[:5] >= VIS).any())}
 
 
 def measure_pose(path: str, looks: list[dict], exclude=None, fps: float = 5.0) -> dict:

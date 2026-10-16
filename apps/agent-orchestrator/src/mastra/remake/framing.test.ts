@@ -10,12 +10,12 @@ const img = (d: string) => ({ data: d, mime: 'image/jpeg' })
 const look = remakeLooks(breakdown())[0]
 const ctx: StillCtx = { tenantId: 't', idToken: 'tok', scopeId: 's', runId: 'r', exec: () => ({ requestContext: { get: () => undefined }, agent: { toolCallId: 'remake:r' } }) as never, portrait: { fileId: 'sheet', img: img('P') } }
 const job: StillJob = { look, kind: 'start', prompt: 'P', references: ['sheet', 'guide-1'], aspectRatio: '9:16', gate: { prompt: 'P', planLine: 'x', look: {}, startFrameObjects: [], keyMoments: [] }, guide: 'guide-1' }
-function deps(boxes: Record<string, number[] | undefined>) {
+function deps(boxes: Record<string, number[] | undefined>, heads: Record<string, boolean> = {}) {
   let n = 0
   return {
     ask: () => vi.fn(), fetchImage: vi.fn(async (id: string) => img(id)), localFile: vi.fn(async (id: string) => id), upload: vi.fn(),
     generateStill: vi.fn(async () => ({ fileId: `still-${++n}`, creditsUsedMicro: '100' })),
-    poseImage: vi.fn(async (p: string) => ({ model: 'm', people: 1, no_person: false, main: look.start, box: boxes[p] })),
+    poseImage: vi.fn(async (p: string) => ({ model: 'm', people: 1, no_person: false, main: look.start, box: boxes[p], ...(p in heads ? { head_seen: heads[p] } : {}) })),
     promptGate: vi.fn().mockResolvedValue({ name: 'prompt', status: 'pass', reason: '', evidenceTimes: [] }),
     stillChecks: vi.fn().mockResolvedValue({ passed: true, reasons: [], warnings: [] }),
   } as unknown as RemakeDeps
@@ -28,6 +28,9 @@ describe('a still keeps the original camera framing', () => {
     expect(r.result.status).toBe('passed')
     const edit = (d.generateStill as ReturnType<typeof vi.fn>).mock.calls[1][0]
     expect(edit.prompt).toMatch(/the camera framing must match the original frame/)
+    // the fix changes the framing, so the edit never also says to keep it (the prompt check stopped every
+    // such retry as a contradiction, fan run real7)
+    expect(edit.prompt).not.toMatch(/Keep everything else exactly:[^.]*framing/)
     expect(r.result.tries?.[0].why.join(' ')).toMatch(/the camera is closer/)
   })
   it('the same framing passes on the first try', async () => {
@@ -40,5 +43,12 @@ describe('a still keeps the original camera framing', () => {
     const r = await makeStill(job, ctx, d)
     expect(r.result.status).toBe('warned')
     expect(r.result.reasons.join(' ')).toMatch(/framing could not be compared/)
+  })
+  it('a head hidden in the original (a blade in front) is a warning, not "the camera is closer"', async () => {
+    const d = deps({ 'guide-1': [0.03, 0.31, 1, 0.985], 'still-1': [0.07, 0.16, 1, 0.998] }, { 'guide-1': false, 'still-1': true })
+    const r = await makeStill(job, ctx, d)
+    expect(r.result.status).toBe('warned')
+    expect(r.result.reasons.join(' ')).toMatch(/partly hidden/)
+    expect(d.generateStill).toHaveBeenCalledTimes(1)
   })
 })

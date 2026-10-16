@@ -22,4 +22,14 @@ describe('compareFraming', () => {
   it('a missing box is unknown, never a pass', () => {
     expect(compareFraming(undefined, [0.3, 0.2, 0.7, 0.8]).ok).toBeNull()
   })
+  // fan run real7 (2026-10-17): a blade over her head in the original cut her box short, and the remake's
+  // end photo, same camera, failed as "the camera is closer".
+  it('a head hidden in either picture leaves the size unknown, never a fail', () => {
+    const r = compareFraming([0.03, 0.31, 1, 0.985], [0.07, 0.16, 1, 0.998], { refHead: false, gotHead: true })
+    expect(r.ok).toBeNull()
+    expect(r.why).toMatch(/partly hidden/)
+  })
+  it('a hidden head still catches a camera moved sideways', () => {
+    expect(compareFraming([0.3, 0.31, 0.7, 0.9], [0.0, 0.2, 0.4, 0.9], { refHead: false }).ok).toBe(false)
+  })
 })

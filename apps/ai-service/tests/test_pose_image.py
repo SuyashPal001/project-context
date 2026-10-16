@@ -53,3 +53,14 @@ def test_reading_carries_the_main_persons_box_in_frame_fractions(tmp_path, monke
     monkeypatch.setattr(pose, "_load", lambda: (FakeDet([[10, 20, 90, 180]]), FakePose([(kp, sc)])))
     d = pose.read_image(str(_img(tmp_path)))
     assert d["box"] == [0.1, 0.1, 0.9, 0.9]
+
+# A fan blade over her head in the original made her box start lower, and the framing check called the
+# remake's camera "closer" (fan run real7, 2026-10-17). The reading says whether the head is seen, so the
+# box's top edge is only trusted when it is.
+def test_reading_says_whether_the_head_is_seen(tmp_path, monkeypatch):
+    kp, sc = person()
+    monkeypatch.setattr(pose, "_load", lambda: (FakeDet([[10, 20, 90, 180]]), FakePose([(kp, sc)])))
+    assert pose.read_image(str(_img(tmp_path)))["head_seen"] is True
+    kp, sc = person(hide=(0, 1, 2, 3, 4))
+    monkeypatch.setattr(pose, "_load", lambda: (FakeDet([[10, 20, 90, 180]]), FakePose([(kp, sc)])))
+    assert pose.read_image(str(_img(tmp_path)))["head_seen"] is False

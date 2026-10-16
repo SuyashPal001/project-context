@@ -51,8 +51,10 @@ const FIXES: Array<[RegExp, string]> = [
   [/camera framing differs/i, 'the camera framing must match the original frame (GUIDE_IMAGE): the person\'s size and position in the frame'],
 ]
 const NEEDS_FRESH = /back to the camera|facing the camera|side-on|no person found|appears where the reference has none/i
+// A fix that changes the framing never also says to keep it (the prompt check stopped every such retry as a
+// contradiction, fan run real7).
 export const editPrompt = (fix: string, keepSetting = true): string =>
-  `Edit the first image. Change only this: ${fix}. Keep everything else exactly: the pose, framing, ${keepSetting ? 'setting, ' : ''}outfit, objects${keepSetting ? ' and light' : ''}. No text or logos.`
+  `Edit the first image. Change only this: ${fix}. Keep everything else exactly: the pose, ${/framing/i.test(fix) ? '' : 'framing, '}${keepSetting ? 'setting, ' : ''}outfit, objects${keepSetting ? ' and light' : ''}. No text or logos.`
 
 export function fixLine(reasons: string[]): string {
   return [...new Set(reasons.map((r) => FIXES.find(([re]) => re.test(r))?.[1] ?? r))].join('; ')
@@ -87,7 +89,7 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
     // Same camera as the original: where the person sits in the frame, against the original's frame.
     let framing: { ok: boolean | null; why: string } | null = null
     if (job.guide && personIn(job.look)) {
-      try { framing = compareFraming((await deps.poseImage(await deps.localFile(job.guide, ctx.idToken, ctx.scopeId))).box, pose.box) } catch { framing = { ok: null, why: '' } }
+      try { const gp = await deps.poseImage(await deps.localFile(job.guide, ctx.idToken, ctx.scopeId)); framing = compareFraming(gp.box, pose.box, { refHead: gp.head_seen, gotHead: pose.head_seen }) } catch { framing = { ok: null, why: '' } }
     }
     let p = comparePose(body, job.people ?? job.look.people, pose)
     // A tighter original (selfie, close-up): crop the still around the face, free, and keep the crop
@@ -104,7 +106,7 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
       }
     }
     const hard = [...looks.reasons, ...(p.status === 'fail' && p.hard ? [p.reason] : []), ...(room?.hard ? [room.hard] : []), ...(framing?.ok === false && !cropped ? [`the camera framing differs from the original: ${framing.why}`] : [])]
-    const warnings = [...(looks.warnings ?? []), ...(p.status === 'fail' && !p.hard ? [p.reason] : []), ...(room?.warning ? [room.warning] : []), ...(framing?.ok === null ? ['the framing could not be compared with the original'] : [])]
+    const warnings = [...(looks.warnings ?? []), ...(p.status === 'fail' && !p.hard ? [p.reason] : []), ...(room?.warning ? [room.warning] : []), ...(framing?.ok === null ? [/partly hidden/.test(framing.why) ? `the framing was only partly compared with the original: ${framing.why}` : 'the framing could not be compared with the original'] : [])]
     if (hard.length) return { status: 'fail', hard, warnings, reason: hard.join('; ') }
     if (p.status === 'unknown' && !warnings.length) return { status: 'unknown', hard, warnings, reason: p.reason, fileId: cropped }
     return { status: 'pass', hard, warnings, reason: warnings.join('; ') || 'passed every check', fileId: cropped }
