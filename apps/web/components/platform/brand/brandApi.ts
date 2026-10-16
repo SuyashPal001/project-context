@@ -1,4 +1,4 @@
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 
 export const BRAND_REGIONS = [
     { value: 'IN', label: 'India' }, { value: 'US', label: 'US' }, { value: 'UK', label: 'UK' },
@@ -40,6 +40,15 @@ export async function patchBrand(patch: BrandPatch): Promise<BrandRecord> {
 }
 export async function importBrand(value: string): Promise<BrandRecord> {
     return (await api.post<{ data: BrandRecord }>('/api/v1/brand/import', { value })).data;
+}
+
+const FORMAT_HINT = 'Paste a website link or an Instagram handle';
+
+/** What to show when an import can't start: the API's format hint for a 400, else `fallback`. */
+export function importErrorMessage(err: unknown, fallback: string): string {
+    if (!(err instanceof ApiError) || err.status !== 400) return fallback;
+    const message = err.data?.message;
+    return typeof message === 'string' && message ? message : FORMAT_HINT;
 }
 
 /** "Filled from mamaearth.in · 2 days ago" */

@@ -8,7 +8,7 @@ import { PermissionGate } from '@/components/platform/PermissionGate';
 import { BrandEmptyState, FAILED_COPY } from '@/components/platform/brand/BrandEmptyState';
 import { BrandForm } from '@/components/platform/brand/BrandForm';
 import {
-    BRAND_IMAGE_PREFIX, BRAND_QUERY_KEY, getBrand, importBrand, patchBrand, type BrandPatch, type BrandRecord,
+    BRAND_IMAGE_PREFIX, BRAND_QUERY_KEY, getBrand, importBrand, importErrorMessage, patchBrand, type BrandPatch, type BrandRecord,
 } from '@/components/platform/brand/brandApi';
 import { storeCreativeImage } from '@/components/platform/chat/creative-library/storeCreativeImage';
 
@@ -45,7 +45,7 @@ export default function BrandPage() {
     const startImport = useMutation({
         mutationFn: (value: string) => importBrand(value),
         onSuccess: setBrand,
-        onError: () => toast.error(FAILED_COPY),
+        onError: (err) => toast.error(importErrorMessage(err, FAILED_COPY)),
     });
 
     const uploadImage = async (slot: 'logo' | 'favicon' | 'mascot', file: File | null) => {

@@ -78,6 +78,24 @@ describe('BrandForm', () => {
         expect(onSave).toHaveBeenCalledTimes(1);
     });
 
+    it('never saves white for an unset colour the user only focused and left', () => {
+        const onSave = vi.fn();
+        render(<BrandForm brand={brand} onSave={onSave} onRefresh={vi.fn()} onUploadImage={vi.fn()} refreshing={false} />);
+        const swatch = screen.getByLabelText('accent colour') as HTMLInputElement;
+        fireEvent.focus(swatch);
+        fireEvent.blur(swatch, { target: { value: '#FFFFFF' } });
+        expect(onSave).not.toHaveBeenCalled();
+    });
+
+    it('saves an unset colour once the user picks one', () => {
+        const onSave = vi.fn();
+        render(<BrandForm brand={brand} onSave={onSave} onRefresh={vi.fn()} onUploadImage={vi.fn()} refreshing={false} />);
+        const swatch = screen.getByLabelText('accent colour') as HTMLInputElement;
+        fireEvent.input(swatch, { target: { value: '#123456' } });
+        fireEvent.blur(swatch);
+        expect(onSave).toHaveBeenCalledWith({ colors: { primary: '#00A651', accent: '#123456' } });
+    });
+
     it('syncs the font field when the prop changes (e.g. after Refresh/import), unlike an uncontrolled input', () => {
         const onSave = vi.fn();
         const { rerender } = render(<BrandForm brand={brand} onSave={onSave} onRefresh={vi.fn()} onUploadImage={vi.fn()} refreshing={false} />);

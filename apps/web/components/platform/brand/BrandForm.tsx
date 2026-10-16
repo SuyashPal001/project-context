@@ -151,6 +151,10 @@ function ImageField({ slot, label, image, onUpload }: { slot: ImageSlot; label: 
  * distinguish `input` from `change`. A ref tracks the last value actually
  * saved so change-then-blur for the same colour never double-PATCHes.
  */
+// What an unset swatch shows. Never saved on its own: a focus-and-leave on an
+// unset colour reports this value, and must not save white.
+const SWATCH_PLACEHOLDER = '#FFFFFF';
+
 function ColorSwatch({ role, value, onSave }: { role: string; value: string | undefined; onSave: (hex: string) => void }) {
     const [draft, setDraft] = useState(value);
     useEffect(() => setDraft(value), [value]);
@@ -176,9 +180,11 @@ function ColorSwatch({ role, value, onSave }: { role: string; value: string | un
 
     return (
         <label className="flex items-center gap-2 text-xs">
-            <input ref={inputRef} type="color" aria-label={`${role} colour`} value={draft ?? '#FFFFFF'}
+            <input ref={inputRef} type="color" aria-label={`${role} colour`} value={draft ?? SWATCH_PLACEHOLDER}
                 onChange={(e) => setDraft(e.target.value.toUpperCase())}
-                onBlur={(e) => commit(e.target.value)}
+                // Blur saves only a colour the user actually picked (the draft), never
+                // the placeholder an unset swatch displays.
+                onBlur={() => { if (draft && draft.toUpperCase() !== SWATCH_PLACEHOLDER) commit(draft); }}
                 className="h-7 w-7 cursor-pointer rounded border border-border bg-transparent p-0" />
             <span className="capitalize text-foreground">{role}</span>
             <span className="text-muted-foreground">{draft ?? 'Not set'}</span>
