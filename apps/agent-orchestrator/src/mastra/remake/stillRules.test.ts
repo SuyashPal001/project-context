@@ -55,18 +55,21 @@ describe('accessories are not identity', () => {
   })
 })
 
-describe('knee side is compared only when the legs clearly lean', () => {
-  // Look 1 start: a walking stride measured knees at -0.091 (just past the 0.05 "center" line);
-  // stills at -0.017 and +0.062 failed twice on noise.
+describe('knee side fails only when the legs are far from the reference', () => {
+  // Snitch look 1 start: a walking stride at -0.091 failed a still at -0.017 on the "center" label.
+  // The fan reel's alternating sides (0.148, -0.059, 0.104, -0.207) must still be held.
   const stride = body({ knees_toward: 'image-left', leg_offset: -0.091 })
-  it('a stride near center is not a knee-side mismatch', () => {
-    expect(comparePose(stride, 1, { people: 1, main: body({ knees_toward: 'image-right', leg_offset: 0.062 }) } as never).status).toBe('pass')
+  it('a label flip near the center line is not a mismatch', () => {
+    expect(comparePose(stride, 1, { people: 1, main: body({ knees_toward: 'center', leg_offset: -0.017 }) } as never).status).toBe('pass')
+  })
+  it('a lying pose on the wrong side still fails (fan reel look 1 end)', () => {
+    expect(comparePose(body({ knees_toward: 'image-right', leg_offset: 0.148 }), 1, { people: 1, main: body({ knees_toward: 'image-left', leg_offset: -0.05 }) } as never).status).toBe('fail')
   })
   it('a clear lean still has to match', () => {
     const lunge = body({ framing: 'knees_up', knees: 'bent', knees_toward: 'image-right', leg_offset: 0.457 })
     expect(comparePose(lunge, 1, { people: 1, main: body({ framing: 'knees_up', knees: 'bent', knees_toward: 'image-left', leg_offset: -0.3 }) } as never).status).toBe('fail')
   })
-  it('a stride near center gets no knee-side words', () => {
-    expect(personWords(stride, null).join(', ')).not.toMatch(/knees fall/)
+  it('a measured leg side is still said in words, however small', () => {
+    expect(personWords(body({ knees_toward: 'image-left', leg_offset: -0.059 }), null).join(', ')).toMatch(/knees fall to image-left/)
   })
 })

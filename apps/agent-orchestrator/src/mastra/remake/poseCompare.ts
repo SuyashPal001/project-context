@@ -2,10 +2,11 @@
 // general for any reel (no assumption about lying down, leg sides or one person).
 import type { BodyReading, ImagePose } from '../tools/videoBreakdown/aiServiceClient.js'
 import type { CheckResult } from '../scorers/video/gate.js'
-import { kneesInShot, kneeSideClear } from '../tools/videoBreakdown/measuredLine.js'
+import { kneesInShot } from '../tools/videoBreakdown/measuredLine.js'
 
 const FRAMINGS = ['full_body', 'knees_up', 'waist_up', 'chest_up', 'face']
 const WORD: Record<string, string> = { full_body: 'full body', knees_up: 'knees up', waist_up: 'waist up', chest_up: 'chest up', face: 'face close-up' }
+const LEG_APART = 0.15
 const known = (v: unknown) => v !== null && v !== undefined && v !== 'unknown'
 const result = (status: CheckResult['status'], reason: string): CheckResult => ({ name: 'pose', status, reason, evidenceTimes: [] })
 
@@ -33,7 +34,13 @@ export function comparePose(ref: BodyReading | null, refPeople: number | null, g
   }
   // Knees the reference frame does not show are not compared (they were guessed off-frame).
   if (kneesInShot(ref)) field('knees', ref.knees, g.knees, (a, b) => a === b, (a, b) => `knees: reference ${a}, still ${b}`)
-  if (kneeSideClear(ref)) field('knee side', ref.knees_toward, g.knees_toward, (a, b) => a === b, (a, b) => `knees fall to ${b} in the still, ${a} in the reference`)
+  // Side labels flip on noise near the "center" line (Snitch stride -0.091 vs a still at -0.017), so
+  // when both offsets are read, the legs fail only when they sit far apart; the labels are the fallback.
+  const off = (x: unknown) => (typeof x === 'number' ? x : null)
+  const ro = off(ref.leg_offset), go = off(g.leg_offset)
+  if (kneesInShot(ref) && ro !== null && go !== null && known(ref.knees_toward) && known(g.knees_toward)) {
+    if (Math.abs(ro - go) > LEG_APART && ref.knees_toward !== g.knees_toward) diffs.push(`knees fall to ${g.knees_toward} in the still, ${ref.knees_toward} in the reference`)
+  } else if (kneesInShot(ref)) field('knee side', ref.knees_toward, g.knees_toward, (a, b) => a === b, (a, b) => `knees fall to ${b} in the still, ${a} in the reference`)
   for (const side of ['left', 'right'] as const) {
     field(`${side} arm`, ref.arms[side], g.arms[side], (a, b) => (a === 'raised') === (b === 'raised'),
       (a) => `${side} arm: ${a === 'raised' ? 'raised in the reference, not in the still' : 'raised in the still, not in the reference'}`)

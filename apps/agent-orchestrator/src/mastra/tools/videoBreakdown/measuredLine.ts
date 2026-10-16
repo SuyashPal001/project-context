@@ -14,10 +14,7 @@ const known = (v: string | null | undefined) => v && v !== 'unknown'
 const KNEES_SHOWN = new Set(['full_body', 'knees_up', 'unknown'])
 const FEET_SHOWN = new Set(['full_body', 'unknown'])
 export const kneesInShot = (b: BodyReading): boolean => KNEES_SHOWN.has(b.framing ?? 'unknown')
-// A knee side just past the "center" line is a stride, not a pose to copy (live Snitch run: -0.091
-// failed stills reading -0.017 and +0.062). Only a clear lean (kneeling, lying, lunging) counts.
-const CLEAR_LEAN = 0.15
-export const kneeSideClear = (b: BodyReading): boolean => kneesInShot(b) && (b.leg_offset === null || b.leg_offset === undefined || Math.abs(b.leg_offset) >= CLEAR_LEAN)
+
 
 export function personWords(b: BodyReading, start: BodyReading | null): string[] {
   const w: string[] = []
@@ -28,7 +25,7 @@ export function personWords(b: BodyReading, start: BodyReading | null): string[]
   for (const side of ['left', 'right'] as const) {
     if (b.arms?.[side] === 'raised') w.push(`${side} arm raised`)
   }
-  if (kneeSideClear(b) && known(b.knees_toward) && b.knees_toward !== 'center') {
+  if (knees && known(b.knees_toward) && b.knees_toward !== 'center') {
     const before = start && known(start.knees_toward) && start.knees_toward !== b.knees_toward ? ` (at the start: ${start.knees_toward})` : ''
     w.push(`knees fall to ${b.knees_toward}${before}`)
   }
