@@ -21,7 +21,7 @@ import { checkClip } from './clipCheck.js'
 import { musicPrompt } from './music.js'
 import { differenceNote } from './finalNote.js'
 import { runGate } from '../scorers/video/gate.js'
-import type { Brand, LedgerEntry, PlanLine, RemakePlan, StillResult } from './types.js'
+import type { Brand, LedgerEntry, PlanLine, RemakeLook, RemakePlan, StillResult } from './types.js'
 
 export class RemakeAccessError extends Error {}
 class NothingToShow extends Error {}
@@ -137,6 +137,20 @@ async function referenceSheet(portraitId: string, a: { tenantId: string }, deps:
   }
 }
 
+/** Each continuing part's start still is the previous look's end still (same file, no tries: it
+ *  was paid for once, on the previous part). */
+export function continueParts(looks: RemakeLook[], stills: StillResult[]): StillResult[] {
+  const out = [...stills]
+  const ordered = [...looks].sort((a, b) => a.startS - b.startS)
+  ordered.forEach((look, i) => {
+    if (!look.continues || i === 0) return
+    const prev = out.find((s) => s.look === ordered[i - 1].n && s.kind === 'end')
+    const start: StillResult = prev ? { look: look.n, kind: 'start', fileId: prev.fileId, status: prev.status, reasons: prev.reasons } : { look: look.n, kind: 'start', fileId: null, status: 'failed', reasons: ['the part before it has no end still'] }
+    out.push(start)
+  })
+  return out
+}
+
 const stilled = casted.extend({ stills: z.array(any) })
 const stillsStep = createStep({
   id: 'stills', inputSchema: casted, outputSchema: stilled,
@@ -168,7 +182,8 @@ const stillsStep = createStep({
     // Pose-guide frames show the original person: deleted from the user's files after use (M4).
     const guideIds: string[] = []
     for (const look of plan.looks) {
-      for (const kind of (look.needsEndStill ? ['start', 'end'] : ['start']) as Array<'start' | 'end'>) {
+      // A continuing part of a long shot starts from the previous part's end still (never paid twice).
+      for (const kind of ((look.needsEndStill ? ['start', 'end'] : ['start']) as Array<'start' | 'end'>).filter((k) => !(k === 'start' && look.continues))) {
         jobs.push({ person: personIn(look), run: async () => {
           // Never paid: a look whose people were not measured (spec §8a).
           if (!look.measuredPeople) return { result: { look: look.n, kind, fileId: null, status: 'blocked', reasons: ['this part of the video couldn’t be measured, so its still wasn’t made'] }, ledger: [] }
@@ -208,7 +223,7 @@ const stillsStep = createStep({
       deps.removeDir(dir)
       await Promise.all(guideIds.map((id) => deps.deleteFile(a.idToken, id)))
     }
-    return { ...inputData, stills: done.map((d) => d.result), ledger: [...(inputData.ledger as LedgerEntry[]), ...done.flatMap((d) => d.ledger)] }
+    return { ...inputData, stills: continueParts(plan.looks, done.map((d) => d.result)), ledger: [...(inputData.ledger as LedgerEntry[]), ...done.flatMap((d) => d.ledger)] }
   },
 })
 

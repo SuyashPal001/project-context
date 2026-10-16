@@ -22,6 +22,7 @@ export interface RemakeLook {
   cameraLines: string[]   // "at 0.5s: the camera pans right"
   guideStartS: number; guideEndS: number   // measured frames used as pose-only guides
   needsEndStill: boolean
+  continues?: boolean             // a later part of a long shot: starts from the previous look's end still
 }
 
 export interface RemakeReference {

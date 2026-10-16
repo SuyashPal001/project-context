@@ -59,12 +59,25 @@ export function lookSpans(overview: Pick<WatchOverview, 'looks'>, hidden: Hidden
     .map((l) => ({ label: l.label, start_s: Math.max(0, l.approx_start_s > 0 ? snap(l.approx_start_s, cuts) : 0), end_s: Math.min(durationS, l.approx_end_s < durationS ? snap(l.approx_end_s, cuts) : durationS) }))
     .filter((l) => Number.isFinite(l.start_s) && Number.isFinite(l.end_s) && l.end_s > l.start_s)
     .flatMap((l) => splitAtCuts(l, cuts))
+    .flatMap((l) => splitLong(l))
 }
 
 // One outfit look can span a hard cut (a new camera shot): each shot gets its own span, so it gets
 // its own stills and clip (Snitch: one look 0-14.2s over a cut at 3.42s). Same look, "· shot N".
 export const SHOT_MARK = ' · shot '
-export const lookLabelOf = (label: string): string => label.split(SHOT_MARK)[0]
+// A shot longer than one clip can be (8s) is split into equal continuous parts ("· part N"): each
+// later part continues from the previous part's end (Snitch shot 2: 12.4s stayed a still).
+export const PART_MARK = ' · part '
+export const MAX_PART_S = 8
+export const lookLabelOf = (label: string): string => label.split(SHOT_MARK)[0].split(PART_MARK)[0]
+export const isContinuingPart = (label: string): boolean => label.includes(PART_MARK)
+function splitLong(l: { label: string; start_s: number; end_s: number }) {
+  const n = Math.ceil((l.end_s - l.start_s) / MAX_PART_S - 1e-9)
+  if (n <= 1) return [l]
+  const step = (l.end_s - l.start_s) / n
+  const r2 = (x: number) => Math.round(x * 100) / 100
+  return Array.from({ length: n }, (_, i) => ({ label: i === 0 ? l.label : `${l.label}${PART_MARK}${i + 1}`, start_s: r2(l.start_s + i * step), end_s: i === n - 1 ? l.end_s : r2(l.start_s + (i + 1) * step) }))
+}
 function splitAtCuts(l: { label: string; start_s: number; end_s: number }, cuts: number[]) {
   const inside = cuts.filter((c) => c > l.start_s + SNAP_S && c < l.end_s - SNAP_S).sort((a, b) => a - b)
   const edges = [l.start_s, ...inside, l.end_s]

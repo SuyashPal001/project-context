@@ -1,5 +1,5 @@
 import type { Breakdown } from '../tools/videoBreakdown/breakDownVideo.js'
-import { lookSpans, lookLabelOf } from '../tools/videoBreakdown/breakDownVideo.js'
+import { lookSpans, lookLabelOf, isContinuingPart } from '../tools/videoBreakdown/breakDownVideo.js'
 import type { BodyReading } from '../tools/videoBreakdown/aiServiceClient.js'
 import type { RemakeLook } from './types.js'
 
@@ -31,6 +31,9 @@ export function remakeLooks(b: Breakdown): RemakeLook[] {
     const s = m ?? shot
     if (!s || !(s.end_s > s.start_s)) return []
     const first = shot.label === l.label
+    const continues = isContinuingPart(shot.label)
+    // the shot right after this one continues it: this one must end on a still the next starts from
+    const nextContinues = shots.some((x) => isContinuingPart(x.label) && Math.abs(x.start_s - shot.end_s) < 1e-6)
     const last = !shots.some((x) => x !== shot && lookLabelOf(x.label) === l.label && x.start_s > shot.start_s)
     const startS = s.start_s, endS = s.end_s
     const pad = Math.min(0.5, (endS - startS) / 4)
@@ -54,7 +57,8 @@ export function remakeLooks(b: Breakdown): RemakeLook[] {
       measuredPeople: m?.people != null && !(m.people === 0 && (m.people_max ?? 0) > 0),
       guideStartS: kf[0]?.t_s ?? startS + pad,
       guideEndS: kf.length ? kf[kf.length - 1].t_s : endS - pad,
-      needsEndStill: moves > 0 || bodyChanged(start, end),
+      needsEndStill: nextContinues || moves > 0 || bodyChanged(start, end),
+      ...(continues ? { continues: true } : {}),
     }]
   })
 }

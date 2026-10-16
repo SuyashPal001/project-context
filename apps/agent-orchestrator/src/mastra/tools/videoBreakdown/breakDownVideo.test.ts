@@ -180,7 +180,7 @@ describe('lookSpans', () => {
   // end guide frame (3.63s) came from look 2's shot.
   it('snaps a rough look edge to a measured cut close by', () => {
     const o = { looks: [{ label: 'a', approx_start_s: 0, approx_end_s: 3.7 }, { label: 'b', approx_start_s: 3.7, approx_end_s: 14.3 }] } as any
-    expect(lookSpans(o, [], 15.87, [3.43])).toEqual([{ label: 'a', start_s: 0, end_s: 3.43 }, { label: 'b', start_s: 3.43, end_s: 14.3 }])
+    expect(lookSpans(o, [], 15.87, [3.43])).toEqual([{ label: 'a', start_s: 0, end_s: 3.43 }, { label: 'b', start_s: 3.43, end_s: 8.87 }, { label: 'b · part 2', start_s: 8.87, end_s: 14.3 }]) // over 8s: two parts
   })
   it('leaves an edge alone when no cut is close', () => {
     const o = { looks: [{ label: 'a', approx_start_s: 0, approx_end_s: 3.7 }] } as any

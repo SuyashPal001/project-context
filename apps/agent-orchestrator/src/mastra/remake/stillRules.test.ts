@@ -105,7 +105,7 @@ describe('a hard cut inside one outfit look makes two shots', () => {
   it('lookSpans splits a look at a cut well inside it', async () => {
     const { lookSpans } = await import('../tools/videoBreakdown/breakDownVideo.js')
     const o = { looks: [{ label: 'run', approx_start_s: 0, approx_end_s: 14.2 }] } as never
-    expect(lookSpans(o, [], 15.87, [3.42])).toEqual([{ label: 'run', start_s: 0, end_s: 3.42 }, { label: 'run · shot 2', start_s: 3.42, end_s: 14.2 }])
+    expect(lookSpans(o, [], 15.87, [3.42])).toEqual([{ label: 'run', start_s: 0, end_s: 3.42 }, { label: 'run · shot 2', start_s: 3.42, end_s: 8.81 }, { label: 'run · shot 2 · part 2', start_s: 8.81, end_s: 14.2 }]) // a 10.8s shot is then split in two parts (8s max)
   })
   const split = () => {
     const b = breakdown()
