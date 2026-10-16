@@ -27,12 +27,28 @@ export const slotFor = (n: number, kind: 'start' | 'end', attempt: number): numb
 // fileId: set when the still was cropped to a tighter original (the crop is what is kept).
 type StillCheck = { status: CheckResult['status']; hard: string[]; warnings: string[]; reason: string; fileId?: string }
 
+// A retry asks for the fix in plain plan words. The check's own description ("rounder face,
+// different nose") read to the prompt check as invented content and blocked the retry (fan rerun).
+const FIXES: Array<[RegExp, string]> = [
+  [/face differs/i, 'the face must be exactly the person in the first image'],
+  [/appears twice/i, 'show each object only once'],
+  [/extra person|only \d+ person/i, 'exactly as many people as the second image shows'],
+  [/no person found/i, 'the person is in the shot as in the second image'],
+  [/appears where the reference has none/i, 'no person in this image'],
+  [/looks like the lead/i, 'no one else looks like the person in the first image'],
+  [/back to the camera|facing the camera|side-on/i, 'the person faces the camera exactly as in the second image'],
+]
+export function fixLine(reasons: string[]): string {
+  return [...new Set(reasons.map((r) => FIXES.find(([re]) => re.test(r))?.[1] ?? r))].join('; ')
+}
+
 async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: RemakeDeps): Promise<StillCheck> {
   try {
     const still = await deps.fetchImage(fileId, ctx.idToken)
     const person = personIn(job.look)
     const [looks, pose] = await Promise.all([
-      deps.stillChecks(deps.ask(ctx.tenantId), still, { lead: ctx.portrait?.img, leadInShot: person && !!ctx.portrait }),
+      // No face check when the original shows the person from the back: there is no face to compare.
+      deps.stillChecks(deps.ask(ctx.tenantId), still, { lead: ctx.portrait?.img, leadInShot: person && !!ctx.portrait && (job.kind === 'start' ? job.look.start : job.look.end)?.facing !== 'back' }),
       deps.localFile(fileId, ctx.idToken, ctx.scopeId).then((p) => deps.poseImage(p)),
     ])
     const body = job.kind === 'start' ? job.look.start : job.look.end
@@ -70,7 +86,7 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
   const tries: StillTry[] = []
   const withTries = (r: { result: StillResult; ledger: LedgerEntry[] }) => (tries.length ? { ...r, result: { ...r.result, tries } } : r)
   for (let attempt = 0; attempt < 2; attempt++) {
-    const gate = await deps.promptGate({ ...job.gate, prompt, tenantId: ctx.tenantId })
+    const gate = await deps.promptGate({ ...job.gate, prompt, tenantId: ctx.tenantId, ...(attempt > 0 ? { planLine: `${job.gate.planLine}; retry: the prompt ends with a "Fix:" sentence saying what the previous try got wrong, in plan words (not new content)` } : {}) })
     if (gate.status !== 'pass') {
       // A blocked retry after a failed attempt: the item failed (the paid attempt was wasted),
       // so the ledger says failed too, never "blocked" next to a failed result (M6).
@@ -112,7 +128,7 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps):
     ledger.push({ item, attempt, creditsMicro: spent, outcome: attempt === 0 ? 'retried' : 'failed' })
     last = { fileId: g.fileId, reasons: [c.reason] }
     tries.push({ fileId: g.fileId, kept: false, why: c.hard, creditsMicro: spent })
-    prompt = `${job.prompt} Fix: ${c.reason}`
+    prompt = `${job.prompt} Fix: ${fixLine(c.hard)}.`
   }
   return withTries({ result: { ...base, fileId: last!.fileId, status: 'failed', reasons: last!.reasons }, ledger })
 }

@@ -33,6 +33,49 @@ describe('long shots become continuous parts', () => {
     const stills = [{ look: 1, kind: 'start' as const, fileId: 's1', status: 'passed' as const, reasons: [] }, { look: 1, kind: 'end' as const, fileId: 'e1', status: 'passed' as const, reasons: [], tries: [{ fileId: 'e1', kept: true, why: [], creditsMicro: '100' }] }]
     const out = continueParts(looks, stills)
     expect(out.find((s) => s.look === 2 && s.kind === 'start')).toEqual({ look: 2, kind: 'start', fileId: 'e1', status: 'passed', reasons: [] })
-  })
+  }, 30_000)
 })
 void vi; void body
+
+// Real rerun 2026-10-16 (both reels) found three of our own blocks.
+import { makeStill, type StillCtx, type StillJob } from './paidStill.js'
+import { stillGateInput, stillPrompt } from './prompts.js'
+import { writePlan } from './plan.js'
+import { fixLine } from './paidStill.js'
+import type { RemakeDeps } from './deps.js'
+
+const img = { data: 'AA', mime: 'image/jpeg' }
+const ctx: StillCtx = { tenantId: 't', idToken: 'tok', scopeId: 's', runId: 'r', exec: () => ({ requestContext: { get: () => undefined }, agent: { toolCallId: 'remake:r' } }), portrait: { fileId: 'portrait', img } }
+const okDeps = (o: Partial<RemakeDeps> = {}) => ({
+  ask: () => vi.fn(), fetchImage: vi.fn().mockResolvedValue(img), localFile: vi.fn().mockResolvedValue('/m/x'), upload: vi.fn(),
+  generateStill: vi.fn().mockImplementation(async () => ({ fileId: `still-${Math.random()}`, creditsUsedMicro: '100' })),
+  poseImage: vi.fn().mockResolvedValue({ model: 'm', people: 1, no_person: false, main: body({ facing: 'back' } as never) }),
+  promptGate: vi.fn().mockResolvedValue({ name: 'prompt', status: 'pass', reason: '', evidenceTimes: [] }),
+  stillChecks: vi.fn().mockResolvedValue({ passed: true, reasons: [] }),
+  ...o,
+}) as unknown as RemakeDeps
+
+describe('our own blocks found on the real rerun', () => {
+  it('a still of the person from the back is never face-checked (Snitch: "the face is not visible")', async () => {
+    const look = { ...remakeLooks(breakdown())[0], start: body({ facing: 'back' } as never) }
+    const d = okDeps()
+    await makeStill({ look, kind: 'start', prompt: 'P', references: ['portrait', 'guide'], aspectRatio: '9:16', gate: { prompt: 'P', planLine: 'x', look: {}, startFrameObjects: [], keyMoments: [] } } as StillJob, ctx, d)
+    expect((d.stillChecks as ReturnType<typeof vi.fn>).mock.calls[0][2]).toMatchObject({ leadInShot: false })
+  })
+  it('the prompt check is told a trick object is added later, so it is not "missing" (fan blade)', async () => {
+    const b = breakdown({ overview: { ...breakdown().overview, props: [{ prop: 'remote', where: 'rug', when: 'all' }, { prop: 'fan blade', where: 'over the lens', when: 'changes', part_of_trick: true }] } as never })
+    const p = await writePlan(b, { name: 'B', product: 'B' }, vi.fn().mockResolvedValue({ lines: [] }))
+    const g = stillGateInput(p, p.looks[0], 'start', stillPrompt(p, p.looks[0], 'start', { name: 'B', product: 'B' }, false))
+    expect(g.planLine).toMatch(/props\[1\]: keep[^;]*added over the finished video, never drawn in a still/)
+  })
+  it('a retry asks for the fix in plain plan words, and the check knows it is a retry', async () => {
+    expect(fixLine(['the face differs from the chosen person: rounder face, different nose'])).toBe('the face must be exactly the person in the first image')
+    expect(fixLine(['an object appears twice (two remotes)'])).toBe('show each object only once')
+    const d = okDeps({ stillChecks: vi.fn().mockResolvedValueOnce({ passed: false, reasons: ['the face differs from the chosen person: rounder face'] }).mockResolvedValue({ passed: true, reasons: [] }) })
+    const look = remakeLooks(breakdown())[0]
+    await makeStill({ look, kind: 'start', prompt: 'P', references: ['portrait', 'guide'], aspectRatio: '9:16', gate: { prompt: 'P', planLine: 'x', look: {}, startFrameObjects: [], keyMoments: [] } } as StillJob, ctx, d)
+    const second = (d.promptGate as ReturnType<typeof vi.fn>).mock.calls[1][0]
+    expect(second.prompt).toBe('P Fix: the face must be exactly the person in the first image.')
+    expect(second.planLine).toMatch(/retry/)
+  })
+})

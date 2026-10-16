@@ -80,7 +80,9 @@ export const CAST_BY_IMAGE = 'the person: a new person, given by the first refer
 export function stillGateInput(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', prompt: string) {
   const i = refOf(look)
   const mine = plan.lines.filter((l) => l.ref.startsWith(`looks[${i}].`) || l.ref === 'setting' || l.ref.startsWith('props['))
-  const planLine = [`${kind} still of look ${look.n}`, ...(personIn(look) ? [CAST_BY_IMAGE] : []), ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}${l.why ? ` (${l.why})` : ''}`)].join('; ')
+  const trickRef = (ref: string) => { const m = /^props\[(\d+)\]$/.exec(ref); return !!m && !!plan.reference.props[Number(m[1])]?.trick }
+  // A trick object is added over the finished video, so a still that leaves it out is right (fan rerun: "missing: props[1]").
+  const planLine = [`${kind} still of look ${look.n}`, ...(personIn(look) ? [CAST_BY_IMAGE] : []), ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}${l.why ? ` (${l.why})` : ''}${trickRef(l.ref) ? ' (the trick: added over the finished video, never drawn in a still)' : ''}`)].join('; ')
   // Only THIS still's body (start or end): the look-level "Measured:" line describes the end and
   // made a correct start-still prompt read as a contradiction (live run 08466630).
   const body = kind === 'start' ? look.start : look.end

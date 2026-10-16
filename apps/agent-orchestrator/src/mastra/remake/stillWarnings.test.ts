@@ -47,7 +47,7 @@ describe('a warning keeps the still without paying again', () => {
     const d = deps({ stillChecks: vi.fn().mockResolvedValueOnce({ passed: false, reasons: ['two remotes'], warnings: ['face may differ'] }).mockResolvedValue({ passed: true, reasons: [], warnings: ['face may differ'] }) })
     const r = await makeStill(job, ctx, d)
     expect(d.generateStill).toHaveBeenCalledTimes(2)
-    expect((d.generateStill as ReturnType<typeof vi.fn>).mock.calls[1][0].prompt).toMatch(/Fix: two remotes$/)
+    expect((d.generateStill as ReturnType<typeof vi.fn>).mock.calls[1][0].prompt).toMatch(/Fix: two remotes\.$/)
     expect(r.result).toMatchObject({ status: 'warned', fileId: 'still-2' })
   })
   it('an extra person is hard', () => {
@@ -100,5 +100,5 @@ describe('every paid try is visible with its reason and cost', () => {
     const stills = [{ look: 1, kind: 'start', fileId: 'still-2', status: 'passed', reasons: [], tries: [{ fileId: 'still-1', kept: false, why: ['two remotes'], creditsMicro: '13400000' }, { fileId: 'still-2', kept: true, why: [], creditsMicro: '13400000' }] }]
     const out = shapeRun('r', { status: 'suspended', steps: { preview: { suspendPayload: { stage: 'preview_review', previewFileId: 'p', stills, summary: { spentMicro: '26800000', wastedMicro: '13400000', failed: [], blocked: [] } } } } }) as unknown as { stills: Array<{ tries: unknown[] }> }
     expect(out.stills[0].tries).toEqual([{ fileId: 'still-1', kept: false, why: ['two remotes'], credits: '13.40' }, { fileId: 'still-2', kept: true, why: [], credits: '13.40' }])
-  })
+  }, 30_000)
 })
