@@ -48,4 +48,20 @@ describe('brandInstructionBlock', () => {
     expect(brandInstructionBlock(empty)).toContain('no saved brand')
     expect(brandInstructionBlock({ ...empty, bannedPhrases: ['cheap'] })).not.toContain('no saved brand')
   })
+
+  it('lists what is still missing and says to ask once before the next ad', () => {
+    const b = brandInstructionBlock({ ...brand, audience: null, toneWords: [] })
+    expect(b).toContain('Still missing: who it is for, how it sounds.')
+    expect(b).toMatch(/ask for these once in a single ask_clarifying_questions call/)
+    expect(brandInstructionBlock(brand)).not.toContain('Still missing')
+  })
+
+  it('tells Olmo to confirm set-up and ask only about what the import missed', () => {
+    for (const b of [brandInstructionBlock(null), brandInstructionBlock(brand)]) {
+      expect(b).toMatch(/status "done", tell the user their brand is set up/)
+      expect(b).toMatch(/If "missing" is not empty, ask about all of it in one ask_clarifying_questions call/)
+    }
+    expect(brandInstructionBlock(null)).toMatch(/ask if anything should change/)
+  })
 })
+

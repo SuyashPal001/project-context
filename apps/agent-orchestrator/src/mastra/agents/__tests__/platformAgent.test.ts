@@ -310,7 +310,7 @@ describe('platformAgent instructions — working memory contract', () => {
     const requestContext = new RequestContext()
     requestContext.set('brand', { name: 'Mamaearth', oneLiner: null, audience: null, region: 'IN', toneWords: ['warm'], emojiPolicy: 'minimal', signaturePhrases: [], bannedPhrases: [], ctaExamples: [], voiceNotes: null, colors: {}, headlineFont: null, logoFileId: null })
     const instructions = await platformAgent.getInstructions({ requestContext }) as string
-    expect(instructions.trimEnd()).toMatch(/## Your brand[\s\S]*Mamaearth[\s\S]*import_brand\.$/)
+    expect(instructions.trimEnd()).toMatch(/## Your brand[\s\S]*Mamaearth[\s\S]*offer to ask the questions instead\.$/)
     expect(instructions).toContain('save them with update_brand, not in working memory')
   })
 })

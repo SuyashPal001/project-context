@@ -99,12 +99,45 @@ describe('update_brand', () => {
 })
 
 describe('import_brand', () => {
-  it('POSTs the value and says the brand is being read', async () => {
-    fetchMock.mockResolvedValue(new Response('{"data":{"importStatus":"importing"}}', { status: 202 }))
-    const { importBrandTool } = await import('./brandTools.js')
-    const out = await importBrandTool.execute!({ value: '@mamaearth.in' } as never, ctx())
+  it('POSTs the value and reports still-reading when the fill outlasts the wait', async () => {
+    const mod = await import('./brandTools.js')
+    Object.assign(mod.IMPORT_WAIT, { intervalMs: 1, timeoutMs: 20 })
+    fetchMock.mockImplementation(async (url: string) => String(url).endsWith('/brand/import')
+      ? new Response('{"data":{"importStatus":"importing"}}', { status: 202 })
+      : new Response('{"data":{"importStatus":"importing"}}', { status: 200 }))
+    const out = await mod.importBrandTool.execute!({ value: '@mamaearth.in' } as never, ctx())
     expect(out).toMatchObject({ success: true, status: 'importing' })
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ value: '@mamaearth.in' })
+  })
+
+  it('waits for the fill, then reports what was found and what is missing', async () => {
+    const mod = await import('./brandTools.js')
+    Object.assign(mod.IMPORT_WAIT, { intervalMs: 1, timeoutMs: 1000 })
+    const done = { name: 'Fitnearn', oneLiner: 'Fitness classes', audience: null, region: 'IN', toneWords: [], emojiPolicy: 'minimal',
+      signaturePhrases: [], bannedPhrases: [], ctaExamples: ['Book now'], voiceNotes: null, colors: { primary: '#00A651' },
+      headlineFont: null, logo: { fileId: 'f1', url: null }, importStatus: 'done' }
+    let polls = 0
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).endsWith('/brand/import')) return new Response('{"data":{"importStatus":"importing"}}', { status: 202 })
+      polls++
+      return new Response(JSON.stringify({ data: polls < 2 ? { ...done, importStatus: 'importing' } : done }), { status: 200 })
+    })
+    const c = ctx()
+    const out = await mod.importBrandTool.execute!({ value: 'fitnearn.com' } as never, c) as Record<string, unknown>
+    expect(out).toMatchObject({ success: true, status: 'done', missing: ['who it is for', 'how it sounds'] })
+    expect(out.found).toMatchObject({ name: 'Fitnearn', 'what it makes': 'Fitness classes', logo: 'saved', 'calls to action': ['Book now'] })
+    expect((c as { requestContext: { get(k: string): unknown } }).requestContext.get('brand')).toMatchObject({ name: 'Fitnearn', logoFileId: 'f1' })
+  })
+
+  it('reports a failed fill plainly', async () => {
+    const mod = await import('./brandTools.js')
+    Object.assign(mod.IMPORT_WAIT, { intervalMs: 1, timeoutMs: 1000 })
+    fetchMock.mockImplementation(async (url: string) => String(url).endsWith('/brand/import')
+      ? new Response('{"data":{"importStatus":"importing"}}', { status: 202 })
+      : new Response('{"data":{"importStatus":"failed"}}', { status: 200 }))
+    const out = await mod.importBrandTool.execute!({ value: 'fitnearn.com' } as never, ctx()) as { success: boolean; error: string }
+    expect(out.success).toBe(false)
+    expect(out.error).toMatch(/Couldn't read that/)
   })
 
   it('passes on the "not a site or handle" message', async () => {

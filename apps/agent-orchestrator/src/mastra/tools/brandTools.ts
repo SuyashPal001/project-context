@@ -92,9 +92,61 @@ export const updateBrandTool = createTool({
   },
 })
 
+/** The API's GET /brand record — only the fields Olmo needs. */
+interface BrandRecordLite {
+  name: string | null; oneLiner: string | null; audience: string | null; region: string
+  toneWords: string[]; emojiPolicy: string; signaturePhrases: string[]; bannedPhrases: string[]
+  ctaExamples: string[]; voiceNotes: string | null; colors: Record<string, string>
+  headlineFont: string | null; logo: { fileId: string } | null; importStatus: string
+}
+
+/** How long import_brand waits for the fill. Mutable so tests can shorten it. */
+export const IMPORT_WAIT = { intervalMs: 3000, timeoutMs: 60_000 }
+
+/** Polls GET /brand until the import leaves 'importing'. Null when it is still running at the timeout. */
+async function waitForImport(idToken: string): Promise<BrandRecordLite | null> {
+  const deadline = Date.now() + IMPORT_WAIT.timeoutMs
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, IMPORT_WAIT.intervalMs))
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/brand`, { headers: { Authorization: `Bearer ${idToken}` } })
+      if (!res.ok) continue
+      const { data } = await res.json() as { data: BrandRecordLite | null }
+      if (data && data.importStatus !== 'importing') return data
+    } catch (err) {
+      console.warn('[import_brand] status check failed', (err as Error).message)
+    }
+  }
+  return null
+}
+
+function toTenantBrand(r: BrandRecordLite): TenantBrand {
+  return {
+    name: r.name, oneLiner: r.oneLiner, audience: r.audience, region: r.region, toneWords: r.toneWords,
+    emojiPolicy: r.emojiPolicy, signaturePhrases: r.signaturePhrases, bannedPhrases: r.bannedPhrases,
+    ctaExamples: r.ctaExamples, voiceNotes: r.voiceNotes, colors: r.colors ?? {}, headlineFont: r.headlineFont,
+    logoFileId: r.logo?.fileId ?? null,
+  }
+}
+
+/** What the import found, and what Olmo should ask about. */
+export function summarizeBrand(r: BrandRecordLite): { found: Record<string, unknown>; missing: string[] } {
+  const found: Record<string, unknown> = {}
+  const missing: string[] = []
+  const check = (label: string, value: unknown, present: boolean) => { if (present) found[label] = value; else missing.push(label) }
+  check('name', r.name, Boolean(r.name?.trim()))
+  check('what it makes', r.oneLiner, Boolean(r.oneLiner?.trim()))
+  check('who it is for', r.audience, Boolean(r.audience?.trim()))
+  check('how it sounds', r.toneWords, r.toneWords.length > 0)
+  check('colours', r.colors, Object.keys(r.colors ?? {}).length > 0)
+  check('logo', r.logo ? 'saved' : null, Boolean(r.logo))
+  if (r.ctaExamples.length > 0) found['calls to action'] = r.ctaExamples
+  return { found, missing }
+}
+
 export const importBrandTool = createTool({
   id: 'import_brand',
-  description: "Fill the workspace's brand from its website or Instagram handle. Use when the user shares their own site or handle to set up or refresh the brand. Fields the user already edited are kept.",
+  description: "Fill the workspace's brand from its website or Instagram handle. Use when the user shares their own site or handle to set up or refresh the brand. Fields the user already edited are kept. Waits up to a minute for the result: status 'done' returns what was found and what is still missing; status 'importing' means it is still reading.",
   inputSchema: z.object({ value: z.string().min(1).max(500).describe('The website link or Instagram handle exactly as the user gave it') }),
   execute: async ({ value }, execContext) => {
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
@@ -111,10 +163,19 @@ export const importBrandTool = createTool({
         console.error('[import_brand] API', res.status)
         return { success: false, error: "Couldn't start reading that. Ask the user about their brand instead." }
       }
-      const status = body.data?.importStatus ?? 'importing'
-      return status === 'failed'
-        ? { success: false, error: "Couldn't read that. Ask the user about their brand instead." }
-        : { success: true, status, note: 'The brand will appear on the Brand page in about a minute.' }
+      if ((body.data?.importStatus ?? 'importing') === 'failed') {
+        return { success: false, error: "Couldn't read that. Ask the user about their brand instead." }
+      }
+      // Wait for the result so Olmo can say it's done and ask only about what's missing.
+      const record = await waitForImport(idToken)
+      if (!record) {
+        return { success: true, status: 'importing', note: 'Still reading. Tell the user it will appear on the Brand page shortly, and offer to check again.' }
+      }
+      if (record.importStatus === 'failed') {
+        return { success: false, error: "Couldn't read that. Ask the user about their brand instead." }
+      }
+      execContext?.requestContext?.set('brand' as never, toTenantBrand(record) as never)
+      return { success: true, status: 'done', ...summarizeBrand(record) }
     } catch (err) {
       console.error('[import_brand] failed', (err as Error).message)
       return { success: false, error: "Couldn't start reading that. Ask the user about their brand instead." }
