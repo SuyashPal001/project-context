@@ -24,6 +24,7 @@ DET_URL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/
 POSE_URL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-s_simcc-body7_pt-body7_420e-256x192-acd4a1ef_20230504.zip"
 MODEL_NAME = "yolox-tiny + rtmpose-s"
 VIS = 0.3               # a joint counts as seen at this score
+HEAD_SEEN = 0.65        # mean score of the 5 head points for a seen head (a head guessed under a blade scores ~0.5)
 MIN_JOINTS = 4          # a detection needs this many seen joints to count as a person
 MIN_BOX_AREA = 0.004    # of the frame; smaller boxes are noise
 WINDOW_S = 1.0          # look start / end window
@@ -328,7 +329,7 @@ def read_image(path: str) -> dict:
     # where the main person sits in the frame (fractions), so a still's framing can be compared with the original's;
     # head_seen: the box's top edge is the head only when it is seen (something in front can cut the box short)
     return {"model": MODEL_NAME, "people": len(persons), "no_person": False, "main": read_person(main[0], main[1], h / w, main[2]),
-            "box": [round(float(v), 3) for v in main[2]], "head_seen": bool((np.asarray(main[1])[:5] >= VIS).any())}
+            "box": [round(float(v), 3) for v in main[2]], "head_seen": bool(np.asarray(main[1])[:5].mean() >= HEAD_SEEN)}
 
 
 def measure_pose(path: str, looks: list[dict], exclude=None, fps: float = 5.0) -> dict:

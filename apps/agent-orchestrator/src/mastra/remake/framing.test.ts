@@ -31,6 +31,9 @@ describe('a still keeps the original camera framing', () => {
     // the fix changes the framing, so the edit never also says to keep it (the prompt check stopped every
     // such retry as a contradiction, fan run real7)
     expect(edit.prompt).not.toMatch(/Keep everything else exactly:[^.]*framing/)
+    // the original's frame shows its own person and whatever covers them: only its framing is taken (a
+    // retry copied the fan blade over her face, fan run real8)
+    expect(edit.prompt).toMatch(/take nothing else from it/)
     expect(r.result.tries?.[0].why.join(' ')).toMatch(/the camera is closer/)
   })
   it('the same framing passes on the first try', async () => {

@@ -64,3 +64,11 @@ def test_reading_says_whether_the_head_is_seen(tmp_path, monkeypatch):
     kp, sc = person(hide=(0, 1, 2, 3, 4))
     monkeypatch.setattr(pose, "_load", lambda: (FakeDet([[10, 20, 90, 180]]), FakePose([(kp, sc)])))
     assert pose.read_image(str(_img(tmp_path)))["head_seen"] is False
+
+# Under the blade the pose model still guesses a head, at about half confidence (fan run real8: 0.53 under
+# the blade, 0.9 to 1.1 when seen); a guessed head is not a seen one.
+def test_a_half_confident_head_is_a_guess_not_seen(tmp_path, monkeypatch):
+    kp, sc = person()
+    sc[:5] = 0.53
+    monkeypatch.setattr(pose, "_load", lambda: (FakeDet([[10, 20, 90, 180]]), FakePose([(kp, sc)])))
+    assert pose.read_image(str(_img(tmp_path)))["head_seen"] is False

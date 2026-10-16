@@ -48,7 +48,7 @@ const FIXES: Array<[RegExp, string]> = [
   [/looks like the lead/i, 'no one else looks like the person in the first image'],
   [/back to the camera|facing the camera|side-on/i, 'the person faces the camera exactly as in the second image'],
   [/room differs/i, 'the setting must match ROOM_IMAGE: the same floor, rug, furniture, walls and light'],
-  [/camera framing differs/i, 'the camera framing must match the original frame (GUIDE_IMAGE): the person\'s size and position in the frame'],
+  [/camera framing differs/i, 'the camera framing must match the original frame (GUIDE_IMAGE): the person\'s size and position in the frame; take nothing else from it'],
 ]
 const NEEDS_FRESH = /back to the camera|facing the camera|side-on|no person found|appears where the reference has none/i
 // A fix that changes the framing never also says to keep it (the prompt check stopped every such retry as a
