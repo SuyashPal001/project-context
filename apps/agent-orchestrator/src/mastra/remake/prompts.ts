@@ -59,13 +59,22 @@ export function stillPrompt(plan: RemakePlan, look: RemakeLook, kind: 'start' | 
   return parts.join(' ')
 }
 
+/** The person's identity is carried by the cast image, never by words in the prompt, so the
+ *  cast description must not be a line the prompt is checked against (live run 08466630:
+ *  "missing: A charismatic man…" blocked a correct still). */
+export const CAST_BY_IMAGE = 'the person: a new person, given by the first reference image (not described in words)'
+
 export function stillGateInput(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', prompt: string) {
   const i = look.n - 1
-  const mine = plan.lines.filter((l) => l.ref.startsWith(`looks[${i}].`) || l.ref === 'setting' || l.ref === 'cast' || l.ref.startsWith('props['))
-  const planLine = [`${kind} still of look ${look.n}`, ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}${l.why ? ` (${l.why})` : ''}`)].join('; ')
+  const mine = plan.lines.filter((l) => l.ref.startsWith(`looks[${i}].`) || l.ref === 'setting' || l.ref.startsWith('props['))
+  const planLine = [`${kind} still of look ${look.n}`, ...(personIn(look) ? [CAST_BY_IMAGE] : []), ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}${l.why ? ` (${l.why})` : ''}`)].join('; ')
+  // Only THIS still's body (start or end): the look-level "Measured:" line describes the end and
+  // made a correct start-still prompt read as a contradiction (live run 08466630).
+  const body = kind === 'start' ? look.start : look.end
+  const pose = (kind === 'start' ? look.startPose : look.endPose) || look.startPose
   return {
     prompt, planLine,
-    look: { expression: shown(plan, `looks[${i}].expression`, look.expression) ?? undefined, start_pose: look.startPose, end_pose: look.endPose, measured: look.measured } as Record<string, unknown> & { expression?: string },
+    look: { expression: shown(plan, `looks[${i}].expression`, look.expression) ?? undefined, pose, body_measured: body ? personWords(body, null).join(', ') : undefined } as Record<string, unknown> & { expression?: string },
     startFrameObjects: plan.reference.props.flatMap((p, j) => shown(plan, `props[${j}]`, p.prop) ?? []),
     keyMoments: [] as string[],
   }

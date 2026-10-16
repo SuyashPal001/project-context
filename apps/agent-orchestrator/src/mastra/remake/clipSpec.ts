@@ -2,6 +2,7 @@
 // the measured readings (spec §5.4, rules 5, 6, 7.1, 7.2, 12).
 import { personWords } from '../tools/videoBreakdown/measuredLine.js'
 import { personIn } from './looks.js'
+import { CAST_BY_IMAGE } from './prompts.js'
 import type { Brand, PlanLine, RemakeLook, RemakePlan, StillResult } from './types.js'
 
 export const CLIP_FPS = 30
@@ -77,11 +78,16 @@ export function clipPrompt(plan: RemakePlan, look: RemakeLook, _brand: Brand, en
 
 export function clipGateInput(plan: RemakePlan, look: RemakeLook, prompt: string) {
   const i = look.n - 1
-  const mine = plan.lines.filter((l) => l.ref.startsWith(`looks[${i}].`) || l.ref === 'cast' || l.ref.startsWith('props['))
+  const mine = plan.lines.filter((l) => l.ref.startsWith(`looks[${i}].`) || l.ref.startsWith('props['))
   return {
     prompt,
-    planLine: [`clip of look ${look.n}`, ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}`)].join('; '),
-    look: { expression: shown(plan, `looks[${i}].expression`, look.expression) ?? undefined, start_pose: look.startPose, end_pose: look.endPose, measured: look.measured, moves: look.moveLines } as Record<string, unknown> & { expression?: string },
+    planLine: [`clip of look ${look.n}`, ...(personIn(look) ? [CAST_BY_IMAGE] : []), ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}`)].join('; '),
+    look: {
+      expression: shown(plan, `looks[${i}].expression`, look.expression) ?? undefined, start_pose: look.startPose, end_pose: look.endPose,
+      body_at_start: look.start ? personWords(look.start, null).join(', ') : undefined,
+      body_at_end: look.end ? personWords(look.end, null).join(', ') : undefined,
+      moves: look.moveLines,
+    } as Record<string, unknown> & { expression?: string },
     startFrameObjects: plan.reference.props.flatMap((p, j) => shown(plan, `props[${j}]`, p.prop) ?? []),
     keyMoments: plan.reference.moments.filter((m) => m.t_s >= look.startS && m.t_s < look.endS).map((m) => m.what),
   }

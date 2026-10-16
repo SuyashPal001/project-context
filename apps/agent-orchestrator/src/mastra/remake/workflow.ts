@@ -24,6 +24,7 @@ import { runGate } from '../scorers/video/gate.js'
 import type { Brand, LedgerEntry, PlanLine, RemakePlan, StillResult } from './types.js'
 
 export class RemakeAccessError extends Error {}
+class NothingToShow extends Error {}
 const MAX_PARALLEL = 4
 const any = z.any()
 
@@ -191,7 +192,11 @@ const previewStep = createStep({
     const stills = inputData.stills as StillResult[]
     const ledger = inputData.ledger as LedgerEntry[]
     // Square: the video models make only 9:16 or 16:9 (Review Focus 2).
-    const cantAnimate = plan.aspectRatio === '1:1' ? 'Square videos can be previewed but not animated yet.' : undefined
+    // Nothing to animate when no part has a usable start still (live run 08466630 went on to
+    // an all-grey "finished" video).
+    const anyStill = stills.some((s) => s.kind === 'start' && s.fileId && (s.status === 'passed' || s.status === 'unchecked'))
+    const cantAnimate = plan.aspectRatio === '1:1' ? 'Square videos can be previewed but not animated yet.'
+      : !anyStill ? 'None of the stills could be made, so there is nothing to animate yet. Change the plan and start the remake again.' : undefined
     if (resumeData) {
       return { ...inputData, previewFileId: (suspendData?.previewFileId as string | null | undefined) ?? null, stop: resumeData.decision === 'stop' || !!cantAnimate }
     }
@@ -248,7 +253,7 @@ const clipsStep = createStep({
   },
 })
 
-const outputSchema = z.object({ finalFileId: z.string().nullable(), stopped: z.boolean(), previewFileId: z.string().nullable(), clips: z.array(any), stills: z.array(any), portraitFileId: z.string().nullable(), ledger: z.array(any), summary: any, note: z.string(), plan: any })
+const outputSchema = z.object({ finalFileId: z.string().nullable(), stopped: z.boolean(), nothingToShow: z.boolean().optional(), previewFileId: z.string().nullable(), clips: z.array(any), stills: z.array(any), portraitFileId: z.string().nullable(), ledger: z.array(any), summary: any, note: z.string(), plan: any })
 const MUSIC_SLOT = 2000
 const finishStep = createStep({
   id: 'finish', inputSchema: clipped, outputSchema,
@@ -267,12 +272,13 @@ const finishStep = createStep({
     const extra: string[] = []
     let finalFileId: string | null = null
     let musicMade = false
+    let realParts = 0
     try {
       const parts: string[] = []
       for (const look of [...plan.looks].sort((x, y) => x.startS - y.startS)) {
         const n = frames.get(look.n) ?? 0
         const clip = clips.find((c) => c.look === look.n && c.localPath && (c.status === 'passed' || c.status === 'unchecked' || c.status === 'failed'))
-        if (clip?.localPath) { parts.push(clip.localPath); continue }
+        if (clip?.localPath) { parts.push(clip.localPath); realParts++; continue }
         const still = stills.find((s) => s.look === look.n && s.kind === 'start' && s.fileId)
         // A still that can't be fetched becomes a grey card: one file never costs the whole video.
         let path: string | null = null
@@ -281,8 +287,12 @@ const finishStep = createStep({
             console.error(`[remake] still for look ${look.n} unavailable:`, err instanceof Error ? err.message : String(err))
           }
         }
+        if (path) realParts++
         parts.push(await deps.stillToFrames(path, n, join(work, `still-${look.n}.mp4`), size))
       }
+      // No real picture in any part: never deliver grey cards as a finished video, and pay
+      // for no music or comparison.
+      if (realParts === 0) throw new NothingToShow()
       let video = await deps.joinSegments(parts, join(work, 'joined.mp4'))
       const totalS = [...frames.values()].reduce((x, y) => x + y, 0) / CLIP_FPS
       // Music: always new (spec §9a), gated like every paid call. Its own guard: any failure
@@ -307,8 +317,12 @@ const finishStep = createStep({
       finalFileId = await deps.upload(a.idToken, generatedFileKey(a.conversationId, `remake ${runId} final`, 'mp4'), 'Remake.mp4', deps.readFile(video), 'video/mp4')
       if (!finalFileId) extra.push('The final video couldn’t be saved this time.')
     } catch (err) {
-      console.error('[remake] finish failed:', err instanceof Error ? err.message : String(err))
-      extra.push('The final video couldn’t be put together this time.')
+      if (err instanceof NothingToShow) {
+        extra.push('No part of the video could be made, so nothing was put together.')
+      } else {
+        console.error('[remake] finish failed:', err instanceof Error ? err.message : String(err))
+        extra.push('The final video couldn’t be put together this time.')
+      }
     } finally {
       deps.removeDir(work)
       if (inputData.clipsDir) deps.removeDir(inputData.clipsDir)
@@ -323,7 +337,7 @@ const finishStep = createStep({
     }
     const lines = differenceNote({ plan, stills, clips, checks, musicMade }).split('\n')
     const note = [...lines.slice(0, -1), ...extra, lines[lines.length - 1]].join('\n')
-    return { ...base, finalFileId, ledger, summary: ledgerSummary(ledger), note }
+    return { ...base, finalFileId, ledger, summary: ledgerSummary(ledger), note, ...(realParts === 0 ? { nothingToShow: true } : {}) }
   },
 })
 

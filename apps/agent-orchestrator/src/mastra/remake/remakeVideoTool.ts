@@ -58,7 +58,7 @@ export function shapeRun(runId: string, r: RunResult): Out {
   if (r.status === 'success' && result) {
     if (result.finalFileId) return { success: true, runId, stage: 'final_ready', finalFileId: result.finalFileId, note: result.note, clips: result.clips, summary: plainSummary(result.summary) }
     // Clips were paid but no final video came out: show the clips, never "preview ready".
-    if (result.stopped === false) return { success: false, runId, stage: 'final_failed', clips: result.clips, note: result.note, summary: plainSummary(result.summary), error: 'the final video couldn’t be put together this time; the animated parts are listed' }
+    if (result.stopped === false) return { success: false, runId, stage: 'final_failed', clips: result.clips, note: result.note, summary: plainSummary(result.summary), error: result.nothingToShow ? 'no part of the video could be made; the note says why for each part' : 'the final video couldn’t be put together this time; the animated parts are listed' }
     return { success: true, runId, stage: 'preview_ready', previewFileId: result.previewFileId, stills: result.stills, summary: plainSummary(result.summary), ...(result.note ? { note: result.note } : {}) }
   }
   const stepErr = Object.values(r.steps ?? {}).map((s) => s.error).find(Boolean) ?? r.error

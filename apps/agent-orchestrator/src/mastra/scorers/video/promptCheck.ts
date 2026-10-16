@@ -44,6 +44,7 @@ REFERENCE LOOK (expression, poses, moves, leg side): ${JSON.stringify(input.look
 KEY MOMENTS that must happen: ${JSON.stringify(input.keyMoments)}
 OBJECTS visible in the start frame: ${JSON.stringify(input.startFrameObjects)}
 PROMPT: ${input.prompt}
+Notes: a person's identity and looks come from a reference image, not from words, so never list a missing description of a person. Body words marked "measured" (body_measured, body_at_start, body_at_end) are measured from the reference frames and are correct; the rough pose text may be less exact.
 List problems in the PROMPT only:
 - invented: things the prompt adds that the reference/plan does not show (an expression, an effect, an action, or the name of a real person or a character)
 - contradicts: things that conflict with the plan or look (directions are image-left/right)

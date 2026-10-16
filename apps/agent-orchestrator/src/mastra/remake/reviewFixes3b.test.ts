@@ -161,7 +161,10 @@ describe('I1 music or a still file failing never throws away the finished video'
     const noCredits = vi.fn(async () => { clipsStarted = true; return { insufficientCredits: true } })
     const localFile = vi.fn(async (id: string) => { if (clipsStarted && id.startsWith('img-')) throw new Error('presign'); return `/m/${id}` })
     const stillToFrames = vi.fn(async (_s: string | null, _f: number, out: string) => out)
-    const out = await finalRun({ localFile, stillToFrames, generateOmniClip: noCredits, generateVeoClip: noCredits } as never, b)
+    // Part 1 gets a real clip; part 2 has no clip and an unreachable still → grey card. A video
+    // with at least one real part is delivered (an all-grey one is not: gateInputs.test.ts).
+    const omni = vi.fn(async () => ({ fileId: 'omni-1', creditsUsedMicro: '100' }))
+    const out = await finalRun({ localFile, stillToFrames, generateOmniClip: omni, generateVeoClip: noCredits } as never, b)
     expect(stillToFrames.mock.calls.every((c) => c[0] === null)).toBe(true) // grey cards
     expect(out.finalFileId).toBeTruthy()
   })
