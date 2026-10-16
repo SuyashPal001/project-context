@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { RequestContext } from '@mastra/core/request-context'
-import { inputSchema, endCardGraph, cardOverlayX } from './compositeEndCard.js'
+import { inputSchema, endCardGraph, cardOverlayX, resolveEndCardLogo } from './compositeEndCard.js'
 import { marksGraph } from './packshotMarks.js'
 
 describe('compositeEndCard inputSchema', () => {
@@ -9,6 +9,23 @@ describe('compositeEndCard inputSchema', () => {
     expect(ok.success).toBe(true)
     const missing = inputSchema.safeParse({ videoFileId: 'v1', productPhotoFileId: 'p1' })
     expect(missing.success).toBe(false)
+  })
+})
+
+describe('resolveEndCardLogo', () => {
+  const brand = { logoFileId: 'brand-logo' } as never
+  it('uses the brand logo when none is given', () => {
+    expect(resolveEndCardLogo({}, brand)).toBe('brand-logo')
+  })
+  it('an explicit logo wins over the brand logo', () => {
+    expect(resolveEndCardLogo({ logoFileId: 'given' }, brand)).toBe('given')
+  })
+  it('noLogo turns it off for this ad', () => {
+    expect(resolveEndCardLogo({ noLogo: true }, brand)).toBeUndefined()
+  })
+  it('no brand and no logo means no logo', () => {
+    expect(resolveEndCardLogo({}, null)).toBeUndefined()
+    expect(resolveEndCardLogo({}, { logoFileId: null } as never)).toBeUndefined()
   })
 })
 

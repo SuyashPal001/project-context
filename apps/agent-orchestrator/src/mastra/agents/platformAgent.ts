@@ -45,6 +45,7 @@ import { fetchVideoTool, watchVideoTool, findCutsTool, findHiddenCutsTool, sound
 import { remakeVideoTool } from '../remake/remakeVideoTool.js'
 import { draftSkillTool } from '../tools/draftSkill.js'
 import { saveSkillTool } from '../tools/saveSkill.js'
+import { updateBrandTool, importBrandTool } from '../tools/brandTools.js'
 import { buildOlmoDelegates } from './olmoDelegates.js'
 
 // ---------------------------------------------------------------------------
@@ -216,6 +217,8 @@ export const SERVER_TOOLS = {
   // confirm-gate and tenantId/userId/agentId/conversationId provenance rules.
   draft_skill: draftSkillTool,
   save_skill: saveSkillTool,
+  update_brand: updateBrandTool,
+  import_brand: importBrandTool,
   // Folder scope: the agent is granted a handle to a folder, not its contents.
   // list_folder is the manifest — names and types only, no bytes read.
   list_folder: listFolderTool,

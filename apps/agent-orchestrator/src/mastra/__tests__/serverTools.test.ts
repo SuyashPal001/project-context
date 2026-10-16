@@ -77,6 +77,7 @@ describe('SERVER_TOOLS', () => {
       // Present while OLMO_DIRECT_IMAGE is not '0' (the default).
       'generate_image',
       'get_task_thread',
+      'import_brand',
       'internet_search',
       'list_casting_assets',
       'list_folder',
@@ -92,6 +93,7 @@ describe('SERVER_TOOLS', () => {
       'show_files',
       'sound_timeline',
       'start_task',
+      'update_brand',
       'watch_video',
       'web_fetch',
     ])
