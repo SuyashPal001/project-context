@@ -12,7 +12,7 @@ Return ONLY JSON with these keys:
  "layout": "full frame | split screen | picture-in-picture | other",
  "change_style": ["hard_cuts" and/or "hidden_changes" (the scene/outfit changes while something covers the camera) and/or "fades" and/or "near_still"],
  "looks": [{"label": "short name of this distinct look/scene, in order", "approx_start_s": 0, "approx_end_s": 0,
-   "outfit": "pieces, colours, fabric, details", "expression": "mouth, eyes, mood, and whether it changes",
+   "outfit": "pieces, colours, fabric, details", "styling": "hair (worn open or up, and how), jewellery, makeup", "expression": "mouth, eyes, mood, and whether it changes",
    "start_pose": "pose when this look is first revealed", "end_pose": "pose at the end of this look",
    "moves": [{"t_s": 0, "limb": "arm/hand/legs/head/body", "direction": "image-left|image-right|up|down|toward camera", "how": "exact movement"}],
    "leg_side": "image-left|image-right|center (where the lower legs and feet end up)"}],
@@ -32,7 +32,7 @@ const STYLES = new Set(['hard_cuts', 'hidden_changes', 'fades', 'near_still'])
 
 export interface WatchOverview {
   format: string; layout: string; change_style: Array<'hard_cuts' | 'hidden_changes' | 'fades' | 'near_still'>
-  looks: Array<{ label: string; approx_start_s: number; approx_end_s: number; outfit?: string; expression?: string; start_pose?: string; end_pose?: string; moves?: Array<{ t_s: number; limb: string; direction: string; how: string; measured?: boolean }>; leg_side?: string; leg_side_start?: string; leg_side_source?: 'measured' | 'gemini'; body_angle?: number | null; body?: { people: number | null; no_person: boolean | null; start: BodyReading | null; end: BodyReading | null }; measured?: string }>
+  looks: Array<{ label: string; approx_start_s: number; approx_end_s: number; outfit?: string; styling?: string; expression?: string; start_pose?: string; end_pose?: string; moves?: Array<{ t_s: number; limb: string; direction: string; how: string; measured?: boolean }>; leg_side?: string; leg_side_start?: string; leg_side_source?: 'measured' | 'gemini'; body_angle?: number | null; body?: { people: number | null; no_person: boolean | null; start: BodyReading | null; end: BodyReading | null }; measured?: string }>
   subject_box: [number, number, number, number] | null
   story: { setup: string; cause: string; payoff: string }
   moments: Array<{ t_s: number; what: string; why_it_matters: string; measured?: boolean; story_beat?: boolean }>

@@ -11,6 +11,8 @@ export interface RemakeLook {
   ref?: number                    // the outfit look's index in overview.looks (plan lines); n - 1 when absent
   label: string; startS: number; endS: number
   outfit: string; expression: string; startPose: string; endPose: string
+  /** hair, jewellery, makeup in this look (person vs styling, 2026-10-16) */
+  styling?: string
   measured: string | null         // the breakdown's plain "Measured:" line
   people: number | null; noPerson: boolean | null
   // false when the people count was not measured, or a person shows only part of the time:

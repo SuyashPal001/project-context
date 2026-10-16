@@ -1,11 +1,12 @@
 import type { LedgerEntry, RemakePlan } from './types.js'
 import type { ClipSpec } from './clipSpec.js'
+import { lookStylings } from './prompts.js'
 
 export function estimateCost(plan: RemakePlan, opts: { castProvided: boolean; microEach: bigint | null }) {
   // the casting sheet (not when the user brings a person), the reference sheet (always, picked or brought),
   // plus one portrait per other character the plan casts (at most two, workflow.ts)
   const characters = Math.min(2, (plan.reference.characters ?? []).filter((_, i) => plan.lines.some((l) => l.ref === `characters[${i}]` && l.action === 'swap')).length)
-  const sheet = (plan.needsCasting ? (opts.castProvided ? 1 : 2) : 0) + characters
+  const sheet = (plan.needsCasting ? (opts.castProvided ? 1 : 2) : 0) + characters + (plan.needsCasting ? lookStylings(plan).length : 0) // one styled picture per styling
   const stills = plan.looks.reduce((n, l) => n + 1 + (l.needsEndStill ? 1 : 0), 0)
   const each = opts.microEach
   return {

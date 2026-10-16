@@ -80,7 +80,7 @@ function shotLooks(b: Breakdown): RemakeLook[] {
       .map((x) => `${rel(x.t_s)}: the camera ${CAMERA[x.direction] ?? x.direction}`)
     return [{
       n: ++n, ref: i, label: shot.label, startS, endS,
-      outfit: l.outfit ?? '', expression: l.expression ?? '', startPose: first ? l.start_pose ?? '' : '', endPose: last ? l.end_pose ?? '' : '',
+      outfit: l.outfit ?? '', styling: l.styling ?? '', expression: l.expression ?? '', startPose: first ? l.start_pose ?? '' : '', endPose: last ? l.end_pose ?? '' : '',
       measured: l.measured ?? null, people: m?.people ?? null, noPerson: m?.no_person ?? null, start, end, moves,
       moveLines: [...measuredMoves, ...describedMoves], cameraLines,
       measuredPeople: m?.people != null && !(m.people === 0 && (m.people_max ?? 0) > 0),

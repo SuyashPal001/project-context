@@ -16,6 +16,7 @@ export function planRefs(b: Breakdown, looks: RemakeLook[]): Ref[] {
   for (const l of looks) {
     if (out.some((r) => r.ref === `looks[${refOf(l)}].outfit`)) continue // a later shot of the same outfit look
     out.push({ ref: `looks[${refOf(l)}].outfit`, what: l.outfit }, { ref: `looks[${refOf(l)}].expression`, what: l.expression })
+    if (personIn(l) && l.styling) out.push({ ref: `looks[${refOf(l)}].styling`, what: l.styling })
   }
   o.moments.forEach((m, i) => out.push({ ref: `moments[${i}]`, what: `${m.t_s}s ${m.what}` }))
   o.props.forEach((p, i) => out.push({ ref: `props[${i}]`, what: `${p.prop} (${p.where})` }))
@@ -27,6 +28,14 @@ export function planRefs(b: Breakdown, looks: RemakeLook[]): Ref[] {
 }
 
 export const ADULT = 'clearly an adult, mid-20s or older'
+// The person is cast once in plain styling; hair, jewellery and makeup are each look's styling line
+// (person vs styling, 2026-10-16: a cast line with "festive glam makeup" put a maang tikka on everyone).
+const STYLING_WORDS = /makeup|make-up|styl(e|ed|ing)|jewell?er(y|ies)|\bhair|tikka|jhumka|earrings?|necklace|bangles?|lipstick|glam|\bbun\b|braid/i
+export const personOnly = (to: string): string => {
+  const parts = to.split(/,|;|\band\b|\bwith\b/).map((x) => x.trim()).filter(Boolean)
+  const kept = parts.filter((x) => !STYLING_WORDS.test(x))
+  return (kept.length ? kept : parts.slice(0, 1)).join(', ')
+}
 const adultWords = (to: string): string => {
   const t = to.replace(/\b(early|late)[ -]?(20s|twenties)\b/gi, 'mid-20s').replace(/\b(teen(age)?(er)?s?|kids?|child(ren)?)\b/gi, 'adult')
   return t.includes(ADULT) ? t : `${t.replace(/[.\s]+$/, '')}, ${ADULT}`
@@ -67,7 +76,7 @@ export function enforceRules(lines: PlanLine[], refs: Ref[], ctx: { brand: Brand
     }
     // Video is never made of anyone who may read as under 18 (Google's filter blocked a cast "early 20s"
     // lead after every still had passed), so every person is described as clearly an adult.
-    if ((ref === 'cast' || ref.startsWith('characters[')) && l.action === 'swap' && l.to) l = { ...l, to: adultWords(l.to) }
+    if ((ref === 'cast' || ref.startsWith('characters[')) && l.action === 'swap' && l.to) l = { ...l, to: adultWords(personOnly(l.to)) }
     return l
   })
   return { lines: out, warnings }
@@ -99,7 +108,7 @@ export async function writePlan(b: Breakdown, brand: Brand, ask: AskFn): Promise
 - keep: the remake copies it as it is (structure, poses, timing, story beats)
 - swap: the remake replaces it with the brand's version; say exactly what in "to"
 - drop: leave it out; say why in "why"
-Rules: the person on screen, and every other character, is always a new person who fits the brand (describe age range and style only; never a real or famous person; no names). Outfits and props usually swap toward the brand's product and style. Moments, poses and the story's structure are kept. Never write the name of a real person or a character.
+Rules: the person on screen, and every other character, is always a new person who fits the brand (describe the person only: age range, look and build; never hair, makeup or jewellery, which are each look's styling line; never a real or famous person; no names). Outfits and props usually swap toward the brand's product and style. Moments, poses and the story's structure are kept. Never write the name of a real person or a character.
 BRAND: ${brandText(brand)}
 REFS: ${JSON.stringify(refs)}
 Also list in "missing_props" every object a look's pose, a move or a moment says the person holds or uses that is NOT in the props refs, with roughly when it is on screen (m:ss - m:ss).

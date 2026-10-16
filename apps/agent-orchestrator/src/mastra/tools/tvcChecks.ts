@@ -183,8 +183,10 @@ export async function checkLeadClone(ask: AskFn, lead: Img, frames: Img[]): Prom
 
 export const LEAD_FACE_QUESTION = 'Image L is the lead actor. Image F is a still from the ad. Is the lead in Image F with the same face and hair? Judge the face and hair only: glasses, earphones, hats and clothes do not count. Reply ONLY JSON {"lead_present":true|false,"same_face":true|false,"why":"short"}'
 
-export async function checkLeadFace(ask: AskFn, lead: Img, frame: Img): Promise<{ passed: boolean; reason: string }> {
-  const v = await ask([{ text: 'Image L:' }, { image: lead }, { text: 'Image F:' }, { image: frame }, { text: LEAD_FACE_QUESTION }])
+/** Face only: a person whose styling (hair, jewellery, makeup) changes per look is still the same person. */
+export const LEAD_FACE_ONLY_QUESTION = 'Image L is the lead actor. Image F is a still from the ad. Is the lead in Image F with the same face? Judge the face only (bone structure, eyes, nose, mouth, skin tone): hairstyle, jewellery, makeup, glasses, earphones, hats and clothes do not count. Reply ONLY JSON {"lead_present":true|false,"same_face":true|false,"why":"short"}'
+export async function checkLeadFace(ask: AskFn, lead: Img, frame: Img, faceOnly = false): Promise<{ passed: boolean; reason: string }> {
+  const v = await ask([{ text: 'Image L:' }, { image: lead }, { text: 'Image F:' }, { image: frame }, { text: faceOnly ? LEAD_FACE_ONLY_QUESTION : LEAD_FACE_QUESTION }])
   const passed = v.lead_present === true && v.same_face === true
   return { passed, reason: passed ? 'The lead is the same person.' : `The lead is missing or looks different: ${String(v.why ?? '')}.` }
 }

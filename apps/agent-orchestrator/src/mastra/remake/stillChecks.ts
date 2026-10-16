@@ -12,7 +12,7 @@ const SAY: Record<string, string> = { duplicate_object: 'an object appears twice
 const REMAKE_GLITCH_QUESTION = GLITCH_QUESTION.replace(' Reply ONLY JSON {', ', drawn (the whole image is a drawing, illustration, cartoon, painting or 3D render, not a real photograph). Reply ONLY JSON {"drawn":true|false,')
 // The original shows the person from the back, so the still may show no face at all; a face or hair
 // that IS in view must still be the chosen person (metro A/B: the original man's face passed in profile).
-export const VISIBLE_FACE_QUESTION = 'Image L is the lead actor. Image F is a still from the ad. Is any part of the person\'s face or hair visible in Image F (profile and side views count; the back of a head shows hair)? If so, is it CLEARLY a different person from Image L, judged by face and hair only? If you cannot tell (too little shows), answer false. Reply ONLY JSON {"face_visible":true|false,"clearly_different":true|false,"why":"short"}'
+export const VISIBLE_FACE_QUESTION = 'Image L is the lead actor. Image F is a still from the ad. Is any part of the person\'s face or hair visible in Image F (profile and side views count; the back of a head shows hair)? If so, is it CLEARLY a different person from Image L, judged by the face only (hairstyle, jewellery and makeup change per look and do not count)? If you cannot tell (too little shows), answer false. Reply ONLY JSON {"face_visible":true|false,"clearly_different":true|false,"why":"short"}'
 
 /** The picked person could pass for under 18 (video of them would be blocked). A failed check never
  *  blocks the pick: the clip step still refuses in plain words if the video model does. */
@@ -31,7 +31,7 @@ export interface StillVerdict { passed: boolean; reasons: string[]; warnings: st
 export async function remakeStillChecks(ask: AskFn, still: Img, opts: { lead?: Img; leadInShot?: boolean; faceMayHide?: boolean }): Promise<StillVerdict> {
   const [g, face, clone, visible] = await Promise.all([
     askChecked(ask, [{ image: still }, { text: REMAKE_GLITCH_QUESTION }], [...HARD_GLITCHES, ...WARN_GLITCHES].map((key) => ({ key, type: 'boolean' as const }))),
-    opts.lead && opts.leadInShot ? checkLeadFace(ask, opts.lead, still) : null,
+    opts.lead && opts.leadInShot ? checkLeadFace(ask, opts.lead, still, true) : null,
     opts.lead ? checkLeadClone(ask, opts.lead, [still]) : null,
     opts.lead && opts.faceMayHide ? ask([{ text: 'Image L:' }, { image: opts.lead }, { text: 'Image F:' }, { image: still }, { text: VISIBLE_FACE_QUESTION }]) : null,
   ])

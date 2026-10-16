@@ -57,14 +57,14 @@ export function usesProduct(plan: RemakePlan, brand: Brand): boolean {
 }
 
 export function castSheetPrompt(castTo: string): string {
-  return `One photo split into three equal side-by-side panels, numbered 1, 2 and 3 in small grey corner numbers. Each panel shows a different new person who fits: ${castTo}. Each is clearly an adult, mid-20s or older. Each is full body, standing, facing the camera, neutral expression, plain light-grey background, soft natural light. Three clearly different faces. Not any real or famous person. No other text.`
+  return `One photo split into three equal side-by-side panels, numbered 1, 2 and 3 in small grey corner numbers. Each panel shows a different new person who fits: ${castTo}. Each is clearly an adult, mid-20s or older. Each is full body, standing, facing the camera, neutral expression, in plain everyday styling: simply worn hair, no jewellery, light natural makeup, plain clothes; plain light-grey background, soft natural light. Three clearly different faces. Not any real or famous person. No other text.`
 }
 
 /** The chosen person's continuity bible: what every still is anchored to (face consistency is hard).
  *  It follows the TVC character sheet (tvc-character-creator/director.md) without the costume
  *  sections and lock: a remake swaps the outfit per look, so the casting outfit must not be locked
  *  into every still. No profile box either (no guessed text about the person). */
-export const REFERENCE_SHEET_PROMPT = "A professional CHARACTER REFERENCE SHEET — a continuity bible for AI video production — of this exact person, on a clean white page with thin grey panel borders and small, neat, correctly spelled uppercase section labels. No personal name anywhere on the page. Numbered sections: 1. FULL-BODY TURNAROUND — the largest panel: front, 3/4 view, side view and back view, head to feet, on a light-grey studio background. 2. FACE & IDENTITY DETAILS — front, 3/4 view and profile close-ups. 3. EXPRESSION SHEET — eight head-and-shoulders crops in two rows: neutral, happy, angry, sad, surprised, worried, confident, determined, each labelled. Every expression is subtle and believable, the way a real actor plays it to camera in a live-action commercial: real skin creasing around the eyes and mouth, natural asymmetry, the same real-camera skin texture as the image — never exaggerated, theatrical or cartoonish. 4. POSE & BODY LANGUAGE — six full-body poses: neutral standing, walking, sitting on a white cube, relaxed, tense, action-ready, each labelled. 5. DO NOT CHANGE — a bordered lock panel with a small padlock icon reading: Face · Identity · Skin tone · Age · Hair · Body shape · Proportions. No redesign, no beautifying, no aging, no stylizing, no simplifying. The same face, hair and body in every panel, in the same plain clothes as the image, photoreal, even soft studio light, tasteful and ad-appropriate, crisp legible text, no other people, no watermark."
+export const REFERENCE_SHEET_PROMPT = "A professional CHARACTER REFERENCE SHEET — a continuity bible for AI video production — of this exact person, on a clean white page with thin grey panel borders and small, neat, correctly spelled uppercase section labels. No personal name anywhere on the page. Numbered sections: 1. FULL-BODY TURNAROUND — the largest panel: front, 3/4 view, side view and back view, head to feet, on a light-grey studio background. 2. FACE & IDENTITY DETAILS — front, 3/4 view and profile close-ups. 3. EXPRESSION SHEET — eight head-and-shoulders crops in two rows: neutral, happy, angry, sad, surprised, worried, confident, determined, each labelled. Every expression is subtle and believable, the way a real actor plays it to camera in a live-action commercial: real skin creasing around the eyes and mouth, natural asymmetry, the same real-camera skin texture as the image — never exaggerated, theatrical or cartoonish. 4. POSE & BODY LANGUAGE — six full-body poses: neutral standing, walking, sitting on a white cube, relaxed, tense, action-ready, each labelled. 5. DO NOT CHANGE — a bordered lock panel with a small padlock icon reading: Face · Identity · Skin tone · Age · Body shape · Proportions. No redesign, no beautifying, no aging, no simplifying. Hair, jewellery and makeup are styling: shown plainly here, they change per look. The same face, hair and body in every panel, in the same plain clothes as the image, photoreal, even soft studio light, tasteful and ad-appropriate, crisp legible text, no other people, no watermark."
 
 /** The words of one still, shared by a single still and a photo of a board: the person lines (pose,
  *  body, others, outfit, expression), the setting, the props in view and what not to draw. */
@@ -73,6 +73,7 @@ export function stillBits(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'e
   const body = kind === 'start' ? look.start : look.end
   const pose = poseOf(look, kind)
   const outfit = shown(plan, `looks[${i}].outfit`, look.outfit)
+  const styling = stylingOf(plan, look)
   const expression = shown(plan, `looks[${i}].expression`, look.expression)
   const person: string[] = []
   if (pose) person.push(`Pose: ${pose}.`)
@@ -80,6 +81,7 @@ export function stillBits(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'e
   if (words.length) person.push(`Body: ${words.join(', ')}.`)
   if (look.people && look.people > 1) person.push(`${look.people - 1} other people are in the shot as in the guide, each a different new person.`)
   if (outfit) person.push(`Outfit: ${outfit}.`)
+  if (styling) person.push(`Styling: ${styling}.`)
   if (expression) person.push(`Expression: ${expression}.`)
   for (const c of charactersAt(plan, stillTime(look, kind))) {
     const n = characters?.get(c.i)
@@ -148,4 +150,31 @@ export function stillGateInput(plan: RemakePlan, look: RemakeLook, kind: 'start'
     startFrameObjects: propsAt(plan, stillTime(look, kind)),
     keyMoments: [] as string[],
   }
+}
+
+/** A look's styling (hair, jewellery, makeup) as the plan has it; '' when none. */
+export function stylingOf(plan: RemakePlan, look: RemakeLook): string {
+  const l = plan.lines.find((x) => x.ref === `looks[${refOf(look)}].styling`)
+  if (!l || l.action === 'keep') return (look.styling ?? '').trim()
+  return l.action === 'swap' ? l.to?.trim() ?? '' : ''
+}
+
+/** One styling of the chosen person: an EDIT of their picture, so the face stays theirs (styling test,
+ *  2026-10-16: two edits of one plain base kept her face; their stills followed the styling). */
+export const styledPersonPrompt = (styling: string): string =>
+  `Edit this photo. Change only the styling to: ${styling}. Keep exactly the same face, skin tone, age, body and build, the same plain clothes, pose and background. Real photo, no text.`
+
+export const MAX_STYLINGS = 4
+/** The distinct stylings of the person's looks (at most MAX_STYLINGS), with the outfit looks using each. */
+export function lookStylings(plan: RemakePlan): Array<{ styling: string; refs: number[] }> {
+  const by = new Map<string, number[]>()
+  for (const l of plan.looks) {
+    if (!personIn(l)) continue
+    const s = stylingOf(plan, l)
+    if (!s) continue
+    const refs = by.get(s) ?? []
+    if (!refs.includes(refOf(l))) refs.push(refOf(l))
+    by.set(s, refs)
+  }
+  return [...by.entries()].map(([styling, refs]) => ({ styling, refs })).slice(0, MAX_STYLINGS)
 }
