@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { MCPClient } from '@mastra/mcp'
+import type { TenantBrand } from './brand/types.js'
 
 // Shared request context schema for all tenant-scoped agents
 // Add new fields here as needed — import in every agent
@@ -70,6 +71,10 @@ export const tenantContextSchema = z.object({
   // platformAgent.ts's tools resolver reuses the same instance instead of
   // creating a second one. RequestContext.toJSON() silently skips it.
   __mcpClient: z.custom<MCPClient>().optional(),
+  // Set by chatStream.ts from fetchTenantBrand(): the workspace's saved ad brand,
+  // or null. Read by platformAgent's instructions resolver (## Your brand) and
+  // by composite_end_card for the default logo.
+  brand: z.custom<TenantBrand | null>().optional(),
 })
 
 export type TenantContext = z.infer<typeof tenantContextSchema>
