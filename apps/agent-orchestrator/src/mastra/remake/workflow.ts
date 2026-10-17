@@ -12,6 +12,7 @@ import { runToken } from './runTokens.js'
 import { writePlan, applyEdits } from './plan.js'
 import { estimateCost, estimateClipsCost, ledgerSummary } from './cost.js'
 import { castSheetPrompt, stylingOf, outfitOf, propsAt, stillPrompt, stillGateInput, usesProduct, REFERENCE_SHEET_PROMPT, CAST_BY_IMAGE, charactersAt, characterPortraitPrompt, stillTime, type CharacterImages } from './prompts.js'
+import { hideFaceArgs } from '../tools/hideFace.js'
 import { makeStill, type StillCtx, type StillJob } from './paidStill.js'
 import { looksUnder18 } from './stillChecks.js'
 import { boardUnits, boardPrompt, boardGateInput, boardAspect, BOARD_SLOT } from './board.js'
@@ -259,7 +260,22 @@ const stillsStep = createStep({
       const out = join(dir, `guide-${n}-${kind}.jpg`)
       await deps.ffmpeg(['-ss', String(Math.max(0, t)), '-i', source, '-frames:v', '1', '-q:v', '2', out])
       const id = await deps.upload(a.idToken, generatedFileKey(a.conversationId, `remake ${runId} look ${n} ${kind} guide`, 'jpg'), `Remake look ${n} ${kind} guide.jpg`, deps.readFile(out), 'image/jpeg')
-      return id ? { id, path: out } : null
+      if (!id) return null
+      // The image model sees the frame with its person's face hidden (tools/hideFace): the original actress's
+      // face leaked into ours (fan run real15). The checks keep reading the untouched frame.
+      let modelId = id
+      try {
+        const head = (await deps.poseImage(out)).head
+        if (head) {
+          const hidden = join(dir, `guide-${n}-${kind}-hidden.jpg`)
+          await deps.ffmpeg(hideFaceArgs(out, hidden, head))
+          modelId = await deps.upload(a.idToken, generatedFileKey(a.conversationId, `remake ${runId} look ${n} ${kind} guide hidden`, 'jpg'), `Remake look ${n} ${kind} guide (face hidden).jpg`, deps.readFile(hidden), 'image/jpeg') ?? id
+          if (modelId !== id) guideIds.push(modelId)
+        }
+      } catch (err) {
+        console.error('[remake] the original face could not be hidden:', err instanceof Error ? err.message : String(err))
+      }
+      return { id, path: out, modelId }
     }
     // Identity: the reference sheet when there is one, else the cropped portrait.
     const portraitId = (inputData.referenceSheetFileId as string | null | undefined) ?? inputData.portraitFileId
@@ -278,7 +294,7 @@ const stillsStep = createStep({
     const noCredits = (look: number, kind: 'start' | 'end'): Made => ({ result: { look, kind, fileId: null, status: 'failed' as const, reasons: ['not enough credits'] }, ledger: [] })
     // Pose-guide frames show the original person: deleted from the user's files after use (M4).
     const guideIds: string[] = []
-    const guides = new Map<string, { id: string; path: string } | null>()
+    const guides = new Map<string, { id: string; path: string; modelId: string } | null>()
     const guideFor = async (look: RemakeLook, kind: 'start' | 'end') => {
       const key = `${look.n}-${kind}`
       if (!guides.has(key)) {
@@ -303,7 +319,8 @@ const stillsStep = createStep({
     // An edited still (tools/nextShot): the base photo first, the original's frame second; the face check
     // still compares against the chosen person.
     type Base = { fileId: string; change: ShotChange }
-    const jobFor = (look: RemakeLook, kind: 'start' | 'end', g: string, base?: Base): StillJob => {
+    const jobFor = (look: RemakeLook, kind: 'start' | 'end', guideFrame: { id: string; modelId: string }, base?: Base): StillJob => {
+      const g = guideFrame.modelId
       const person = personIn(look)
       const chars = person ? charsIn(look, kind) : []
       if (base) {
@@ -311,13 +328,13 @@ const stillsStep = createStep({
         const extra = [...images.entries()].map(([i, n]) => `the ${plan.reference.characters?.[i]?.who ?? 'other person'} is the person in image ${n}`).join('; ')
         const change = { ...base.change, ...(extra ? { extra } : {}) }
         const prompt = editShotPrompt(change)
-        return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, guide: g, faceRef: base.fileId, props: propsAt(plan, stillTime(look, kind)), gate: { prompt, planLine: editShotGateLine(change, `looks[${refOf(look)}]`), look: {}, startFrameObjects: [], keyMoments: [] }, ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}) }
+        return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, guide: guideFrame.id, guideRef: g, faceRef: base.fileId, props: propsAt(plan, stillTime(look, kind)), gate: { prompt, planLine: editShotGateLine(change, `looks[${refOf(look)}]`), look: {}, startFrameObjects: [], keyMoments: [] }, ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}) }
       }
       const who = personFor(look)
       const { references, images } = withCharacters([...(person && who ? [who] : []), g, ...(product ? [product] : person && anchor ? [anchor] : [])], chars)
       const prompt = stillPrompt(plan, look, kind, brand, !!product, images)
-      const room = person && anchor && anchorGuide && !product ? { room: { fileId: anchor, guides: [anchorGuide, g] as [string, string] } } : {}
-      return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, guide: g, props: propsAt(plan, stillTime(look, kind)), gate: stillGateInput(plan, look, kind, prompt, images), ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}), ...room }
+      const room = person && anchor && anchorGuide && !product ? { room: { fileId: anchor, guides: [anchorGuide, guideFrame.id] as [string, string] } } : {}
+      return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, guide: guideFrame.id, guideRef: g, props: propsAt(plan, stillTime(look, kind)), gate: stillGateInput(plan, look, kind, prompt, images), ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}), ...room }
     }
     const single = async (look: RemakeLook, kind: 'start' | 'end', firstTry?: { fileId: string; creditsMicro: string }, base?: Base): Promise<Made> => {
       // Never paid: a look whose people were not measured (spec §8a).
@@ -328,7 +345,7 @@ const stillsStep = createStep({
         const g = await guideFor(look, kind)
         if (outOfCredits && !firstTry) return noCredits(look.n, kind)
         if (!g) return { result: { look: look.n, kind, fileId: null, status: 'blocked', reasons: ['the pose guide could not be saved'] }, ledger: [] }
-        const made = await makeStill(jobFor(look, kind, g.id, base), ctx, deps, firstTry)
+        const made = await makeStill(jobFor(look, kind, g, base), ctx, deps, firstTry)
         if (made.result.reasons.some((r) => r.includes('not enough credits'))) outOfCredits = true
         return made
       } catch (err) {

@@ -323,6 +323,19 @@ def _persons(img, det, pose_model):
     return persons
 
 
+def _head_box(kp, sc, w: int, h: int):
+    """The head's box in frame fractions, around its seen points, sized by the neck (nose to shoulders); None
+    when no head point is seen."""
+    kp, sc = np.asarray(kp) * np.array([w, h]), np.asarray(sc)
+    seen = sc[:5] >= VIS
+    if not seen.any():
+        return None
+    cx, cy = kp[:5][seen].mean(axis=0)
+    neck = float(np.linalg.norm(kp[NOSE] - (kp[L_SH] + kp[R_SH]) / 2)) if sc[[NOSE, L_SH, R_SH]].min() >= VIS else 0.0
+    half = max(neck, float(np.ptp(kp[:5][seen][:, 0])), 0.04 * max(w, h))
+    return [round(float(np.clip(v, 0, 1)), 3) for v in ((cx - half) / w, (cy - half) / h, (cx + half) / w, (cy + half) / h)]
+
+
 def read_image(path: str) -> dict:
     """The same general body reading as a look, for one still (a generated remake frame)."""
     img = cv2.imread(path)
@@ -337,7 +350,9 @@ def read_image(path: str) -> dict:
     # where the main person sits in the frame (fractions), so a still's framing can be compared with the original's;
     # head_seen: the box's top edge is the head only when it is seen (something in front can cut the box short)
     return {"model": MODEL_NAME, "people": len(persons), "no_person": False, "main": read_person(main[0], main[1], h / w, main[2]),
-            "box": [round(float(v), 3) for v in main[2]], "head_seen": bool(np.asarray(main[1])[:5].mean() >= HEAD_SEEN)}
+            "box": [round(float(v), 3) for v in main[2]], "head_seen": bool(np.asarray(main[1])[:5].mean() >= HEAD_SEEN),
+            # where the head is, so a frame's face can be hidden before an image model sees it
+            "head": _head_box(main[0], main[1], w, h)}
 
 
 def measure_pose(path: str, looks: list[dict], exclude=None, fps: float = 5.0) -> dict:

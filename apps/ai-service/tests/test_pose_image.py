@@ -72,3 +72,17 @@ def test_a_half_confident_head_is_a_guess_not_seen(tmp_path, monkeypatch):
     sc[:5] = 0.53
     monkeypatch.setattr(pose, "_load", lambda: (FakeDet([[10, 20, 90, 180]]), FakePose([(kp, sc)])))
     assert pose.read_image(str(_img(tmp_path)))["head_seen"] is False
+
+# The original's frame is the pose reference for every remake photo, and its actress's face leaked into ours
+# (fan run real15: our woman drifted from the approved sheet toward her). The reading gives the head's box so
+# the face can be hidden before the frame is shown to an image model.
+def test_reading_gives_the_head_box_when_the_head_is_seen(tmp_path, monkeypatch):
+    kp, sc = person()
+    monkeypatch.setattr(pose, "_load", lambda: (FakeDet([[10, 20, 90, 180]]), FakePose([(kp, sc)])))
+    d = pose.read_image(str(_img(tmp_path)))
+    x0, y0, x1, y1 = d["head"]
+    nx, ny = kp[0]
+    assert x0 < nx < x1 and y0 < ny < y1 and 0 <= x0 and x1 <= 1
+    kp, sc = person(hide=(0, 1, 2, 3, 4))
+    monkeypatch.setattr(pose, "_load", lambda: (FakeDet([[10, 20, 90, 180]]), FakePose([(kp, sc)])))
+    assert pose.read_image(str(_img(tmp_path)))["head"] is None

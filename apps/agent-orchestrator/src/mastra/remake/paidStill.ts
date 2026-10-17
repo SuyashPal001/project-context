@@ -26,6 +26,8 @@ export interface StillJob { look: RemakeLook; kind: 'start' | 'end'; prompt: str
   room?: { fileId: string; guides: [string, string] }
   /** the original's frame for this still: its camera framing is checked against it (tools/framingCheck) */
   guide?: string
+  /** the same frame with its person's face hidden: the only version an image model is given */
+  guideRef?: string
   /** An edit of a photo that already passed: its face is the reference (same size, same scene). A tiny face
    *  on the floor against the big sheet photo read as "a different person" on every try (fan run real6). */
   faceRef?: string
@@ -196,7 +198,7 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps, 
       const identity = personIn(job.look) && ctx.portrait ? [job.references[0]] : []
       // A different room: the first kept still goes in as the room to copy, after the person.
       const roomRef = job.room && c.hard.some((r) => /room differs/i.test(r)) ? [job.room.fileId] : []
-      const guideRef = job.guide && c.hard.some((r) => /camera framing differs|missing from the photo/i.test(r)) ? [job.guide] : []
+      const guideRef = job.guide && c.hard.some((r) => /camera framing differs|missing from the photo/i.test(r)) ? [job.guideRef ?? job.guide] : []
       const fix = fixLine(c.hard).replace(/the first image/g, 'the second image').replace(/ROOM_IMAGE/g, `image ${2 + identity.length}`).replace(/GUIDE_IMAGE/g, `image ${2 + identity.length + roomRef.length}`)
       prompt = editPrompt(fix, !roomRef.length)
       references = [g.fileId, ...identity, ...roomRef, ...guideRef]
