@@ -25,8 +25,10 @@ const changes = (c: ShotChange): string[] => [
 
 export function editShotPrompt(c: ShotChange): string {
   const list = changes(c).map((x, i) => `(${i + 1}) ${x}`).join('; ')
-  const keep = ['the face', ...(c.styling ? [] : ['the hair']), 'the room, floor, furniture and light', 'the camera height and angle, the person\'s size and position in the frame', 'objects where they lie']
-  return `Edit the first image. Change only: ${list}. Keep everything else exactly as in the first image: ${keep.join(', ')}. Real photo, no text.`
+  // No "exactly as in the first image" and no "size and position": that pinned the body and the pose never
+  // changed (fan run real13 A/B); the camera is kept by naming its framing.
+  const keep = ['the same person and face', ...(c.styling ? [] : ['the hair']), ...(c.outfit ? [] : ['the outfit']), 'the room, floor, furniture and light', 'the camera height, angle and framing']
+  return `Edit the first image. Change only: ${list}. Keep ${keep.join(', ')}. Real photo, no text.`
 }
 
 /** The prompt check's plan line for an edited shot: what changes, in plan refs, and that the rest is kept. */

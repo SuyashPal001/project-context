@@ -15,11 +15,18 @@ describe('editShotPrompt', () => {
     // a new outfit is never also told to stay as in the first image
     expect(p).not.toMatch(/stays worn and draped as in the first image/)
     expect(p).toMatch(/not that person, outfit, objects or any text/)
-    expect(p).toMatch(/Keep everything else exactly as in the first image: the face, the hair, the room/)
-    expect(p).toMatch(/the camera height and angle, the person's size and position in the frame/)
+    expect(p).toMatch(/Keep the same person and face, the hair, the room, floor, furniture and light/)
+    expect(p).toMatch(/the camera height, angle and framing/)
+  })
+  it('a pose edit never pins the body: no "exactly as in the first image", no "size and position"', () => {
+    // fan run real13 A/B: with "keep everything else exactly ... the person's size and position" the end
+    // photo came back unchanged; without it, the same edit moved the legs as in the original
+    const p = editShotPrompt({ poseFromFrame: true })
+    expect(p).not.toMatch(/exactly as in the first image/)
+    expect(p).not.toMatch(/size and position/)
   })
   it('a styling change lets the hair change; a pose-only edit names only the pose', () => {
-    expect(editShotPrompt({ styling: 'hair in a bun', poseFromFrame: false })).not.toMatch(/the face, the hair,/)
+    expect(editShotPrompt({ styling: 'hair in a bun', poseFromFrame: false })).not.toMatch(/face, the hair,/)
     const pose = editShotPrompt({ poseFromFrame: true })
     expect(pose).not.toMatch(/outfit to/)
     expect(pose).toMatch(/\(1\) the body pose/)
