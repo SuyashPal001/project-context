@@ -1,7 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Type } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { Loader2, Type, Upload } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -63,6 +65,7 @@ export function OtherFontCard({ brand, onSave }: Props) {
     const [query, setQuery] = useState('');
     const [agree, setAgree] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const fileInput = useRef<HTMLInputElement>(null);
     const [error, setError] = useState<string | null>(null);
 
     const isSelected = otherFontSelected(brand);
@@ -152,13 +155,19 @@ export function OtherFontCard({ brand, onSave }: Props) {
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        <label className="flex items-start gap-2 text-xs text-muted-foreground">
-                            <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5" />
-                            I have the right to use this font
-                        </label>
-                        <input type="file" accept=".ttf,.otf" disabled={!agree || uploading} aria-label="Upload font file"
+                        <div className="flex items-start gap-2">
+                            <Checkbox id="brand-font-rights" checked={agree} onCheckedChange={(v) => setAgree(v === true)} className="mt-0.5" />
+                            <label htmlFor="brand-font-rights" className="text-xs text-muted-foreground">I have the right to use this font</label>
+                        </div>
+                        {/* The real file input stays hidden; our own button opens it, so nothing shows the browser's default look. */}
+                        <input ref={fileInput} type="file" accept=".ttf,.otf" disabled={!agree || uploading} aria-label="Upload font file"
                             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; void upload(f); }}
-                            className="block w-full text-sm text-foreground file:mr-3 file:rounded-full file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-xs file:font-medium disabled:opacity-50" />
+                            className="sr-only" tabIndex={-1} />
+                        <Button type="button" variant="outline" className="w-full gap-2" disabled={!agree || uploading}
+                            onClick={() => fileInput.current?.click()}>
+                            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                            {uploading ? 'Uploading…' : 'Choose a .ttf or .otf file'}
+                        </Button>
                         {brand.font && <p className="text-xs text-muted-foreground">Current: {brand.fontName ?? 'your uploaded font'}</p>}
                     </div>
                 )}

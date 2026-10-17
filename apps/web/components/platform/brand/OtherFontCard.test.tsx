@@ -68,6 +68,16 @@ describe('OtherFontCard', () => {
         expect((screen.getByLabelText('Upload font file') as HTMLInputElement).disabled).toBe(false);
     });
 
+    it('uses the app button, not the browser file picker look, and enables it only after the tick', () => {
+        openCard();
+        fireEvent.click(screen.getByRole('tab', { name: 'Upload' }));
+        const btn = screen.getByRole('button', { name: 'Choose a .ttf or .otf file' }) as HTMLButtonElement;
+        expect(btn.disabled).toBe(true);
+        fireEvent.click(screen.getByLabelText('I have the right to use this font'));
+        expect(btn.disabled).toBe(false);
+        expect((screen.getByLabelText('Upload font file') as HTMLInputElement).className).toContain('sr-only');
+    });
+
     it('rejects a non-ttf/otf file before uploading', async () => {
         const onSave = openCard();
         fireEvent.click(screen.getByRole('tab', { name: 'Upload' }));
