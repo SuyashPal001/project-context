@@ -7,7 +7,7 @@ const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], weight: ['500', '600'],
 const figtree = Figtree({ subsets: ['latin'], weight: ['500', '600'], display: 'swap' });
 const poppins = Poppins({ subsets: ['latin'], weight: ['500', '600'], display: 'swap' });
 const inter = Inter({ subsets: ['latin'], weight: ['500', '600'], display: 'swap' });
-const playfairDisplay = Playfair_Display({ subsets: ['latin'], weight: ['500', '600'], display: 'swap' });
+const playfairDisplay = Playfair_Display({ subsets: ['latin'], weight: '600', display: 'swap' });
 const jetBrainsMono = JetBrains_Mono({ subsets: ['latin'], weight: ['500', '600'], display: 'swap' });
 
 /** Font family name -> the next/font className that renders it. */
