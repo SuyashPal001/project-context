@@ -91,51 +91,14 @@ describe('BrandForm', () => {
         expect(screen.getByText(/Filled from mamaearth\.in · today/)).toBeTruthy();
     });
 
-    // Fix round 1, item 2: <input type="color"> fires React's onChange — bound
-    // to the native `input` event — once per drag tick while the OS picker is
-    // open. A PATCH per tick would hammer the API, so only the native `change`
-    // event (or blur) should save, and only when the value actually differs.
-    it('does not save on every colour drag tick — only on the native change/blur, and only once', () => {
-        const onSave = vi.fn();
-        render(<BrandForm {...baseProps} brand={brand} onSave={onSave} />);
+    // The colour picker itself (native input vs. react-colorful card, drag
+    // ticks, unset-swatch-never-saves-white guarantees) is covered in
+    // BrandColorField.test.tsx. This file keeps only the resting-row basics.
+    it('shows the Colours row with the set role and the others "Not set"', () => {
+        render(<BrandForm {...baseProps} brand={brand} />);
         fireEvent.click(screen.getByRole('tab', { name: 'Look' }));
-        const swatch = screen.getByLabelText('primary colour') as HTMLInputElement;
-
-        // Several live drag ticks: React's onChange prop fires (updates the
-        // swatch + hex label), but nothing is saved yet.
-        fireEvent.input(swatch, { target: { value: '#111111' } });
-        fireEvent.input(swatch, { target: { value: '#222222' } });
-        fireEvent.input(swatch, { target: { value: '#333333' } });
-        expect(onSave).not.toHaveBeenCalled();
-
-        // The picker closes on the settled colour: one native `change`.
-        fireEvent.change(swatch, { target: { value: '#333333' } });
-        expect(onSave).toHaveBeenCalledTimes(1);
-        expect(onSave).toHaveBeenCalledWith({ colors: { primary: '#333333' } });
-
-        // A blur right after, for the same colour, must not double-save.
-        fireEvent.blur(swatch, { target: { value: '#333333' } });
-        expect(onSave).toHaveBeenCalledTimes(1);
-    });
-
-    it('never saves white for an unset colour the user only focused and left', () => {
-        const onSave = vi.fn();
-        render(<BrandForm {...baseProps} brand={brand} onSave={onSave} />);
-        fireEvent.click(screen.getByRole('tab', { name: 'Look' }));
-        const swatch = screen.getByLabelText('accent colour') as HTMLInputElement;
-        fireEvent.focus(swatch);
-        fireEvent.blur(swatch, { target: { value: '#FFFFFF' } });
-        expect(onSave).not.toHaveBeenCalled();
-    });
-
-    it('saves an unset colour once the user picks one', () => {
-        const onSave = vi.fn();
-        render(<BrandForm {...baseProps} brand={brand} onSave={onSave} />);
-        fireEvent.click(screen.getByRole('tab', { name: 'Look' }));
-        const swatch = screen.getByLabelText('accent colour') as HTMLInputElement;
-        fireEvent.input(swatch, { target: { value: '#123456' } });
-        fireEvent.blur(swatch);
-        expect(onSave).toHaveBeenCalledWith({ colors: { primary: '#00A651', accent: '#123456' } });
+        expect(screen.getByText('#00A651')).toBeTruthy();
+        expect(screen.getAllByText('Not set').length).toBeGreaterThan(0);
     });
 
     it('syncs the font field when the prop changes (e.g. after Refresh/import), unlike an uncontrolled input', () => {

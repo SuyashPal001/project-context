@@ -386,3 +386,32 @@
     animation: none !important;
   }
 }
+
+/* react-colorful, restyled to fit the brand colour picker card: a large
+   rounded saturation area, a thick pill hue bar, and hollow ring pointers
+   (transparent centre, white ring, soft shadow — no filled dot) instead of
+   the library's defaults. Scoped so it never leaks into any other
+   `react-colorful` instance the app might add later. */
+.brand-color-picker .react-colorful {
+  width: 100%;
+  height: 232px;
+  gap: 0.5rem;
+}
+.brand-color-picker .react-colorful__saturation {
+  border-radius: 0.75rem;
+  border-bottom: none;
+}
+.brand-color-picker .react-colorful__hue {
+  height: 1.5rem;
+  border-radius: 999px;
+}
+.brand-color-picker .react-colorful__pointer {
+  width: 22px;
+  height: 22px;
+  border: 3px solid #fff;
+  background-color: transparent;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.brand-color-picker .react-colorful__pointer-fill {
+  background-color: transparent !important;
+}

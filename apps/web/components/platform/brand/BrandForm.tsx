@@ -1,10 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Check, Circle, ImagePlus, Loader2, RefreshCw, X } from 'lucide-react';
+import { Check, Circle, Copy, ImagePlus, Loader2, Plus, RefreshCw, X } from 'lucide-react';
+import { HexColorPicker } from 'react-colorful';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 import { cn } from '@/lib/utils';
 import {
@@ -130,54 +133,128 @@ function ImageField({ slot, label, image, onUpload }: { slot: ImageSlot; label: 
     );
 }
 
-/**
- * `<input type="color">` fires React's `onChange` — bound to the native
- * `input` event — once per drag tick while the OS colour picker is open. A
- * PATCH per tick would hammer the API, so `onChange` only updates the local
- * draft (what the swatch + hex label show live); saving happens on the
- * native `change` event (picker closed, colour committed) or on blur,
- * wired directly via `addEventListener` since React's `onChange` prop can't
- * distinguish `input` from `change`. A ref tracks the last value actually
- * saved so change-then-blur for the same colour never double-PATCHes.
- */
-// What an unset swatch shows. Never saved on its own: a focus-and-leave on an
-// unset colour reports this value, and must not save white.
-const SWATCH_PLACEHOLDER = '#FFFFFF';
+/** `#0a6` -> `#00AA66`, `00A651` -> `#00A651`. Returns null for anything
+ * that isn't a valid 3- or 6-digit hex colour. */
+function normalizeHex(raw: string): string | null {
+    const v = raw.trim().replace(/^#/, '');
+    if (/^[0-9a-f]{3}$/i.test(v)) return ('#' + v.split('').map((c) => c + c).join('')).toUpperCase();
+    if (/^[0-9a-f]{6}$/i.test(v)) return ('#' + v).toUpperCase();
+    return null;
+}
 
-function ColorSwatch({ role, value, onSave }: { role: string; value: string | undefined; onSave: (hex: string) => void }) {
-    const [draft, setDraft] = useState(value);
-    useEffect(() => setDraft(value), [value]);
-    const inputRef = useRef<HTMLInputElement>(null);
-    const lastSavedRef = useRef(value);
-    useEffect(() => { lastSavedRef.current = value; }, [value]);
+/**
+ * A resting role row (swatch + name + hex + copy) that opens a Figma-style
+ * picker card. The picker holds its own draft while open — dragging the
+ * saturation/hue area or clicking a "from your brand" swatch only updates
+ * that draft and its live preview. The draft commits to `onSave` exactly
+ * once: on Enter in the hex field, or when the popover closes (Done, click
+ * outside, Esc) — and only when it is a valid, changed colour. An unset
+ * role closed without a pick never saves anything (no accidental white).
+ */
+function ColorField({ role, value, otherColors, onSave }: {
+    role: string; value: string | undefined;
+    otherColors: Array<{ role: string; hex: string }>;
+    onSave: (hex: string) => void;
+}) {
+    const [open, setOpen] = useState(false);
+    const [draft, setDraft] = useState(value ?? '');
+    const [hexText, setHexText] = useState(value ? value.slice(1) : '');
+    // The last value actually sent to onSave this session, so an Enter-commit
+    // followed by a close-commit for the same colour never double-saves.
+    const savedRef = useRef(value);
 
     const commit = (hex: string) => {
-        const upper = hex.toUpperCase();
-        if (upper !== (lastSavedRef.current ?? '').toUpperCase()) {
-            lastSavedRef.current = upper;
-            onSave(upper);
-        }
+        if (!/^#[0-9A-F]{6}$/.test(hex)) return;
+        if (hex === (savedRef.current ?? '').toUpperCase()) return;
+        savedRef.current = hex;
+        onSave(hex);
     };
 
-    useEffect(() => {
-        const el = inputRef.current;
-        if (!el) return;
-        const onNativeChange = (e: Event) => commit((e.target as HTMLInputElement).value);
-        el.addEventListener('change', onNativeChange);
-        return () => el.removeEventListener('change', onNativeChange);
-    }, []);
+    const handleOpenChange = (next: boolean) => {
+        if (next) {
+            setDraft(value ?? '');
+            setHexText(value ? value.slice(1) : '');
+            savedRef.current = value;
+        } else {
+            commit(draft);
+        }
+        setOpen(next);
+    };
+
+    const pickFromPicker = (hex: string) => {
+        const upper = hex.toUpperCase();
+        setDraft(upper);
+        setHexText(upper.slice(1));
+    };
+
+    const commitHexText = () => {
+        const normalized = normalizeHex(hexText);
+        if (!normalized) return;
+        setDraft(normalized);
+        setHexText(normalized.slice(1));
+        commit(normalized);
+    };
+
+    const copy = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!value) return;
+        void navigator.clipboard.writeText(value);
+        toast.success(`Copied ${value}`);
+    };
 
     return (
-        <label className="flex items-center gap-2 text-xs">
-            <input ref={inputRef} type="color" aria-label={`${role} colour`} value={draft ?? SWATCH_PLACEHOLDER}
-                onChange={(e) => setDraft(e.target.value.toUpperCase())}
-                // Blur saves only a colour the user actually picked (the draft), never
-                // the placeholder an unset swatch displays.
-                onBlur={() => { if (draft && draft.toUpperCase() !== SWATCH_PLACEHOLDER) commit(draft); }}
-                className="h-7 w-7 cursor-pointer rounded border border-border bg-transparent p-0" />
-            <span className="capitalize text-foreground">{role}</span>
-            <span className="text-muted-foreground">{draft ?? 'Not set'}</span>
-        </label>
+        <div className="flex min-w-0 items-center gap-2">
+            <Popover open={open} onOpenChange={handleOpenChange}>
+                <PopoverTrigger asChild>
+                    <button type="button" aria-label={`Edit ${role} colour`}
+                        className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/20">
+                        <span
+                            className={cn(
+                                'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border',
+                                !value && 'bg-[repeating-conic-gradient(var(--muted-foreground)_0%_25%,transparent_0%_50%)] bg-[length:10px_10px] opacity-40',
+                            )}
+                            style={value ? { backgroundColor: value } : undefined}>
+                            {!value && <Plus className="h-4 w-4 text-muted-foreground opacity-100" />}
+                        </span>
+                        <span className="min-w-0">
+                            <span className="block text-sm font-medium capitalize text-foreground">{role}</span>
+                            <span className="block font-mono text-xs uppercase text-muted-foreground">{value ?? 'Not set'}</span>
+                        </span>
+                    </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" collisionPadding={16} className="w-72 space-y-4 rounded-2xl p-4">
+                    <div className="brand-color-picker">
+                        <HexColorPicker color={draft || '#FFFFFF'} onChange={pickFromPicker} />
+                    </div>
+                    <div className="flex h-12 items-center gap-2 rounded-xl border border-border px-3">
+                        <span className="h-6 w-6 shrink-0 rounded-md border border-border/60"
+                            style={{ backgroundColor: draft || undefined }} />
+                        <span className="text-muted-foreground">#</span>
+                        <input value={hexText} aria-label={`${role} hex value`} maxLength={6}
+                            onChange={(e) => setHexText(e.target.value.toUpperCase())}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitHexText(); } }}
+                            className="min-w-0 flex-1 border-0 bg-transparent p-0 font-mono text-base uppercase text-foreground outline-none" />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                            {otherColors.length > 0 && <span className="text-xs text-muted-foreground">From your brand</span>}
+                            {otherColors.map((c) => (
+                                <button key={c.role} type="button" aria-label={`Use ${c.role} colour`}
+                                    className="h-6 w-6 rounded-md border border-border" style={{ backgroundColor: c.hex }}
+                                    onClick={() => pickFromPicker(c.hex)} />
+                            ))}
+                        </div>
+                        <Button size="sm" onClick={() => handleOpenChange(false)}>Done</Button>
+                    </div>
+                </PopoverContent>
+            </Popover>
+            {value && (
+                <button type="button" aria-label={`Copy ${role} hex`} onClick={copy}
+                    className="shrink-0 text-muted-foreground hover:text-foreground">
+                    <Copy className="h-3.5 w-3.5" />
+                </button>
+            )}
+        </div>
     );
 }
 
@@ -220,9 +297,12 @@ export function LookSection({ brand, onSave, onUploadImage }: SectionProps & {
             <ImageField slot="favicon" label="Favicon" image={brand.favicon} onUpload={onUploadImage} />
             <ImageField slot="mascot" label="Mascot" image={brand.mascot} onUpload={onUploadImage} />
             <Row label="Colours">
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {COLOR_ROLES.map((role) => (
-                        <ColorSwatch key={role} role={role} value={brand.colors[role]}
+                        <ColorField key={role} role={role} value={brand.colors[role]}
+                            otherColors={COLOR_ROLES
+                                .filter((r) => r !== role && brand.colors[r])
+                                .map((r) => ({ role: r, hex: brand.colors[r]! }))}
                             onSave={(hex) => onSave({ colors: { ...brand.colors, [role]: hex } })} />
                     ))}
                 </div>
