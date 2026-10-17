@@ -24,7 +24,7 @@ import type { Img } from '../tools/tvcChecks.js'
 import { clipSpecs, lookFrames, CLIP_FPS, type ClipSpec } from './clipSpec.js'
 import { makeClip, type ClipCtx, type ClipResult } from './paidClip.js'
 import { checkClip } from './clipCheck.js'
-import { musicPrompt } from './music.js'
+import { musicPrompt, plainMusicPrompt } from './music.js'
 import { differenceNote } from './finalNote.js'
 import { runGate } from '../scorers/video/gate.js'
 import type { Brand, LedgerEntry, PlanLine, RemakeLook, RemakePlan, StillResult } from './types.js'
@@ -705,7 +705,14 @@ const finishStep = createStep({
         const prompt = musicPrompt(plan)
         const gate = await deps.promptGate({ prompt, planLine: `music: ${plan.lines.find((l) => l.ref === 'sound.music')?.to ?? 'new music'}`, look: {}, startFrameObjects: [], keyMoments: [], tenantId: a.tenantId })
         if (gate.status !== 'pass') console.error('[remake] music prompt not passed:', gate.status, gate.reason)
-        const music = gate.status === 'pass' ? await deps.generateMusic(prompt, execFor(requestContext as Rc, runId, a.idToken)(MUSIC_SLOT), `remake:${runId}:music`) : null
+        let music = gate.status === 'pass' ? await deps.generateMusic(prompt, execFor(requestContext as Rc, runId, a.idToken)(MUSIC_SLOT), `remake:${runId}:music`) : null
+        // refused (as recitation, fan run real31): one plainer try, gated, so the video is not silent
+        if (music && !music.fileId && music.refused && !music.insufficientCredits) {
+          ledger.push({ item: 'music', attempt: 0, creditsMicro: music.creditsUsedMicro ?? '0', outcome: 'blocked' })
+          const plainPrompt = plainMusicPrompt(plan)
+          const g2 = await deps.promptGate({ prompt: plainPrompt, planLine: `music: ${plan.lines.find((l) => l.ref === 'sound.music')?.to ?? 'new music'}`, look: {}, startFrameObjects: [], keyMoments: [], tenantId: a.tenantId })
+          music = g2.status === 'pass' ? await deps.generateMusic(plainPrompt, execFor(requestContext as Rc, runId, a.idToken)(MUSIC_SLOT + 1), `remake:${runId}:music:plain`) : music
+        }
         if (music) ledger.push({ item: 'music', attempt: 0, creditsMicro: music.creditsUsedMicro ?? '0', outcome: music.fileId ? 'kept' : 'failed' })
         if (music?.fileId) {
           const fitted = await deps.fitMusic(await deps.localFile(music.fileId, a.idToken, a.scopeId), totalS, join(work, 'music.m4a'))

@@ -210,3 +210,25 @@ describe('the fan wipe joins the looks', () => {
     expect(joinSegments).toHaveBeenCalledTimes(1)
   })
 })
+
+// fan run real31 (2026-10-17): the music model refused "Elegant, soulful, nostalgic Sufi / Desi Pop, with Harmonium,
+// acoustic guitar, vocals. No vocals..." as recitation, and the video would have shipped silent. The prompt drops
+// voice words, and a refused track is tried once more with plainer words.
+describe('music that is refused is tried once more, plainer', () => {
+  beforeEach(() => setRemakeStorageForTests(new InMemoryStore()))
+  afterEach(() => { setRemakeDeps(null); setRemakeStorageForTests(null) })
+  it('a refused track gets one plainer try and the video has music', async () => {
+    const generateMusic = vi.fn().mockResolvedValueOnce({ refused: true, refusalReason: 'PROMPT_REJECTED: recitation' }).mockResolvedValueOnce({ fileId: 'music-2', creditsUsedMicro: '8' })
+    const out = await finalRun({ generateMusic } as never)
+    expect(generateMusic).toHaveBeenCalledTimes(2)
+    expect(String(generateMusic.mock.calls[1][0])).toMatch(/^An original light instrumental track/)
+    expect(out.note).not.toMatch(/silent/)
+  })
+  it('the prompt never names voices for an instrumental track', async () => {
+    const { musicPrompt } = await import('./music.js')
+    const p = await writePlan(breakdown(), brand, vi.fn().mockResolvedValue({ lines: [] }))
+    p.reference.music = { ...p.reference.music, instruments: 'Harmonium, acoustic guitar, vocals' }
+    expect(musicPrompt(p)).not.toMatch(/, vocals|vocals\./)
+    expect(musicPrompt(p)).toMatch(/Harmonium, acoustic guitar/)
+  })
+})
