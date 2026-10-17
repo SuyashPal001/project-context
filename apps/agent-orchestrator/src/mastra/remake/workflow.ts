@@ -18,7 +18,7 @@ import { looksUnder18 } from './stillChecks.js'
 import { boardUnits, boardPrompt, boardGateInput, boardAspect, BOARD_SLOT } from './board.js'
 import { previewSegments, previewSize, usableStill } from './preview.js'
 import { personIn, refOf } from './looks.js'
-import { editShotPrompt, editShotGateLine, placeGroups, type ShotChange } from '../tools/nextShot.js'
+import { editShotPrompt, editShotGateLine, changeSummary, placeGroups, type ShotChange } from '../tools/nextShot.js'
 import type { Img } from '../tools/tvcChecks.js'
 import { clipSpecs, lookFrames, CLIP_FPS, type ClipSpec } from './clipSpec.js'
 import { makeClip, type ClipCtx, type ClipResult } from './paidClip.js'
@@ -328,7 +328,7 @@ const stillsStep = createStep({
         const extra = [...images.entries()].map(([i, n]) => `the ${plan.reference.characters?.[i]?.who ?? 'other person'} is the person in image ${n}`).join('; ')
         const change = { ...base.change, ...(extra ? { extra } : {}) }
         const prompt = editShotPrompt(change)
-        return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, guide: guideFrame.id, guideRef: g, faceRef: base.fileId, props: propsAt(plan, stillTime(look, kind)), gate: { prompt, planLine: editShotGateLine(change, `looks[${refOf(look)}]`), look: {}, startFrameObjects: [], keyMoments: [] }, ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}) }
+        return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, guide: guideFrame.id, guideRef: g, faceRef: base.fileId, editOf: { fileId: base.fileId, change: changeSummary(change) }, props: propsAt(plan, stillTime(look, kind)), gate: { prompt, planLine: editShotGateLine(change, `looks[${refOf(look)}]`), look: {}, startFrameObjects: [], keyMoments: [] }, ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}) }
       }
       const who = personFor(look)
       const { references, images } = withCharacters([...(person && who ? [who] : []), g, ...(product ? [product] : person && anchor ? [anchor] : [])], chars)

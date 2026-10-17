@@ -23,6 +23,9 @@ const changes = (c: ShotChange): string[] => [
   ...(c.extra ? [c.extra] : []),
 ]
 
+/** The change in short plain words, for checks that compare the photo before and after. */
+export const changeSummary = (c: ShotChange): string => [...(c.outfit ? [`the outfit to ${c.outfit}`] : []), ...(c.styling ? [`the styling to ${c.styling}`] : []), ...(c.poseFromFrame ? ['the body pose'] : []), ...(c.extra ? [c.extra] : [])].join('; ')
+
 export function editShotPrompt(c: ShotChange): string {
   const list = changes(c).map((x, i) => `(${i + 1}) ${x}`).join('; ')
   // No "exactly as in the first image" and no "size and position": that pinned the body and the pose never

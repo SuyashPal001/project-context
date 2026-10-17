@@ -89,3 +89,17 @@ describe('the pose is checked against the frame the photo copies', () => {
     expect(r.result.reasons.join(' ')).toMatch(/right arm/)
   })
 })
+
+describe('an edit adds nothing it was not asked for', () => {
+  it('a blade copied into an edited photo fails and is fixed by an edit that removes it', async () => {
+    const d = deps({ 'guide-1': [0.3, 0.2, 0.7, 0.8], 'still-1': [0.3, 0.2, 0.7, 0.8], 'still-2': [0.3, 0.2, 0.7, 0.8] })
+    ;(d as { ask: unknown }).ask = () => vi.fn(async (parts: Array<{ image?: { data: string }; text?: string }>) => {
+      if (!/Image A is a photo before an edit/.test(parts.at(-1)!.text ?? '')) return {}
+      return parts[3].image!.data === 'still-1' ? { added: true, what: 'a dark fan blade across the top' } : { added: false, what: '' }
+    })
+    const r = await makeStill({ ...job, references: ['base', 'guide-1'], faceRef: 'base', editOf: { fileId: 'base', change: 'the body pose' } }, ctx, d)
+    expect(r.result.tries?.[0].why.join(' ')).toMatch(/not in the photo it was edited from: a dark fan blade across the top/)
+    expect((d.generateStill as ReturnType<typeof vi.fn>).mock.calls[1][0].prompt).toMatch(/Change only this: remove a dark fan blade across the top; the photo it was edited from has none of it/)
+    expect(r.result.status).toBe('passed')
+  })
+})

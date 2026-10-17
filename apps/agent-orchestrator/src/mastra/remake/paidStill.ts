@@ -10,6 +10,7 @@ import { cropFramingFor } from './tightShots.js'
 import { personIn } from './looks.js'
 import { compareFraming } from '../tools/framingCheck.js'
 import { missingProps } from '../tools/propCount.js'
+import { addedByEdit } from '../tools/editCheck.js'
 import type { stillGateInput } from './prompts.js'
 import type { LedgerEntry, RemakeLook, StillResult, StillTry } from './types.js'
 
@@ -34,7 +35,9 @@ export interface StillJob { look: RemakeLook; kind: 'start' | 'end'; prompt: str
   /** first paid slot for a still outside the plan's own slots (a fix the user asks for at the preview) */
   slot?: number
   /** the plan's objects at this still's time: each one the original frame (guide) shows must be in the photo */
-  props?: string[] }
+  props?: string[]
+  /** an edit of an approved photo: nothing may appear that the photo lacks and the change does not explain */
+  editOf?: { fileId: string; change: string } }
 
 export const slotFor = (n: number, kind: 'start' | 'end', attempt: number): number => n * 4 + (kind === 'end' ? 2 : 0) + attempt
 
@@ -44,7 +47,8 @@ type StillCheck = { status: CheckResult['status']; hard: string[]; warnings: str
 
 // A retry asks for the fix in plain plan words. The check's own description ("rounder face,
 // different nose") read to the prompt check as invented content and blocked the retry (fan rerun).
-const FIXES: Array<[RegExp, string]> = [
+const FIXES: Array<[RegExp, string | ((reason: string) => string)]> = [
+  [/^not in the photo it was edited from: /i, (r) => `remove ${r.replace(/^not in the photo it was edited from: /i, '')}; the photo it was edited from has none of it`],
   [/face differs/i, 'the face must be exactly the person in the first image'],
   [/appears twice/i, 'show each object only once'],
   [/caption text over the photo/i, 'remove the caption text printed over the photo'],
@@ -64,7 +68,7 @@ export const editPrompt = (fix: string, keepSetting = true): string =>
   `Edit the first image. Change only this: ${fix}. Keep everything else exactly: the pose, ${/framing/i.test(fix) ? '' : 'framing, '}${keepSetting ? 'setting, ' : ''}outfit, objects${keepSetting ? ' and light' : ''}. No text or logos.`
 
 export function fixLine(reasons: string[]): string {
-  return [...new Set(reasons.map((r) => FIXES.find(([re]) => re.test(r))?.[1] ?? r))].join('; ')
+  return [...new Set(reasons.map((r) => { const f = FIXES.find(([re]) => re.test(r))?.[1]; return typeof f === 'function' ? f(r) : f ?? r }))].join('; ')
 }
 
 // Same room as the first kept still (tools/sameSetting), only when the original's own frames for both
@@ -92,6 +96,7 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
       deps.localFile(fileId, ctx.idToken, ctx.scopeId).then((p) => deps.poseImage(p)),
     ])
     const room = job.room ? await roomCheck(still, job.room, ctx, deps) : null
+    const added = job.editOf ? await addedByEdit(deps.ask(ctx.tenantId), await deps.fetchImage(job.editOf.fileId, ctx.idToken), still, job.editOf.change) : null
     const missing = job.guide && job.props?.length ? await missingProps(deps.ask(ctx.tenantId), await deps.fetchImage(job.guide, ctx.idToken), still, job.props).catch(() => null) : null
     // The original's frame this photo copies: its framing, and its pose when she is well seen in it (the
     // look's window average can predate a move the frame shows, fan run real14 look 2's arm).
@@ -114,7 +119,7 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
         console.error('[remake] crop to the original framing failed:', err instanceof Error ? err.message : String(err))
       }
     }
-    const hard = [...looks.reasons, ...(p.status === 'fail' && p.hard ? [p.reason] : []), ...(room?.hard ? [room.hard] : []), ...(framing?.ok === false && !cropped ? [`the camera framing differs from the original: ${framing.why}`] : []), ...(missing?.status === 'fail' ? [missing.reason] : [])]
+    const hard = [...looks.reasons, ...(p.status === 'fail' && p.hard ? [p.reason] : []), ...(room?.hard ? [room.hard] : []), ...(framing?.ok === false && !cropped ? [`the camera framing differs from the original: ${framing.why}`] : []), ...(missing?.status === 'fail' ? [missing.reason] : []), ...(added?.status === 'fail' ? [added.reason] : [])]
     const warnings = [...(looks.warnings ?? []), ...(p.status === 'fail' && !p.hard ? [p.reason] : []), ...(room?.warning ? [room.warning] : []), ...(framing?.ok === null ? [/partly hidden/.test(framing.why) ? `the framing was only partly compared with the original: ${framing.why}` : 'the framing could not be compared with the original'] : [])]
     if (hard.length) return { status: 'fail', hard, warnings, reason: hard.join('; ') }
     if (p.status === 'unknown' && !warnings.length) return { status: 'unknown', hard, warnings, reason: p.reason, fileId: cropped }
