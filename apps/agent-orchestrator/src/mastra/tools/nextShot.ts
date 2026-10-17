@@ -19,7 +19,7 @@ export interface ShotChange {
 const changes = (c: ShotChange): string[] => [
   ...(c.outfit ? [`the outfit to ${c.outfit}`] : []),
   ...(c.styling ? [`the styling (hair, jewellery, makeup) to ${c.styling}`] : []),
-  ...(c.poseFromFrame ? ['the body pose to exactly the pose of the person in the second image (a reference frame: copy only the pose of the arms, hands, legs, head and body; not that person, outfit, objects or any text; nothing that covers or hides the person there is copied: the face and hair stay uncovered and the outfit is worn as in the first image)'] : []),
+  ...(c.poseFromFrame ? [`the body pose: copy how the person's arms, hands, legs, head and body lie in the second image (a reference frame used only for the pose: not that person, outfit, objects or any text; nothing that covers or hides the person there is copied: the face and hair stay uncovered${c.outfit ? '' : ', and the outfit, including any dupatta or scarf, stays worn and draped as in the first image'})`] : []),
   ...(c.extra ? [c.extra] : []),
 ]
 

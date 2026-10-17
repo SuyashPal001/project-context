@@ -11,7 +11,9 @@ describe('editShotPrompt', () => {
     const p = editShotPrompt({ outfit: 'a red saree', poseFromFrame: true })
     expect(p).toMatch(/^Edit the first image\. Change only:/)
     expect(p).toMatch(/the outfit to a red saree/)
-    expect(p).toMatch(/the body pose to exactly the pose of the person in the second image/)
+    expect(p).toMatch(/the body pose: copy how the person's arms, hands, legs, head and body lie in the second image/)
+    // a new outfit is never also told to stay as in the first image
+    expect(p).not.toMatch(/stays worn and draped as in the first image/)
     expect(p).toMatch(/not that person, outfit, objects or any text/)
     expect(p).toMatch(/Keep everything else exactly as in the first image: the face, the hair, the room/)
     expect(p).toMatch(/the camera height and angle, the person's size and position in the frame/)
@@ -25,6 +27,10 @@ describe('editShotPrompt', () => {
   it('a pose from a frame copies nothing that covers the person there (a blade, a cloth)', () => {
     // fan run real9: the blade over her head in the original came out as a dupatta over her face
     expect(editShotPrompt({ poseFromFrame: true })).toMatch(/nothing that covers or hides the person there is copied: the face and hair stay uncovered/)
+    // plain words for the pose and the drape (fan run real11: the end photos barely moved and the dupatta
+    // vanished; a test edit worded this way got the pose and kept the dupatta)
+    expect(editShotPrompt({ poseFromFrame: true })).toMatch(/copy how the person's arms, hands, legs, head and body lie in the second image/)
+    expect(editShotPrompt({ poseFromFrame: true })).toMatch(/any dupatta or scarf, stays worn and draped as in the first image/)
   })
   it('the check line says it is an edit of an approved photo with the pose from a frame', () => {
     expect(editShotGateLine({ outfit: 'a red saree', poseFromFrame: true }, 'looks[1]')).toMatch(/edit of the previous approved photo \(the first image\).*only: looks\[1\] outfit to a red saree; the pose of the person in the second image.*everything else kept/)
