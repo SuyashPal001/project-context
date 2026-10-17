@@ -648,8 +648,10 @@ const finishStep = createStep({
     let realParts = 0
     try {
       const parts: string[] = []
+      const counts: number[] = []
       for (const look of [...plan.looks].sort((x, y) => x.startS - y.startS)) {
         const n = frames.get(look.n) ?? 0
+        counts.push(n)
         const clip = clips.find((c) => c.look === look.n && c.localPath && (c.status === 'passed' || c.status === 'unchecked' || c.status === 'failed'))
         if (clip?.localPath) { parts.push(clip.localPath); realParts++; continue }
         const still = stills.find((s) => s.look === look.n && s.kind === 'start' && s.fileId)
@@ -666,7 +668,17 @@ const finishStep = createStep({
       // No real picture in any part: never deliver grey cards as a finished video, and pay
       // for no music or comparison.
       if (realParts === 0) throw new NothingToShow()
-      let video = await deps.joinSegments(parts, join(work, 'joined.mp4'), size)
+      // The original's trick is a fan wipe: v12's fan, timed from the original's blade (anything failing: cuts).
+      const wipe = plan.reference.wipe
+      let video: string | null = null
+      if (wipe?.kind === 'fan' && wipe.covered.length === parts.length - 1) {
+        try {
+          video = await deps.fanSweep({ original: await deps.localFile(plan.reference.videoFileId, a.idToken, a.scopeId), segments: parts, counts, covered: wipe.covered, out: join(work, 'swept.mp4'), size })
+        } catch (err) {
+          console.error('[remake] fan wipe failed (plain cuts instead):', err instanceof Error ? err.message : String(err))
+        }
+      }
+      video = video ?? await deps.joinSegments(parts, join(work, 'joined.mp4'), size)
       const totalS = [...frames.values()].reduce((x, y) => x + y, 0) / CLIP_FPS
       // Music: always new (spec §9a), gated like every paid call. Its own guard: any failure
       // leaves the finished video silent, never lost.

@@ -11,3 +11,11 @@ def safe_media_path(raw: str) -> Path:
     if root not in p.parents or not p.is_file():
         raise HTTPException(status_code=400, detail="path must be an existing file inside the media cache")
     return p
+
+def safe_output_path(raw: str) -> Path:
+    """A file to write: inside the media cache, in a folder that exists, with an .mp4 name."""
+    p = Path(raw).resolve()
+    root = media_dir()
+    if root not in p.parents or not p.parent.is_dir() or p.suffix.lower() != ".mp4":
+        raise HTTPException(status_code=400, detail="out must be an .mp4 path inside the media cache")
+    return p

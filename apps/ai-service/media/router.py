@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from .auth import require_internal_key
-from .paths import safe_media_path
+from .paths import safe_media_path, safe_output_path
 from . import sound
 
 router = APIRouter(prefix="/media", dependencies=[Depends(require_internal_key)])
@@ -111,3 +111,35 @@ def post_pose_image(body: PathBody):
         return pose.read_image(str(safe_media_path(body.path)))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+from . import sweep
+
+
+class FanSweepBody(BaseModel):
+    original: str
+    segments: list[str]
+    counts: list[int]
+    covered: list[list[float]]
+    out: str
+    width: int
+    height: int
+    fps: int = 30
+
+
+@router.post("/fan-sweep")
+def post_fan_sweep(body: FanSweepBody):
+    """Join the looks with the fan wipe, timed by when the original's blade covers her (media/sweep.py)."""
+    if len(body.segments) != len(body.counts) or len(body.covered) != len(body.segments) - 1:
+        raise HTTPException(status_code=400, detail="one count per look and one covered span between each two looks")
+    if any(c <= 0 for c in body.counts) or any(len(s) != 2 or s[0] > s[1] for s in body.covered):
+        raise HTTPException(status_code=400, detail="counts must be above 0 and each covered span [from_s, to_s]")
+    if not (16 <= body.width <= 4096 and 16 <= body.height <= 4096 and 1 <= body.fps <= 60):
+        raise HTTPException(status_code=400, detail="size or fps out of range")
+    original = str(safe_media_path(body.original))
+    times = sweep.cover_times(original, body.covered)
+    if len(times) != len(body.covered):
+        raise HTTPException(status_code=422, detail="the blade could not be measured in every covered span")
+    out = str(safe_output_path(body.out))
+    sweep.compose([str(safe_media_path(p)) for p in body.segments], body.counts, times, out, (body.width, body.height), body.fps)
+    return {"path": out, "cover_times": times}

@@ -1,4 +1,4 @@
-export async function aiService<T>(route: '/media/cuts' | '/media/hidden-cuts' | '/media/sound' | '/media/motion-peaks' | '/media/brightness-jumps' | '/media/coverage' | '/media/pose' | '/media/pose-image', body: Record<string, unknown>, fetchImpl: typeof fetch = fetch): Promise<T> {
+export async function aiService<T>(route: '/media/cuts' | '/media/hidden-cuts' | '/media/sound' | '/media/motion-peaks' | '/media/brightness-jumps' | '/media/coverage' | '/media/pose' | '/media/pose-image' | '/media/fan-sweep', body: Record<string, unknown>, fetchImpl: typeof fetch = fetch): Promise<T> {
   const base = process.env.AI_SERVICE_URL ?? 'http://localhost:3004'
   const res = await fetchImpl(`${base}${route}`, {
     method: 'POST',

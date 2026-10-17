@@ -95,7 +95,16 @@ export function referenceOf(b: Breakdown): RemakeReference {
     musicMood: [o.music.mood, o.music.genre].filter(Boolean).join(', '),
     music: { mood: o.music.mood, genre: o.music.genre, instruments: o.music.instruments, hasVocals: o.music.has_vocals, songName: o.music.song_name },
     videoFileId: b.video.fileId, durationS: b.video.durationS, width: b.video.width, height: b.video.height,
+    ...fanWipe(b),
   }
+}
+
+/** A fan or blade wipe at measured hidden cuts (the fan reel): the looks get v12's fan, timed from the original. */
+function fanWipe(b: Breakdown): { wipe?: RemakeReference['wipe'] } {
+  const hidden = b.hidden_cuts ?? []
+  const trickWords = [b.overview.trick ?? '', ...b.overview.props.filter((p) => p.part_of_trick === true || String(p.part_of_trick) === 'true').map((p) => p.prop)].join(' ')
+  if (!hidden.length || !/\b(fan|blade)s?\b/i.test(trickWords)) return {}
+  return { wipe: { kind: 'fan', covered: hidden.map((h) => [h.covered_s[0], h.covered_s[1]]) } }
 }
 
 const brandText = (brand: Brand) => [`name: ${brand.name}`, `product: ${brand.product}`, brand.audience && `audience: ${brand.audience}`, brand.notes && `notes: ${brand.notes}`].filter(Boolean).join('; ')

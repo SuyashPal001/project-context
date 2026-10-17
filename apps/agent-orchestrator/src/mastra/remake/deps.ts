@@ -2,8 +2,9 @@
 // without a gateway, a model, a store or ffmpeg.
 import { execFile as execFileCb } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { MEDIA_DIR } from '../../types.js'
 import { join } from 'node:path'
 import { costMicro, resolveRate } from '@serverless-saas/credits'
 import { generateImageItem, type ImageItemInput } from '../tools/generateImage.js'
@@ -64,6 +65,8 @@ export interface RemakeDeps {
   compare: (breakdown: Breakdown, remakeFileId: string, ctx: { idToken: string; scopeId: string; conversationId: string }, tenantId: string) => Promise<{ checks: CheckResult[]; summary: string }>
   stillToFrames: typeof stillToFrames
   joinSegments: (parts: string[], out: string, size: { width: number; height: number }) => Promise<string>
+  /** Join the looks with the fan wipe timed from the original (ai-service /media/fan-sweep). */
+  fanSweep: (input: { original: string; segments: string[]; counts: number[]; covered: number[][]; out: string; size: { width: number; height: number } }) => Promise<string>
   fitMusic: typeof fitMusicToLength
   muxMusic: typeof setOnlyAudio
   // temp working dirs: every one a run makes is removed when the step that needs it is done
@@ -138,10 +141,12 @@ const real: RemakeDeps = {
   generateMusic: (prompt, exec, runKey) => generateSongItem({ prompt, title: 'Remake music' }, exec, runKey),
   compare: (breakdown, remakeFileId, ctx, tenantId) => compareToReference({ fileId: breakdown.video.fileId }, remakeFileId, ctx, tenantId, breakdown),
   stillToFrames: (s, f, o, size) => stillToFrames(s, f, o, size),
+  fanSweep: async (i) => (await aiService<{ path: string }>('/media/fan-sweep', { original: i.original, segments: i.segments, counts: i.counts, covered: i.covered, out: i.out, width: i.size.width, height: i.size.height })).path,
   joinSegments: (p, o, size) => joinClips(p, o, size),
   fitMusic: (m, s, o) => fitMusicToLength(m, s, o),
   muxMusic: (v, m, o) => setOnlyAudio(v, m, o),
-  tempDir: (prefix) => mkdtempSync(join(tmpdir(), prefix)),
+  // inside the media cache: the ai-service reads and writes only there (clip pose checks, the fan sweep)
+  tempDir: (prefix) => { mkdirSync(MEDIA_DIR, { recursive: true }); return mkdtempSync(join(MEDIA_DIR, prefix)) },
   removeDir: (path) => { try { rmSync(path, { recursive: true, force: true }) } catch { /* best effort */ } },
   deleteFile: (idToken, fileId) => deleteFile(idToken, fileId),
 }

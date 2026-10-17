@@ -37,6 +37,9 @@ export interface RemakeReference {
   music: { mood: string; genre: string; instruments: string; hasVocals: boolean | null; songName: string | null }
   videoFileId: string
   durationS: number; width: number; height: number
+  /** The original's trick is a fan-blade wipe at measured hidden cuts: the looks are joined with the fan
+   *  (ai-service media/sweep.py), timed from these covered spans. Missing for any other trick. */
+  wipe?: { kind: 'fan'; covered: number[][] }
 }
 
 export interface RemakePlan {

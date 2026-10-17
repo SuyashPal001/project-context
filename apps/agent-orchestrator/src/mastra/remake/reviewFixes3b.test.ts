@@ -169,3 +169,42 @@ describe('I1 music or a still file failing never throws away the finished video'
     expect(out.finalFileId).toBeTruthy()
   })
 })
+
+// The fan reel's trick (2026-10-17): the looks are joined with v12's fan wipe, timed from the original, whenever
+// the original's trick is a fan or blade wipe at measured hidden cuts. Anything going wrong falls back to cuts.
+const fanBody = () => {
+  const b = sameBody()
+  b.overview.trick = 'a ceiling fan blade sweeps across the lens and hides each outfit change'
+  b.overview.props = [...b.overview.props, { prop: 'Ceiling fan blade', where: 'over the lens', when: 'at each change', part_of_trick: true }]
+  b.hidden_cuts = [{ from: b.overview.looks[0].label, to: b.overview.looks[1].label, at_s: 5, covered_s: [4.5, 5.5] }]
+  return b
+}
+describe('the fan wipe joins the looks', () => {
+  beforeEach(() => setRemakeStorageForTests(new InMemoryStore()))
+  afterEach(() => { setRemakeDeps(null); setRemakeStorageForTests(null) })
+  it('the plan notes a fan wipe with its measured covered spans; other tricks get none', async () => {
+    const ask = vi.fn().mockResolvedValue({ lines: [] })
+    expect((await writePlan(fanBody(), brand, ask)).reference.wipe).toEqual({ kind: 'fan', covered: [[4.5, 5.5]] })
+    const plain = sameBody(); plain.overview.trick = 'a hand wipe'
+    expect((await writePlan(plain, brand, ask)).reference.wipe).toBeUndefined()
+  })
+  it('the final video is joined with the fan from the original', async () => {
+    const fanSweep = vi.fn(async (i: { out: string }) => i.out)
+    const joinSegments = vi.fn(async (_p: string[], out: string) => out)
+    const out = await finalRun({ fanSweep, joinSegments } as never, fanBody())
+    expect(out.finalFileId).toBeTruthy()
+    expect(fanSweep).toHaveBeenCalledTimes(1)
+    const arg = fanSweep.mock.calls[0][0] as unknown as { original: string; segments: string[]; counts: number[]; covered: number[][] }
+    expect(arg.original).toBe('/m/vid')
+    expect(arg.segments).toHaveLength(2)
+    expect(arg.counts.reduce((x, y) => x + y, 0)).toBeGreaterThan(0)
+    expect(arg.covered).toEqual([[4.5, 5.5]])
+    expect(joinSegments).not.toHaveBeenCalled()
+  })
+  it('a fan that fails falls back to plain cuts and the video is still delivered', async () => {
+    const joinSegments = vi.fn(async (_p: string[], out: string) => out)
+    const out = await finalRun({ fanSweep: vi.fn(async () => { throw new Error('ai-service down') }), joinSegments } as never, fanBody())
+    expect(out.finalFileId).toBeTruthy()
+    expect(joinSegments).toHaveBeenCalledTimes(1)
+  })
+})

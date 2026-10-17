@@ -201,3 +201,34 @@ def test_the_v12_fan_draws_a_shadowed_blade_and_the_hub(tmp_path):
     f = _read(out)[60]
     assert f[2, 2].max() < 150                               # the hub in the top-left corner
     assert (f.max(axis=2) < 120).mean() > 0.1                # a dark blade across the frame
+
+
+H = {"x-internal-service-key": "k"}
+
+
+def test_route_joins_the_looks_with_the_fan(client, media_dir):
+    a, b, fan, out = media_dir / "a.mp4", media_dir / "b.mp4", media_dir / "fan.mp4", media_dir / "out.mp4"
+    _solid(a, (0, 0, 255), 45); _solid(b, (255, 0, 0), 45)
+    w_ = cv2.VideoWriter(str(fan), cv2.VideoWriter_fourcc(*"mp4v"), 30, (72, 128))
+    for i in range(90):
+        f = np.full((128, 72, 3), (160, 200, 220), np.uint8)
+        top = -128 + i * 4
+        cv2.rectangle(f, (0, top), (72, top + 128), (6, 20, 66), -1)
+        w_.write(f)
+    w_.release()
+    r = client.post("/media/fan-sweep", json={"original": str(fan), "segments": [str(a), str(b)], "counts": [45, 45], "covered": [[0.5, 2.5]], "out": str(out), "width": 72, "height": 128}, headers=H)
+    assert r.status_code == 200, r.text
+    assert r.json()["path"] == str(out) and len(r.json()["cover_times"]) == 1
+    assert len(_read(out)) == 90
+
+
+def test_route_refuses_mismatched_looks_and_cuts(client, media_dir):
+    r = client.post("/media/fan-sweep", json={"original": str(media_dir / "x.mp4"), "segments": ["a", "b", "c"], "counts": [1, 1], "covered": [[0, 1]], "out": str(media_dir / "o.mp4"), "width": 72, "height": 128}, headers=H)
+    assert r.status_code == 400
+
+
+def test_route_writes_only_inside_the_media_cache(client, media_dir, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("elsewhere") / "o.mp4"
+    a = media_dir / "a.mp4"; _solid(a, (0, 0, 255), 5)
+    r = client.post("/media/fan-sweep", json={"original": str(a), "segments": [str(a), str(a)], "counts": [5, 5], "covered": [[0, 0.1]], "out": str(outside), "width": 72, "height": 128}, headers=H)
+    assert r.status_code == 400
