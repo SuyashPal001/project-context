@@ -12,6 +12,8 @@ import { refundBurnCaptionsCharge } from './burnCaptionsCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
 import { finishedAdTitle } from './fileTitle.js'
+import { resolveCaptionFont, DEFAULT_CAPTION_FONT } from '../brand/captionFont.js'
+import type { TenantBrand } from '../brand/types.js'
 
 const execFile = promisify(execFileCb)
 
@@ -123,6 +125,7 @@ export const burnCaptions = createTool({
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
+    const brand = execContext?.requestContext?.get('brand') as TenantBrand | null | undefined
     const sessionId = conversationId ?? 'unknown'
     const toolCallId = execContext?.agent?.toolCallId ?? 'unknown'
     const jobId = `${conversationId ?? sessionId}:${stableToolCallId(toolCallId)}`
@@ -185,18 +188,30 @@ export const burnCaptions = createTool({
       // path defensively even though mkdtempSync under os.tmpdir() won't
       // produce one on this deployment's Linux/macOS hosts.
       const escapedSrtPath = srtPath.replace(/\\/g, '\\\\').replace(/:/g, '\\:')
+      // The brand's font (uploaded file, or a cached Google Fonts TTF) when
+      // one resolves; DejaVu Sans — today's behaviour — on no brand font or
+      // any failure (logged inside resolveCaptionFont, never thrown: a font
+      // problem must never fail or change the price of this tool).
+      const { family: captionFontFamily, fontsDir } = await resolveCaptionFont(brand, { idToken, scopeId })
+      // force_style's FontName is a bare value inside a single-quoted
+      // filter argument — strip characters that would break out of either
+      // quoting layer (',' ends the FontName=... key/value pair early;
+      // an apostrophe closes force_style='...').
+      const safeFontFamily = (captionFontFamily || DEFAULT_CAPTION_FONT).replace(/['",]/g, '')
+      const fontsDirOpt = fontsDir ? `fontsdir=${fontsDir.replace(/\\/g, '\\\\').replace(/:/g, '\\:')}:` : ''
       // Lower-third placement, white fill, thick dark outline — matches
       // the genre look novoads' caption presets describe. force_style
       // overrides the SRT's own (absent) styling; MarginV keeps the band
       // clear of most safe-area UI overlays at any resolution.
-      // FontName assumes DejaVu Sans is installed on the deployment host;
-      // if it isn't, libass/fontconfig falls back silently to whatever
-      // default font fontconfig picks — no error, just a different look.
-      // Revisit if production captions look wrong.
-      const forceStyle = "FontName=DejaVu Sans,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Alignment=2,MarginV=80"
+      // FontName assumes the resolved family is installed/available via
+      // fontsdir; on DejaVu Sans without fontsdir (today's behaviour), if
+      // it isn't installed, libass/fontconfig falls back silently to
+      // whatever default font fontconfig picks — no error, just a
+      // different look. Revisit if production captions look wrong.
+      const forceStyle = `FontName=${safeFontFamily},FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Alignment=2,MarginV=80`
       await execFile('ffmpeg', [
         '-y', '-i', videoPath,
-        '-vf', `subtitles=${escapedSrtPath}:force_style='${forceStyle}'`,
+        '-vf', `subtitles=${escapedSrtPath}:${fontsDirOpt}force_style='${forceStyle}'`,
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
         '-c:a', 'copy',
         outputPath,

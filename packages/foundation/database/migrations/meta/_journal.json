@@ -715,6 +715,20 @@
       "when": 1790706666309,
       "tag": "0101_add_product_category_and_usps",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1792151897934,
+      "tag": "0102_unique_molten_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1792233052492,
+      "tag": "0103_powerful_junta",
+      "breakpoints": true
     }
   ]
 }

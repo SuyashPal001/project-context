@@ -213,7 +213,7 @@ function ChatPage() {
         handleCanvasUpdate,
         openCanvas,
     });
-    const { sendMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, sendUploadAnswer, cancel, isStreaming, isPreparingMessage, isRetrying, activeToolCalls, completedToolCalls, liveSteps, reasoningText, traceAfterSeq, eventError, warmupMessage, agentTimedOut, hasSentFirstMessage, lastStreamEvent, regenerate, editAndResubmit } = stream;
+    const { sendMessage: rawSendMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, sendUploadAnswer, cancel, isStreaming, isPreparingMessage, isRetrying, activeToolCalls, completedToolCalls, liveSteps, reasoningText, traceAfterSeq, eventError, warmupMessage, agentTimedOut, hasSentFirstMessage, lastStreamEvent, regenerate, editAndResubmit } = stream;
     // A card answered after a reload: its reply arrives without a stream (useDetachedReplyWatch).
     const detachedReply = useDetachedReplyWatch(conversationId, messages, queryClient);
     // The answer went to a turn this page has no stream for.
@@ -304,6 +304,42 @@ function ChatPage() {
 
     const { isModalOpen, session, openVoice, closeVoice, handleTap } = useVoice({ conversationId: conversationId || undefined });
     const [inputPrefill, setInputPrefill] = useState('');
+
+    // ?prefill=… (e.g. the Brand page's "Tell Olmo about your brand") puts text
+    // in the composer once; the user still presses send. Guarded by a ref, not
+    // just the effect's dependency array, so it seeds exactly once per page
+    // load — searchParams can change again later (e.g. folderId) without
+    // re-seeding stale text into whatever composer happens to be mounted then.
+    const prefillAppliedRef = useRef(false);
+    useEffect(() => {
+        if (prefillAppliedRef.current) return;
+        const prefill = searchParams.get('prefill');
+        if (prefill) {
+            setInputPrefill(prefill.slice(0, 500));
+            prefillAppliedRef.current = true;
+        }
+    }, [searchParams]);
+
+    // inputPrefill is one-shot: once any message actually sends, or the
+    // conversation identity changes (new chat created, different chat
+    // selected), it's cleared so a later ChatInput mount — a different view,
+    // a remount after send — never re-seeds it. ChatInput's own effect only
+    // acts on a truthy prefill, so clearing to '' is a no-op for whatever is
+    // currently mounted and simply arms every future mount to ignore it.
+    const sendMessage = useCallback<typeof rawSendMessage>((...args) => {
+        setInputPrefill('');
+        return rawSendMessage(...args);
+    }, [rawSendMessage]);
+    // Only an actual change clears it — not the initial mount, which would
+    // otherwise wipe out the seed the effect above just applied (both run in
+    // the same post-render pass, in declaration order).
+    const prevConversationIdRef = useRef(conversationId);
+    useEffect(() => {
+        if (prevConversationIdRef.current !== conversationId) {
+            prevConversationIdRef.current = conversationId;
+            setInputPrefill('');
+        }
+    }, [conversationId]);
 
     // Text typed into the no-conversation-selected composer, held until the
     // conversation handleNewChat() creates finishes loading — then sent once.
@@ -400,6 +436,11 @@ function ChatPage() {
     // skill staged by a prior "Create with AI" attempt whose handleNewChat
     // failed would leak onto this newly typed message.
     const startDraftComposerMessage = (text: string, attachments?: Attachment[]) => {
+        // The actual send happens later, once handleNewChat resolves (see the
+        // pendingFirstMessage effect below), but the draft composer's job is
+        // done the moment it hands off — clear here too so a prefill seed
+        // can't survive into whatever view the new conversation lands on.
+        setInputPrefill('');
         const draft = buildDraftComposerStart(text, attachments, creativeBriefStarted, creativeBrief);
         setPendingFirstMessage(draft.message);
         setPendingFirstAttachments(draft.attachments);
@@ -921,6 +962,7 @@ function ChatPage() {
                                             agentId={draftAgent?.id}
                                             allowMode={pendingAllowMode ?? 'ask'}
                                             onAllowModeChange={setPendingAllowMode}
+                                            prefill={inputPrefill}
                                             hasSupplementalContent={creativeBriefStarted}
                                             supplementalContent={
                                                 <CreativeBriefChips

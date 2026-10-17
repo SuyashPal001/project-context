@@ -1,0 +1,185 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { RequestContext } from '@mastra/core/request-context'
+
+const fetchMock = vi.fn()
+beforeEach(() => {
+  vi.resetModules(); vi.clearAllMocks(); vi.stubGlobal('fetch', fetchMock)
+  process.env.API_BASE_URL = 'https://api.test'
+})
+// Not a default parameter: `ctx(undefined)` (used below to mean "no token")
+// would otherwise fall through to the 'tok' default too, since JS applies a
+// default parameter whenever the argument is undefined, explicit or omitted.
+const ctx = (...args: [] | [string | undefined] | [string | undefined, Record<string, unknown>]) => {
+  const idToken = args.length === 0 ? 'tok' : args[0]
+  const rc = new RequestContext()
+  if (idToken) rc.set('idToken', idToken)
+  if (args[1]) rc.set('brand', args[1])
+  return { requestContext: rc } as never
+}
+const saved = {
+  name: 'Mamaearth', toneWords: ['warm', 'caring'], signaturePhrases: ['Goodness Inside'],
+  bannedPhrases: ['chemical-free', 'Cheap'], ctaExamples: ['Shop now'], colors: { primary: '#00A651', accent: '#FFCC00' },
+}
+const sentBody = () => JSON.parse(fetchMock.mock.calls[0][1].body)
+
+describe('update_brand', () => {
+  it('PATCHes only the given fields with the user token', async () => {
+    fetchMock.mockResolvedValue(new Response('{"data":{}}', { status: 200 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    const out = await updateBrandTool.execute!({ name: 'Fitnearn' } as never, ctx())
+    expect(out).toMatchObject({ success: true })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.test/api/v1/brand')
+    expect(init.method).toBe('PATCH')
+    expect(init.headers.Authorization).toBe('Bearer tok')
+    expect(JSON.parse(init.body)).toEqual({ name: 'Fitnearn' })
+  })
+
+  it('with no brand on the turn, reads the saved brand before editing a list (never wipes it)', async () => {
+    const record = { ...saved, oneLiner: null, audience: null, region: 'IN', emojiPolicy: 'minimal', voiceNotes: null,
+      headlineFont: null, logo: null, importStatus: 'done' }
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: record }), { status: 200 }))
+      .mockResolvedValueOnce(new Response('{"data":{}}', { status: 200 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    const out = await updateBrandTool.execute!({ addBannedPhrases: ['miracle'] } as never, ctx())
+    expect(out).toMatchObject({ success: true })
+    expect(fetchMock.mock.calls[0][1].method ?? 'GET').toBe('GET')
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ bannedPhrases: ['chemical-free', 'Cheap', 'miracle'] })
+  })
+
+  it('refuses a list edit when the saved brand cannot be read', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('{}', { status: 500 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    const out = await updateBrandTool.execute!({ addBannedPhrases: ['miracle'] } as never, ctx())
+    expect(out).toMatchObject({ success: false })
+    expect(fetchMock).toHaveBeenCalledTimes(1) // no PATCH sent
+  })
+
+  it('a genuinely new brand starts its lists from empty', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('{"data":null}', { status: 200 }))
+      .mockResolvedValueOnce(new Response('{"data":{}}', { status: 200 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    await updateBrandTool.execute!({ addBannedPhrases: ['cheap'] } as never, ctx())
+    const [url, init] = fetchMock.mock.calls[1]
+    expect(url).toBe('https://api.test/api/v1/brand')
+    expect(init.method).toBe('PATCH')
+    expect(init.headers.Authorization).toBe('Bearer tok')
+    expect(JSON.parse(init.body)).toEqual({ bannedPhrases: ['cheap'] })
+  })
+
+  it('adding a banned phrase keeps the saved ones', async () => {
+    fetchMock.mockResolvedValue(new Response('{"data":{}}', { status: 200 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    await updateBrandTool.execute!({ addBannedPhrases: ['miracle', 'cheap'] } as never, ctx('tok', saved))
+    expect(sentBody()).toEqual({ bannedPhrases: ['chemical-free', 'Cheap', 'miracle'] })
+  })
+
+  it('removes case-insensitively, then adds', async () => {
+    fetchMock.mockResolvedValue(new Response('{"data":{}}', { status: 200 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    await updateBrandTool.execute!({ removeToneWords: ['WARM'], addToneWords: ['bold'], removeCtaExamples: ['shop now'] } as never, ctx('tok', saved))
+    expect(sentBody()).toEqual({ toneWords: ['caring', 'bold'], ctaExamples: [] })
+  })
+
+  it('caps a list at its limit', async () => {
+    fetchMock.mockResolvedValue(new Response('{"data":{}}', { status: 200 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    await updateBrandTool.execute!({ addToneWords: ['a', 'b', 'c', 'd'] } as never, ctx('tok', saved))
+    expect(sentBody().toneWords).toEqual(['warm', 'caring', 'a', 'b', 'c'])
+  })
+
+  it('a second edit in the same turn builds on the first', async () => {
+    fetchMock.mockImplementation(async () => new Response('{"data":{}}', { status: 200 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    const c = ctx('tok', saved)
+    await updateBrandTool.execute!({ addBannedPhrases: ['miracle'], colors: { text: '#000000' } } as never, c)
+    await updateBrandTool.execute!({ addBannedPhrases: ['instant'] } as never, c)
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ bannedPhrases: ['chemical-free', 'Cheap', 'miracle', 'instant'] })
+    const brand = (c as unknown as { requestContext: RequestContext }).requestContext.get('brand') as Record<string, unknown>
+    expect(brand.colors).toEqual({ primary: '#00A651', accent: '#FFCC00', text: '#000000' })
+  })
+
+  it('a first list edit with no saved brand starts from empty and is kept for the next', async () => {
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => new Response(init?.method === 'PATCH' ? '{"data":{}}' : '{"data":null}', { status: 200 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    const c = ctx()
+    await updateBrandTool.execute!({ addToneWords: ['warm'] } as never, c)
+    await updateBrandTool.execute!({ addToneWords: ['bold'] } as never, c)
+    // GET (no brand yet), PATCH warm, then PATCH warm+bold from this turn's copy — no second GET
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({ toneWords: ['warm', 'bold'] })
+  })
+
+  it('sends only the colour roles given', async () => {
+    fetchMock.mockResolvedValue(new Response('{"data":{}}', { status: 200 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    await updateBrandTool.execute!({ colors: { accent: '#112233' } } as never, ctx('tok', saved))
+    expect(sentBody()).toEqual({ colors: { accent: '#112233' } })
+  })
+
+  it('reports a plain failure without internals', async () => {
+    fetchMock.mockResolvedValue(new Response('{"error":"x"}', { status: 500 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    const out = await updateBrandTool.execute!({ name: 'X' } as never, ctx()) as { success: boolean; error: string }
+    expect(out.success).toBe(false)
+    expect(out.error).not.toMatch(/500|server|status/i)
+  })
+
+  it('refuses outside a live chat', async () => {
+    const { updateBrandTool } = await import('./brandTools.js')
+    expect(await updateBrandTool.execute!({ name: 'X' } as never, ctx(undefined))).toMatchObject({ success: false })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('import_brand', () => {
+  it('POSTs the value and reports still-reading when the fill outlasts the wait', async () => {
+    const mod = await import('./brandTools.js')
+    Object.assign(mod.IMPORT_WAIT, { intervalMs: 1, timeoutMs: 20 })
+    fetchMock.mockImplementation(async (url: string) => String(url).endsWith('/brand/import')
+      ? new Response('{"data":{"importStatus":"importing"}}', { status: 202 })
+      : new Response('{"data":{"importStatus":"importing"}}', { status: 200 }))
+    const out = await mod.importBrandTool.execute!({ value: '@mamaearth.in' } as never, ctx())
+    expect(out).toMatchObject({ success: true, status: 'importing' })
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ value: '@mamaearth.in' })
+  })
+
+  it('waits for the fill, then reports what was found and what is missing', async () => {
+    const mod = await import('./brandTools.js')
+    Object.assign(mod.IMPORT_WAIT, { intervalMs: 1, timeoutMs: 1000 })
+    const done = { name: 'Fitnearn', oneLiner: 'Fitness classes', audience: null, region: 'IN', toneWords: [], emojiPolicy: 'minimal',
+      signaturePhrases: [], bannedPhrases: [], ctaExamples: ['Book now'], voiceNotes: null, colors: { primary: '#00A651' },
+      headlineFont: null, logo: { fileId: 'f1', url: null }, importStatus: 'done' }
+    let polls = 0
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).endsWith('/brand/import')) return new Response('{"data":{"importStatus":"importing"}}', { status: 202 })
+      polls++
+      return new Response(JSON.stringify({ data: polls < 2 ? { ...done, importStatus: 'importing' } : done }), { status: 200 })
+    })
+    const c = ctx()
+    const out = await mod.importBrandTool.execute!({ value: 'fitnearn.com' } as never, c) as Record<string, unknown>
+    expect(out).toMatchObject({ success: true, status: 'done', missing: ['who it is for', 'how it sounds'] })
+    expect(out.found).toMatchObject({ name: 'Fitnearn', 'what it makes': 'Fitness classes', logo: 'saved', 'calls to action': ['Book now'] })
+    expect((c as { requestContext: { get(k: string): unknown } }).requestContext.get('brand')).toMatchObject({ name: 'Fitnearn', logoFileId: 'f1' })
+  })
+
+  it('reports a failed fill plainly', async () => {
+    const mod = await import('./brandTools.js')
+    Object.assign(mod.IMPORT_WAIT, { intervalMs: 1, timeoutMs: 1000 })
+    fetchMock.mockImplementation(async (url: string) => String(url).endsWith('/brand/import')
+      ? new Response('{"data":{"importStatus":"importing"}}', { status: 202 })
+      : new Response('{"data":{"importStatus":"failed"}}', { status: 200 }))
+    const out = await mod.importBrandTool.execute!({ value: 'fitnearn.com' } as never, ctx()) as { success: boolean; error: string }
+    expect(out.success).toBe(false)
+    expect(out.error).toMatch(/Couldn't read that/)
+  })
+
+  it('passes on the "not a site or handle" message', async () => {
+    fetchMock.mockResolvedValue(new Response('{"message":"Paste a website link or an Instagram handle"}', { status: 400 }))
+    const { importBrandTool } = await import('./brandTools.js')
+    expect(await importBrandTool.execute!({ value: 'hi' } as never, ctx())).toMatchObject({ success: false, error: 'Paste a website link or an Instagram handle' })
+  })
+})

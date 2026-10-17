@@ -78,7 +78,7 @@ export function parseAvatarDescription(raw: string): { name: string; role: strin
 }
 
 /** Fetches a presigned image link; null on a failed download or an image over the cap. */
-async function downloadImageBase64(imageUrl: string): Promise<string | null> {
+export async function downloadImageBase64(imageUrl: string): Promise<string | null> {
   const url = new URL(imageUrl)
   // Same fix as analyzeImage.ts: the checksum-mode param breaks presigned GETs.
   url.searchParams.delete('x-amz-checksum-mode')

@@ -305,6 +305,14 @@ describe('platformAgent instructions — working memory contract', () => {
     expect(text).toMatch(/Never infer one and never invent one/)
     expect(text).toMatch(/never option labels such as "\(Recommended\)"/)
   })
+
+  it('appends the saved brand last when the request carries one', async () => {
+    const requestContext = new RequestContext()
+    requestContext.set('brand', { name: 'Mamaearth', oneLiner: null, audience: null, region: 'IN', toneWords: ['warm'], emojiPolicy: 'minimal', signaturePhrases: [], bannedPhrases: [], ctaExamples: [], voiceNotes: null, colors: {}, headlineFont: null, logoFileId: null })
+    const instructions = await platformAgent.getInstructions({ requestContext }) as string
+    expect(instructions.trimEnd()).toMatch(/## Your brand[\s\S]*Mamaearth[\s\S]*offer to ask the questions instead\.$/)
+    expect(instructions).toContain('save them with update_brand, not in working memory')
+  })
 })
 describe('picked library avatars keep their category\'s look', () => {
   it('routes an Animation avatar to the animated flow and keeps a TVC avatar polished', async () => {

@@ -24,6 +24,7 @@
 import { randomUUID } from 'node:crypto'
 import { createTool } from '@mastra/core/tools'
 import { RequestContext } from '@mastra/core/request-context'
+import { fetchTenantBrand } from '../usage.js'
 
 export type TestToolContext = { tenantId: string; userId: string; agentId: string; conversationId: string; idToken: string }
 
@@ -49,6 +50,9 @@ export function wrapForTest(name: string, tool: any, ctx: () => Promise<TestTool
       requestContext.set('idToken', c.idToken)
       requestContext.set('allowMode', 'auto')
       requestContext.set('sessionId', `mcp-${randomUUID()}`)
+      // The saved brand, as a live chat turn loads it: update_brand edits its lists
+      // and composite_end_card takes its logo. A failed read runs as "no brand".
+      requestContext.set('brand', await fetchTenantBrand(c.tenantId).catch(() => null))
       return tool.execute(input, {
         ...mcpCtx,
         requestContext,

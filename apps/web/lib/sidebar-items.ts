@@ -18,6 +18,7 @@ import {
     LayoutList,
     Brain,
     CalendarDays,
+    Sparkles,
 } from "lucide-react";
 import React from 'react';
 
@@ -57,6 +58,7 @@ export function getSidebarItems(
     if (FEATURE_FLAGS.board) items.push({ label: "Board", href: `${base}/board`, icon: KanbanSquare });
     if (FEATURE_FLAGS.plans) items.push({ label: "Projects", href: `${base}/plans`, icon: LayoutList });
     items.push({ label: "Drive", href: `${base}/drive`, icon: FolderOpen });
+    items.push({ label: "Brand", href: `${base}/brand`, icon: Sparkles });
     items.push({ label: "Skills", href: `${base}/skills`, icon: Puzzle });
 
     // Notifications moved out too: it's a glance-and-dismiss flyout in the
@@ -116,7 +118,7 @@ export function getSettingsPanelItems(
         });
         items.push({ label: "Billing", href: `${base}/billing`, icon: CreditCard });
         items.push({
-            label: "Branding",
+            label: "Workspace look",
             href: `${base}/branding`,
             icon: Palette,
             planRequired: 'starter',

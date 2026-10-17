@@ -17,6 +17,8 @@ const { fetchPresignedUrl, downloadToSessionCache } = vi.hoisted(() => ({
 vi.mock('./mediaCache.js', () => ({ fetchPresignedUrl, downloadToSessionCache }))
 const { shouldRequireApproval } = vi.hoisted(() => ({ shouldRequireApproval: vi.fn() }))
 vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
+const { resolveCaptionFont } = vi.hoisted(() => ({ resolveCaptionFont: vi.fn() }))
+vi.mock('../brand/captionFont.js', () => ({ resolveCaptionFont, DEFAULT_CAPTION_FONT: 'DejaVu Sans' }))
 const { execFile } = vi.hoisted(() => ({ execFile: vi.fn() }))
 vi.mock('node:child_process', () => ({ execFile }))
 // Same reasoning as assembleClips.test.ts: readFileSync is wrapped as a
@@ -46,6 +48,7 @@ beforeEach(() => {
     filePath: `/tmp/${fileId}.mp4`, buf: Buffer.from('x'), mimeType: 'video/mp4',
   }))
   getPool.mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-1000', expires_at: null }] }) })
+  resolveCaptionFont.mockResolvedValue({ family: 'DejaVu Sans' })
 })
 
 describe('burnCaptions inputSchema', () => {
@@ -170,5 +173,59 @@ describe('burnCaptions execute', () => {
     } as never, baseCtx())
 
     expect(result).toMatchObject({ refused: true, refusalReason: 'CAPTION_FAILED' })
+  })
+
+  it('builds the ffmpeg filter with unchanged FontName=DejaVu Sans and no fontsdir when no brand font resolves', async () => {
+    resolveCaptionFont.mockResolvedValue({ family: 'DejaVu Sans' })
+    let capturedArgs: string[] = []
+    execFile.mockImplementationOnce((_cmd: string, args: string[], _opts: unknown, cb: (err: Error) => void) => {
+      capturedArgs = args
+      cb(new Error('stop here'))
+    })
+
+    await burnCaptions.execute!({
+      videoFileId: 'v1',
+      words: [{ word: 'hi', startSeconds: 0, endSeconds: 0.3 }],
+    } as never, baseCtx())
+
+    const vf = capturedArgs[capturedArgs.indexOf('-vf') + 1]
+    expect(vf).toContain("FontName=DejaVu Sans")
+    expect(vf).not.toContain('fontsdir=')
+  })
+
+  it('builds the ffmpeg filter with fontsdir= and FontName=<family> when a brand font resolves', async () => {
+    resolveCaptionFont.mockResolvedValue({ family: 'Space Grotesk', fontsDir: '/tmp/brand-fonts' })
+    let capturedArgs: string[] = []
+    execFile.mockImplementationOnce((_cmd: string, args: string[], _opts: unknown, cb: (err: Error) => void) => {
+      capturedArgs = args
+      cb(new Error('stop here'))
+    })
+
+    await burnCaptions.execute!({
+      videoFileId: 'v1',
+      words: [{ word: 'hi', startSeconds: 0, endSeconds: 0.3 }],
+    } as never, baseCtx())
+
+    const vf = capturedArgs[capturedArgs.indexOf('-vf') + 1]
+    expect(vf).toContain('fontsdir=/tmp/brand-fonts:')
+    expect(vf).toContain('FontName=Space Grotesk')
+    expect(resolveCaptionFont).toHaveBeenCalledWith(undefined, { idToken: 'tok', scopeId: 't1' })
+  })
+
+  it('strips quote and comma characters from the resolved family name before putting it in force_style', async () => {
+    resolveCaptionFont.mockResolvedValue({ family: "Weird, 'Font\"", fontsDir: '/tmp/weird' })
+    let capturedArgs: string[] = []
+    execFile.mockImplementationOnce((_cmd: string, args: string[], _opts: unknown, cb: (err: Error) => void) => {
+      capturedArgs = args
+      cb(new Error('stop here'))
+    })
+
+    await burnCaptions.execute!({
+      videoFileId: 'v1',
+      words: [{ word: 'hi', startSeconds: 0, endSeconds: 0.3 }],
+    } as never, baseCtx())
+
+    const vf = capturedArgs[capturedArgs.indexOf('-vf') + 1]
+    expect(vf).toContain('FontName=Weird Font')
   })
 })

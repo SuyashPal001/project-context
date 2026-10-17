@@ -15,6 +15,7 @@ export default defineConfig({
     // between tests.
     environment: 'node',
     globals: true,
+    setupFiles: ['./vitest.setup.ts'],
     include: ['{lib,components,hooks,app}/**/*.test.{ts,tsx}'],
   },
 })
