@@ -107,3 +107,72 @@ def test_small_dark_patches_are_not_the_blade(tmp_path):
     w_.release()
     masks, _, _ = sweep._dark_masks(str(fan), *sweep.BLADE_HSV)
     assert max(m.mean() for m in masks) == 0
+
+
+def test_shiny_spots_on_the_blade_are_still_blade(tmp_path):
+    # fan run real23: light reflections on the original's blade fell outside the dark-wood colours and showed
+    # as pale notches in our blade
+    a, b, fan, out = tmp_path / "a.mp4", tmp_path / "b.mp4", tmp_path / "fan.mp4", tmp_path / "out.mp4"
+    _solid(a, (0, 0, 255), 30); _solid(b, (255, 0, 0), 30)
+    w_ = cv2.VideoWriter(str(fan), cv2.VideoWriter_fourcc(*"mp4v"), 30, (72, 128))
+    for i in range(60):
+        f = np.full((128, 72, 3), (160, 200, 220), np.uint8)
+        cv2.rectangle(f, (0, i), (72, 30 + i), (6, 20, 66), -1)                  # a dark band moving down
+        cv2.circle(f, (36, 15 + i), 3, (120, 160, 200), -1)                       # a shiny spot on it
+        w_.write(f)
+    w_.release()
+    sweep.replay(str(fan), [str(a), str(b)], [30, 30], [[0.5, 1.5]], str(out), (72, 128))
+    f = _read(out)[10]
+    assert f[25, 36].max() < 120                    # drawn as wood, not the pale spot
+
+
+def test_two_blades_meeting_at_the_hub_are_not_filled_as_one_wedge(tmp_path):
+    # fan run real23: two blades joined at the hub corner were filled to one outline, showing wood between them
+    a, b, fan, out = tmp_path / "a.mp4", tmp_path / "b.mp4", tmp_path / "fan.mp4", tmp_path / "out.mp4"
+    _solid(a, (0, 0, 255), 30); _solid(b, (255, 0, 0), 30)
+    w_ = cv2.VideoWriter(str(fan), cv2.VideoWriter_fourcc(*"mp4v"), 30, (72, 128))
+    for i in range(60):
+        f = np.full((128, 72, 3), (160, 200, 220), np.uint8)
+        cv2.line(f, (0, 0), (72, 20 + i), (6, 20, 66), 10)       # one blade
+        cv2.line(f, (0, 0), (10 + i // 3, 128), (6, 20, 66), 10)  # another, from the same corner
+        w_.write(f)
+    w_.release()
+    sweep.replay(str(fan), [str(a), str(b)], [30, 30], [[0.5, 1.5]], str(out), (72, 128))
+    f = _read(out)[10]
+    assert f[70, 45].max() > 150          # between the two blades: no wood
+
+
+def test_the_next_look_never_flips_back_during_a_sweep(tmp_path):
+    # fan run real23: the outfit flipped back to the old look mid-sweep (the sweep's memory was reset)
+    a, b, fan, out = tmp_path / "a.mp4", tmp_path / "b.mp4", tmp_path / "fan.mp4", tmp_path / "out.mp4"
+    _solid(a, (0, 0, 255), 45); _solid(b, (255, 0, 0), 45)
+    w_ = cv2.VideoWriter(str(fan), cv2.VideoWriter_fourcc(*"mp4v"), 30, (72, 128))
+    for i in range(90):
+        f = np.full((128, 72, 3), (160, 200, 220), np.uint8)
+        cv2.line(f, (0, 0), (72, max(0, i - 10) * 3), (6, 20, 66), 16)           # one blade sweeping down
+        cv2.line(f, (0, 0), (max(0, 60 - i), 128), (6, 20, 66), 12)              # a second from the same corner
+        w_.write(f)
+    w_.release()
+    sweep.replay(str(fan), [str(a), str(b)], [45, 45], [[1.0, 2.6]], str(out), (72, 128))
+    frames = _read(out)
+    seen_new = False
+    for f in frames:
+        px = f[120, 70]
+        if px[0] > 150 and px[2] < 100:
+            seen_new = True
+        elif seen_new and px.max() > 120:
+            assert not (px[2] > 150 and px[0] < 100), "the old look came back"
+
+
+def test_a_dark_cape_inside_the_frame_is_not_the_blade(tmp_path):
+    # fan run real23: the original's burgundy velvet cape matched the blade colour and was drawn as wood on her
+    # legs; a fan blade always reaches the frame edge from its hub
+    fan = tmp_path / "fan.mp4"
+    w_ = cv2.VideoWriter(str(fan), cv2.VideoWriter_fourcc(*"mp4v"), 30, (72, 128))
+    for i in range(30):
+        f = np.full((128, 72, 3), (160, 200, 220), np.uint8)
+        cv2.rectangle(f, (20 + i // 3, 60), (50 + i // 3, 100), (6, 20, 66), -1)   # a big dark cape, moving a little
+        w_.write(f)
+    w_.release()
+    masks, _, _ = sweep._dark_masks(str(fan), *sweep.BLADE_HSV)
+    assert max(m.mean() for m in masks) == 0

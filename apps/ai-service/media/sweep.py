@@ -30,8 +30,9 @@ SMOOTH = 9             # frames: a moving average so the steady track's speed ne
 BLADE_HSV = ([0, 170, 20], [16, 255, 120])
 STILL_SHARE = 0.85     # a pixel dark in this share of frames is something lying still (her hair), not the blade
 MIN_BLADE = 0.02       # of the frame: a dark area smaller than this is not the blade
+MAX_PLANK = 0.8        # of the frame width: an outline no wider than this is one plank; wider is blades joined at the hub
 MEASURE_WIDTH = 240    # the original is read at this width (fast); the mask is scaled up and softened
-EDGE_PX = 3            # softened blade edge, in output pixels
+EDGE_PX = 1.5          # softened blade edge, in output pixels
 ASSETS = os.path.join(os.path.dirname(__file__), "assets")
 
 
@@ -99,6 +100,18 @@ def _finish(proc):
         raise RuntimeError("ffmpeg could not write the swept video")
 
 
+def _blade_parts(labels, stats, n: int, shape) -> list[int]:
+    """The dark areas that can be a fan blade: large, and reaching the frame edge (a blade runs off-frame to its
+    hub; a burgundy cape inside the frame matched the blade colour, fan run real23)."""
+    h, w = shape
+    out = []
+    for i in range(1, n):
+        x, y, bw, bh, area = stats[i, :5]
+        if area >= MIN_BLADE * h * w and (x == 0 or y == 0 or x + bw >= w or y + bh >= h):
+            out.append(i)
+    return out
+
+
 def _dark_masks(path: str, hsv_lo, hsv_hi):
     """The original's dark-wood mask per frame (at MEASURE_WIDTH), its fps, and the blade colour (BGR)."""
     lo, hi = np.array(hsv_lo, np.uint8), np.array(hsv_hi, np.uint8)
@@ -114,43 +127,85 @@ def _dark_masks(path: str, hsv_lo, hsv_hi):
         m = cv2.inRange(cv2.cvtColor(f, cv2.COLOR_BGR2HSV), lo, hi)
         # only large dark areas are the blade: dark folds of crimson clothes matched too (fan run real23)
         n, labels, stats, _ = cv2.connectedComponentsWithStats(m)
-        big = [i for i in range(1, n) if stats[i, cv2.CC_STAT_AREA] >= MIN_BLADE * m.size]
-        m = np.isin(labels, big)
+        m = np.isin(labels, _blade_parts(labels, stats, n, m.shape))
         masks.append(m)
         if m.mean() > 0.01:
             colours.append(f[m].mean(axis=0))
     return masks, fps, (np.median(np.array(colours), axis=0) if colours else np.array([6.0, 20.0, 66.0]))
 
 
+def _wood_sheet(colour, w: int, h: int):
+    """A square sheet of our wood, grain running left to right, big enough to cover the frame at any angle."""
+    wood, wood_a = _load_rgba("fan_blade.png", colour)
+    ys, xs = np.where(wood_a > 0.95)
+    dy, dx = ys.max() - ys.min(), xs.max() - xs.min()
+    core = wood[ys.min() + dy // 4: ys.max() - dy // 4, xs.min() + dx // 8: xs.max() - dx // 8]
+    band = max(8, int(0.35 * w))                               # one plank band, as thick as a blade looks
+    core = cv2.resize(core, (int(core.shape[1] * band / core.shape[0]), band), interpolation=cv2.INTER_AREA)
+    side = int(np.hypot(w, h) * 1.1)
+    reps = (side // core.shape[0] + 1, side // core.shape[1] + 1)
+    flip = np.concatenate([core, core[::-1]], axis=0)          # mirrored bands, no seams
+    sheet = np.tile(flip, (reps[0] // 2 + 1, reps[1], 1))[:side, :side]
+    return sheet
+
+
+def _grain_angle(mask, prev: float | None) -> float | None:
+    """The blade's long direction (degrees, image axes), from the mask's shape; kept steady between frames."""
+    mo = cv2.moments(mask.astype(np.uint8), binaryImage=True)
+    if mo["m00"] < 1:
+        return prev
+    a = 0.5 * np.degrees(np.arctan2(2 * mo["mu11"], mo["mu20"] - mo["mu02"]))
+    if prev is not None:
+        a = prev + ((a - prev + 90) % 180 - 90)                # same line, the nearer way round
+        a = 0.7 * prev + 0.3 * a
+    return a
+
+
 def replay(original: str, segments: list[str], counts: list[int], covered: list[list[float]], out: str, size,
            fps: int = 30, hsv_lo=None, hsv_hi=None) -> dict:
     """Join the looks with the original's own blade: at each covered span (a hidden cut) the next look shows
-    wherever the blade has passed since that sweep began; between sweeps the blade is drawn wherever the
-    original's is. Returns the measured blade colour."""
+    wherever the blade has passed since that sweep began; the blade is drawn wherever the original's is, at
+    full size with its wood grain running along it (a stretched texture and a small upscaled mask looked
+    distorted, fan run real23). Returns the measured blade colour."""
     w, h = size
+    lo, hi = np.array(hsv_lo or BLADE_HSV[0], np.uint8), np.array(hsv_hi or BLADE_HSV[1], np.uint8)
     masks, ofps, colour = _dark_masks(original, hsv_lo or BLADE_HSV[0], hsv_hi or BLADE_HSV[1])
     if not masks:
         raise ValueError("the original could not be read")
-    still = np.mean(masks, axis=0) >= STILL_SHARE          # her dark hair, a shadow: never the blade
+    still = cv2.resize((np.mean(masks, axis=0) >= STILL_SHARE).astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST) > 0
+    source = _Segment(original, len(masks), (w, h))            # the original again, at full size, in step
     segs = [_Segment(p, c, (w, h)) for p, c in zip(segments, counts)]
     offsets = np.concatenate([[0], np.cumsum(counts)[:-1]]).astype(int)
     total = int(sum(counts))
     # each sweep runs from midway after the previous covered span to midway before the next one
     mids = [(a + b) / 2 for a, b in covered]
     bounds = [0.0] + [(mids[k] + mids[k + 1]) / 2 for k in range(len(mids) - 1)] + [total / fps + 1]
-    # the solid middle of the wood picture, stretched over the whole frame (the blade area cuts it out)
-    wood, wood_a = _load_rgba("fan_blade.png", colour)
-    ys, xs = np.where(wood_a > 0.95)
-    core = wood[ys.min() + (ys.max() - ys.min()) // 4: ys.max() - (ys.max() - ys.min()) // 4, xs.min() + (xs.max() - xs.min()) // 6: xs.max() - (xs.max() - xs.min()) // 6]
-    wood = cv2.resize(core, (w, h), interpolation=cv2.INTER_LINEAR)
+    sheet = _wood_sheet(colour, w, h)
+    gap_px = max(3, int(0.02 * w) | 1)
+    side = sheet.shape[0]
     proc = _writer(out, w, h, fps)
     last = len(segs) - 1
-    swept = np.zeros((masks[0].shape[0], masks[0].shape[1]), bool)
-    sweep_k = -1
+    swept = np.zeros((h, w), bool)
+    sweep_k, grain = -1, None
     for n in range(total):
         t = n / fps
         k = next((i for i in range(len(covered)) if bounds[i] <= t < bounds[i + 1]), len(covered) - 1)
-        m = masks[min(len(masks) - 1, round(t * ofps))] & ~still
+        src = source.at(round(t * ofps))
+        m = (cv2.inRange(cv2.cvtColor(src, cv2.COLOR_BGR2HSV), lo, hi) > 0) & ~still
+        # a blade is a straight plank: each large dark area is filled to its outline (no dents), so highlights on
+        # the original's blade never show as notches or bites (fan run real23)
+        nl, labels, stats, _ = cv2.connectedComponentsWithStats(m.astype(np.uint8))
+        filled = np.zeros((h, w), np.uint8)
+        for i in _blade_parts(labels, stats, nl, m.shape):
+            part = (labels == i).astype(np.uint8)
+            hull = cv2.convexHull(cv2.findNonZero(part))
+            (_, _), (rw, rh), _ = cv2.minAreaRect(hull)
+            if min(rw, rh) <= MAX_PLANK * w:
+                cv2.fillConvexPoly(filled, hull, 1)            # one plank (its shine may split it): its clean outline
+            else:
+                # two blades joined at the hub: keep their own shape, small gaps closed
+                filled |= cv2.morphologyEx(part, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (gap_px, gap_px)))
+        m = filled > 0
         if k != sweep_k:
             swept[:] = False
             sweep_k = k
@@ -160,10 +215,15 @@ def replay(original: str, segments: list[str], counts: list[int], covered: list[
         done = sum(1 for i in range(len(covered)) if t >= bounds[i + 1])
         img = frame(done)
         if done < len(covered) and done < last and t >= bounds[done]:
-            up = cv2.resize(swept.astype(np.uint8) * 255, (w, h), interpolation=cv2.INTER_LINEAR) > 127
-            img = np.where(up[..., None], frame(done + 1), img)
-        blade = cv2.GaussianBlur(cv2.resize(m.astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR), (0, 0), EDGE_PX)
-        img = img * (1 - blade[..., None]) + wood * blade[..., None]
+            img = np.where(swept[..., None], frame(done + 1), img)
+        if m.any():
+            grain = _grain_angle(m, grain)
+            rot = cv2.getRotationMatrix2D((side / 2, side / 2), -(grain or 0.0), 1.0)
+            rot[0, 2] -= (side - w) / 2
+            rot[1, 2] -= (side - h) / 2
+            wood = cv2.warpAffine(sheet, rot, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT).astype(np.float32)
+            blade = cv2.GaussianBlur(m.astype(np.float32), (0, 0), EDGE_PX)
+            img = img * (1 - blade[..., None]) + wood * blade[..., None]
         proc.stdin.write(np.clip(img, 0, 255).astype(np.uint8).tobytes())
     _finish(proc)
     return {"color": [round(float(c), 1) for c in colour]}
