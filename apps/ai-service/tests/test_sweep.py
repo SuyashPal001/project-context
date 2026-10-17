@@ -176,3 +176,28 @@ def test_a_dark_cape_inside_the_frame_is_not_the_blade(tmp_path):
     w_.release()
     masks, _, _ = sweep._dark_masks(str(fan), *sweep.BLADE_HSV)
     assert max(m.mean() for m in masks) == 0
+
+
+# v12's fan (the one the user liked, 2026-10-14): our blade picture turning round a hub at a steady speed, a
+# blade lying across her at each moment the original's blade covers her body. Those moments are measured: when
+# the blade first covers most of her body (the middle of the hidden cut was ~0.4s late, fan run real23).
+def test_cover_times_are_when_the_blade_first_covers_most_of_her_body(tmp_path):
+    fan = tmp_path / "fan.mp4"
+    w_ = cv2.VideoWriter(str(fan), cv2.VideoWriter_fourcc(*"mp4v"), 30, (72, 128))
+    for i in range(90):
+        f = np.full((128, 72, 3), (160, 200, 220), np.uint8)
+        top = -128 + i * 4                                  # a dark band coming down over her
+        cv2.rectangle(f, (0, top), (72, top + 128), (6, 20, 66), -1)
+        w_.write(f)
+    w_.release()
+    t = sweep.cover_times(str(fan), [[0.5, 2.5]])
+    assert len(t) == 1 and 0.6 < t[0] < 1.0              # the band covers 80% of her at ~0.8s, all of her at 0.9s
+
+
+def test_the_v12_fan_draws_a_shadowed_blade_and_the_hub(tmp_path):
+    a, b, out = tmp_path / "a.mp4", tmp_path / "b.mp4", tmp_path / "out.mp4"
+    _solid(a, (200, 200, 200), 60); _solid(b, (200, 200, 200), 60)
+    sweep.compose([str(a), str(b)], [60, 60], [2.0], str(out), (144, 256))
+    f = _read(out)[60]
+    assert f[2, 2].max() < 150                               # the hub in the top-left corner
+    assert (f.max(axis=2) < 120).mean() > 0.1                # a dark blade across the frame

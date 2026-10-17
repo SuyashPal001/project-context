@@ -234,37 +234,107 @@ def _phi(w: int, h: int):
     return np.degrees(np.arctan2(yy - HUB[1] * h, xx - HUB[0] * w))   # 0 = along the top edge, 90 = down the left edge
 
 
+def cover_times(original: str, covered: list[list[float]], body=(0.2, 0.25, 0.85, 0.85), share: float = 0.8,
+                hsv_lo=None, hsv_hi=None) -> list[float]:
+    """When the original's blade first covers most of her body (share of its peak cover) in each covered span:
+    the moments a blade must lie across her (the middle of a hidden cut was ~0.4s late, fan run real23)."""
+    lo, hi = np.array(hsv_lo or BLADE_HSV[0], np.uint8), np.array(hsv_hi or BLADE_HSV[1], np.uint8)
+    cap = cv2.VideoCapture(original)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    cov = []
+    while True:
+        ok, f = cap.read()
+        if not ok:
+            break
+        h0, w0 = f.shape[:2]
+        f = cv2.resize(f, (MEASURE_WIDTH, round(MEASURE_WIDTH * h0 / w0)))
+        h, w = f.shape[:2]
+        m = cv2.inRange(cv2.cvtColor(f, cv2.COLOR_BGR2HSV), lo, hi) > 0
+        cov.append(float(m[int(body[1] * h):int(body[3] * h), int(body[0] * w):int(body[2] * w)].mean()))
+    out = []
+    for a_s, b_s in covered:
+        idx = [i for i in range(len(cov)) if a_s - 1.0 <= i / fps <= b_s]
+        if not idx:
+            continue
+        peak = max(cov[i] for i in idx)
+        out.append(round(next(i for i in idx if cov[i] >= share * peak) / fps, 3))
+    return out
+
+
+# v12's look (Remotion, 2026-10-14): the blade in shadow, warmer and a little more saturated, a soft drop shadow,
+# blurred and trailed by faint copies when it moves fast; the motor housing turning at the hub.
+SHADOW_PX = 30 / 720   # drop-shadow blur, in frame widths
+SHADOW_ALPHA = 0.45
+
+
+def _graded(rgb):
+    """brightness 0.72, saturation 1.25, hue -12 degrees, as v12's CSS filter."""
+    hsv = cv2.cvtColor(np.clip(rgb, 0, 255).astype(np.uint8), cv2.COLOR_BGR2HSV).astype(np.float32)
+    hsv[..., 0] = (hsv[..., 0] - 6) % 180
+    hsv[..., 1] = np.clip(hsv[..., 1] * 1.25, 0, 255)
+    hsv[..., 2] = np.clip(hsv[..., 2] * 0.72, 0, 255)
+    return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR).astype(np.float32)
+
+
 def _blade_layer(img, alpha, angle: float, w: int, h: int):
     bh, bw = img.shape[:2]
     L, T = BLADE_LEN * w, BLADE_THICK * w
     hx, hy = HUB[0] * w, HUB[1] * h
     c, s = np.cos(np.radians(angle)), np.sin(np.radians(angle))
     m = np.float32([[L / bw * c, -T / bh * s, hx + T / 2 * s], [L / bw * s, T / bh * c, hy - T / 2 * c]])
-    return cv2.warpAffine(img, m, (w, h), borderValue=0), cv2.warpAffine(alpha, m, (w, h), borderValue=0)
+    return cv2.warpAffine(img, m, (w, h), flags=cv2.INTER_LINEAR, borderValue=0), cv2.warpAffine(alpha, m, (w, h), flags=cv2.INTER_LINEAR, borderValue=0)
+
+
+def _over(img, rgb, a):
+    return img * (1 - a[..., None]) + rgb * a[..., None]
 
 
 def compose(segments: list[str], counts: list[int], peaks: list[float], out: str, size, fps: int = 30) -> str:
-    """No original to measure: three blades on a steady track; look j+1 appears along the edge of the blade that
-    lies across her at cut j."""
+    """v12's fan: three blades turning at a steady speed round a hub just off the top-left corner, a blade lying
+    across her at each peak (cover_times, measured); look j+1 appears along that blade's edge."""
     w, h = size
     segs = [_Segment(p, c, (w, h)) for p, c in zip(segments, counts)]
     offsets = np.concatenate([[0], np.cumsum(counts)[:-1]]).astype(int)
     total = int(sum(counts))
-    track = angle_track(peaks, total / fps, fps)
+    track = angle_track(peaks, total / fps, fps) + [0.0]
+    track[-1] = track[-2]
     phi = _phi(w, h)
-    blade, blade_a = _load_rgba("fan_blade.png")
+    im = cv2.imread(os.path.join(ASSETS, "fan_blade.png"), cv2.IMREAD_UNCHANGED)
+    blade, blade_a = _graded(im[..., :3].astype(np.float32)), im[..., 3].astype(np.float32) / 255.0
+    hub_im = cv2.imread(os.path.join(ASSETS, "fan_hub.png"), cv2.IMREAD_UNCHANGED)
+    hub_px = int(420 / 720 * w)
+    hub_rgb = cv2.resize(hub_im[..., :3].astype(np.float32) * 0.85, (hub_px, hub_px), interpolation=cv2.INTER_AREA)
+    hub_a = cv2.resize(hub_im[..., 3].astype(np.float32) / 255.0, (hub_px, hub_px), interpolation=cv2.INTER_AREA)
+    shadow_sigma = max(1.0, SHADOW_PX * w / 2)
     proc = _writer(out, w, h, fps)
     last = len(segs) - 1
     for n in range(total):
         th = track[n]
+        speed = abs(track[n + 1] - th)                     # degrees per frame
         frame = lambda k: segs[k].at(n - offsets[k]).astype(np.float32)
         j = min(last, sum(1 for k in range(last) if th >= STEP_DEG * k + REVEAL_DEG))
         img = frame(j)
         if j < last and th > STEP_DEG * j:
             img = np.where((phi < th - STEP_DEG * j)[..., None], frame(j + 1), img)
-        for m in range(3):
-            rgb, a = _blade_layer(blade, blade_a, th + STEP_DEG * m, w, h)
-            img = img * (1 - a[..., None]) + rgb * a[..., None]
+        ghosts = 3 if speed > 0.3 else 1
+        blur = min(4.0, 0.5 + speed * 1.2) * w / 720
+        layer, layer_a = np.zeros_like(img), np.zeros((h, w), np.float32)
+        for o in (0.0, 120.0, 240.0):
+            for g in range(ghosts):
+                rgb, a = _blade_layer(blade, blade_a, th + o - speed * g / ghosts, w, h)
+                a = a * (1.0 if g == 0 else 0.25)
+                layer = _over(layer, rgb, a)
+                layer_a = layer_a + a * (1 - layer_a)
+        if blur > 0.3:
+            layer = cv2.GaussianBlur(layer, (0, 0), blur)
+            layer_a = cv2.GaussianBlur(layer_a, (0, 0), blur)
+        shadow = cv2.GaussianBlur(layer_a, (0, 0), shadow_sigma) * SHADOW_ALPHA
+        img = img * (1 - shadow[..., None])
+        img = img * (1 - layer_a[..., None]) + layer          # layer is already the blades over black, alpha layer_a
+        rot = cv2.getRotationMatrix2D((hub_px / 2, hub_px / 2), -th, 1.0)
+        rot[0, 2] += HUB[0] * w - hub_px / 2
+        rot[1, 2] += HUB[1] * h - hub_px / 2
+        img = _over(img, cv2.warpAffine(hub_rgb, rot, (w, h)), cv2.warpAffine(hub_a, rot, (w, h)))
         proc.stdin.write(np.clip(img, 0, 255).astype(np.uint8).tobytes())
     _finish(proc)
     return out
