@@ -86,3 +86,13 @@ def test_reading_gives_the_head_box_when_the_head_is_seen(tmp_path, monkeypatch)
     kp, sc = person(hide=(0, 1, 2, 3, 4))
     monkeypatch.setattr(pose, "_load", lambda: (FakeDet([[10, 20, 90, 180]]), FakePose([(kp, sc)])))
     assert pose.read_image(str(_img(tmp_path)))["head"] is None
+
+# A blade across her head cut the box top again at 4.4s, and the remake's same-camera photo failed as "closer"
+# (fan run real17). Her size is measured shoulders to ankles, which nothing over the head changes.
+def test_reading_gives_the_body_length_shoulders_to_ankles(tmp_path, monkeypatch):
+    kp, sc = person()  # shoulders at y 0.20, ankles at y 0.90 in a 100x100 grid
+    monkeypatch.setattr(pose, "_load", lambda: (FakeDet([[10, 20, 90, 180]]), FakePose([(kp, sc)])))
+    assert abs(pose.read_image(str(_img(tmp_path)))["body_len"] - 0.70) < 0.01
+    kp, sc = person(hide=(15, 16))
+    monkeypatch.setattr(pose, "_load", lambda: (FakeDet([[10, 20, 90, 180]]), FakePose([(kp, sc)])))
+    assert pose.read_image(str(_img(tmp_path)))["body_len"] is None

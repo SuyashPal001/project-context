@@ -336,6 +336,14 @@ def _head_box(kp, sc, w: int, h: int):
     return [round(float(np.clip(v, 0, 1)), 3) for v in ((cx - half) / w, (cy - half) / h, (cx + half) / w, (cy + half) / h)]
 
 
+def _body_len(kp, sc, w: int, h: int):
+    """Shoulder midpoint to ankle midpoint, as a fraction of the frame height; None unless all four are seen."""
+    kp, sc = np.asarray(kp) * np.array([w, h]), np.asarray(sc)
+    if sc[[L_SH, R_SH, L_AN, R_AN]].min() < VIS:
+        return None
+    return round(float(np.linalg.norm((kp[L_SH] + kp[R_SH]) / 2 - (kp[L_AN] + kp[R_AN]) / 2)) / h, 3)
+
+
 def read_image(path: str) -> dict:
     """The same general body reading as a look, for one still (a generated remake frame)."""
     img = cv2.imread(path)
@@ -352,7 +360,9 @@ def read_image(path: str) -> dict:
     return {"model": MODEL_NAME, "people": len(persons), "no_person": False, "main": read_person(main[0], main[1], h / w, main[2]),
             "box": [round(float(v), 3) for v in main[2]], "head_seen": bool(np.asarray(main[1])[:5].mean() >= HEAD_SEEN),
             # where the head is, so a frame's face can be hidden before an image model sees it
-            "head": _head_box(main[0], main[1], w, h)}
+            "head": _head_box(main[0], main[1], w, h),
+            # shoulders to ankles, in frame heights: the person's size, whatever covers the head
+            "body_len": _body_len(main[0], main[1], w, h)}
 
 
 def measure_pose(path: str, looks: list[dict], exclude=None, fps: float = 5.0) -> dict:

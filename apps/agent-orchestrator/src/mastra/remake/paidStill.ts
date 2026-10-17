@@ -104,7 +104,7 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
     const body = (gp?.main && gp.head_seen === true ? { ...gp.main, frames: 1 } : null) ?? (job.kind === 'start' ? job.look.start : job.look.end)
     // Same camera as the original: where the person sits in the frame, against the original's frame.
     let framing: { ok: boolean | null; why: string } | null = null
-    if (job.guide && personIn(job.look)) framing = gp ? compareFraming(gp.box, pose.box, { refHead: gp.head_seen, gotHead: pose.head_seen }) : { ok: null, why: '' }
+    if (job.guide && personIn(job.look)) framing = gp ? compareFraming(gp.box, pose.box, { refHead: gp.head_seen, gotHead: pose.head_seen, refLen: gp.body_len, gotLen: pose.body_len }) : { ok: null, why: '' }
     let p = comparePose(body, job.people ?? job.look.people, pose)
     // A tighter original (selfie, close-up): crop the still around the face, free, and keep the crop
     // when it matches. A crop that can't be made keeps the still with its framing warning.

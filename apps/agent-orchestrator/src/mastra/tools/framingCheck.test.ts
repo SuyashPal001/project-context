@@ -31,5 +31,9 @@ describe('compareFraming', () => {
   })
   it('a hidden head still catches a camera moved sideways', () => {
     expect(compareFraming([0.3, 0.31, 0.7, 0.9], [0.0, 0.2, 0.4, 0.9], { refHead: false }).ok).toBe(false)
+  })  // fan run real17: a blade over her head cut the original's box top while her head still read as seen
+  it('body length (shoulders to ankles) decides the size when both pictures have it', () => {
+    expect(compareFraming([0.03, 0.31, 1, 0.985], [0.07, 0.16, 1, 0.998], { refLen: 0.46, gotLen: 0.45 }).ok).toBe(true)
+    expect(compareFraming([0.3, 0.2, 0.7, 0.8], [0.3, 0.2, 0.7, 0.8], { refLen: 0.4, gotLen: 0.6 }).why).toMatch(/the camera is closer/)
   })
 })
