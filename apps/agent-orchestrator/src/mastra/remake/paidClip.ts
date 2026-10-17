@@ -67,12 +67,14 @@ export async function makeClip(spec: ClipSpec, ctx: ClipCtx, deps: RemakeDeps, l
     }
     // Spec rule 11: a content block is retried once with plainer wording (free: blocked clips
     // are not charged), then once with the other model from the start still.
-    if (blockedByVeo(g) && !fallback && !triedPlain) {
+    // Omni too (fan run real32: a person's clip is Omni, and its refusal left the look a frozen photo).
+    const contentBlocked = (r: { fileId?: string; refusalReason?: string }) => !r.fileId && r.refusalReason === 'CONTENT_BLOCKED'
+    if (contentBlocked(g) && !fallback && !triedPlain) {
       ledger.push({ item, attempt, creditsMicro: '0', outcome: 'retried' })
       triedPlain = true
-      const plain = promptFor('veo', true)
+      const plain = promptFor(engine, true)
       const blockedPlain = await gate(plain)
-      if (!blockedPlain) { prompt = plain; g = await call('veo', plain, 'plain') }
+      if (!blockedPlain) { prompt = plain; g = await call(engine, plain, 'plain') }
     }
     if (blockedByVeo(g) && !fallback) {
       ledger.push({ item, attempt, creditsMicro: '0', outcome: 'retried' })
@@ -111,7 +113,7 @@ export async function makeClip(spec: ClipSpec, ctx: ClipCtx, deps: RemakeDeps, l
     }
     entry.outcome = attempt === 0 ? 'retried' : 'failed'
     last = { fileId: g.fileId, localPath: trimmed, reasons: [c.reason] }
-    prompt = `${promptFor(engine, triedPlain && engine === 'veo')} Fix: ${c.reason}`
+    prompt = `${promptFor(engine, triedPlain)} Fix: ${c.reason}`
   }
   return failedResult(last!.reasons)
 }

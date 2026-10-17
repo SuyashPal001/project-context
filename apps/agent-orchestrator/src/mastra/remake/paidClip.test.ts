@@ -109,3 +109,20 @@ describe('makeClip keeps real speed', () => {
     expect(deps.fitToFrames).toHaveBeenCalledWith('/m/omni-1', specs[1].frames, expect.any(String), { width: 720, height: 1280 }, 30, { startS: 0.4 })
   })
 })
+
+// fan run real32 (2026-10-17): Omni refused look 4's clip (CONTENT_BLOCKED) and the look ended a frozen photo; the
+// plainer retry was Veo-only, and a person is now Omni from the start photo. Omni gets the same free plainer retry.
+describe('an Omni content block', () => {
+  it('is retried once with plainer wording before the clip fails', async () => {
+    const omni = vi.fn().mockResolvedValueOnce({ refused: true, refusalReason: 'CONTENT_BLOCKED' }).mockResolvedValueOnce({ fileId: 'omni-plain', creditsUsedMicro: '100' })
+    const plan = await writePlan(breakdown(), brand, vi.fn().mockResolvedValue({ lines: [] }))
+    const [spec] = clipSpecs(plan, [{ look: 1, kind: 'start', fileId: 's1', status: 'passed', reasons: [] }])
+    const deps = { promptGate: vi.fn(async () => pass), generateVeoClip: vi.fn(), generateOmniClip: omni, localFile: vi.fn(async (id: string) => `/m/${id}`), fitToFrames: vi.fn(async (_i: string, _f: number, out: string) => out), poseClip: vi.fn(), sample: vi.fn() } as unknown as RemakeDeps
+    const ctx: ClipCtx = { tenantId: 't', idToken: 'tok', scopeId: 's', runId: 'r', exec: () => ({}), portrait: null, plan, brand, size: { width: 720, height: 1280 }, workDir: '/tmp/x', check: vi.fn(async () => pass) }
+    expect(spec.engine).toBe('omni')
+    const r = await makeClip(spec, ctx, deps)
+    expect(omni).toHaveBeenCalledTimes(2)
+    expect(String(omni.mock.calls[1][0].prompt)).not.toMatch(/Fashion lookbook|influencer/)
+    expect(r.result).toMatchObject({ status: 'passed', fileId: 'omni-plain' })
+  })
+})
