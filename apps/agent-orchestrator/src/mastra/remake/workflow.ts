@@ -602,8 +602,12 @@ const clipsStep = createStep({
       // Each object in view is counted per frame against the approved start photo (two remotes, 2026-10-17).
       check: async (clipPath: string, spec: ClipSpec, engine: 'veo' | 'omni') => {
         const props = [...new Set([spec.look.startS, (spec.look.startS + spec.look.endS) / 2, spec.look.endS - 0.01].flatMap((t) => propsAt(plan, t)))]
-        const startImage = spec.start && props.length ? await deps.fetchImage(spec.start, a.idToken).catch(() => undefined) : undefined
-        return checkClip({ clipPath, seconds: spec.frames / CLIP_FPS, look: spec.look, portrait, tenantId: a.tenantId, checkEnd: engine === 'veo', startImage, props }, { poseClip: deps.poseClip, sample: deps.sample, gate: runGate, ask: deps.ask(a.tenantId) })
+        // The clip is checked against the photos it was made from (the user approved them): its face against the
+        // start photo, its start and end poses against theirs (fan run real23).
+        const startImage = spec.start ? await deps.fetchImage(spec.start, a.idToken).catch(() => undefined) : undefined
+        const poseOf = async (id: string | null) => { try { return id ? (await deps.poseImage(await deps.localFile(id, a.idToken, a.scopeId))).main ?? null : null } catch { return null } }
+        const [startPose, endPose] = await Promise.all([poseOf(spec.start), poseOf(spec.end)])
+        return checkClip({ clipPath, seconds: spec.frames / CLIP_FPS, look: spec.look, portrait, tenantId: a.tenantId, checkEnd: engine === 'veo', startImage, props, startPose: startPose && { ...startPose, frames: 1 }, endPose: endPose && { ...endPose, frames: 1 } }, { poseClip: deps.poseClip, sample: deps.sample, gate: runGate, ask: deps.ask(a.tenantId) })
       },
     }
     const jobs = clipSpecs(plan, inputData.stills as StillResult[]).map((spec) => async (): Promise<{ result: ClipResult; ledger: LedgerEntry[] }> => {

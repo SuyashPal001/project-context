@@ -20,7 +20,7 @@ export interface ClipCheckDeps {
 const asImage = (people: number | null, main: BodyReading | null) => ({ model: 'clip', people: people ?? 0, no_person: (people ?? 0) === 0, main })
 
 // checkEnd: false for a clip made from the start still only (Omni) — it was never given the end pose.
-export async function checkClip(o: { clipPath: string; seconds: number; look: RemakeLook; portrait: Img | null; tenantId: string; checkEnd?: boolean; /** the approved start photo and the objects in view: each is counted per frame against it */ startImage?: Img; props?: string[] }, d: ClipCheckDeps): Promise<CheckResult> {
+export async function checkClip(o: { clipPath: string; seconds: number; look: RemakeLook; portrait: Img | null; tenantId: string; checkEnd?: boolean; /** the approved start photo and the objects in view: each is counted per frame against it */ startImage?: Img; props?: string[]; /** the approved start and end photos' poses: the clip is compared with them, else with the look's measured poses */ startPose?: BodyReading | null; endPose?: BodyReading | null }, d: ClipCheckDeps): Promise<CheckResult> {
   try {
     const times = evenTimes(o.seconds, 4)
     const [pose, frames] = await Promise.all([d.poseClip(o.clipPath, o.seconds), d.sample(o.clipPath, times)])
@@ -28,8 +28,8 @@ export async function checkClip(o: { clipPath: string; seconds: number; look: Re
     // comparePose words its reasons for a still; this is a clip.
     const forClip = (r: CheckResult): CheckResult => ({ ...r, reason: r.reason.replace(/\bstill\b/g, 'clip') })
     const results: CheckResult[] = [
-      { ...forClip(comparePose(o.look.start, o.look.people, asImage(m?.people ?? null, m?.main_start ?? null))), name: 'start pose' },
-      ...(o.checkEnd === false ? [] : [{ ...forClip(comparePose(o.look.end, o.look.people, asImage(m?.people ?? null, m?.main_end ?? null))), name: 'end pose' }]),
+      { ...forClip(comparePose(o.startPose ?? o.look.start, o.look.people, asImage(m?.people ?? null, m?.main_start ?? null))), name: 'start pose' },
+      ...(o.checkEnd === false ? [] : [{ ...forClip(comparePose(o.endPose ?? o.look.end, o.look.people, asImage(m?.people ?? null, m?.main_end ?? null))), name: 'end pose' }]),
     ]
     // against the approved start photo when given (same scene and size; it passed against the person sheet), else the portrait
     const who = o.startImage ?? o.portrait

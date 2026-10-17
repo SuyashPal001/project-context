@@ -64,3 +64,14 @@ describe('checkClip same person', () => {
     expect(call[2].reference).toBe(start)
   })
 })
+
+// fan run real23: look 2's clip failed "right arm raised, not in the reference" though its approved start photo
+// has the arm raised (copied from the original frame); the clip was compared with the look's first-second
+// average. A clip is compared with the photos it was made from, which the user approved.
+describe('checkClip pose', () => {
+  it('the start and end photos\' poses are the reference when given', async () => {
+    const d = deps({ poseClip: vi.fn(async () => poseLook(body({ knees: 'straight' }), body({ knees: 'bent' }))) })
+    const r = await checkClip({ clipPath: '/c.mp4', seconds: 6, look, portrait: null, tenantId: 't', startPose: body({ knees: 'straight' }), endPose: body({ knees: 'bent' }) }, d as never)
+    expect(r.status).toBe('pass')
+  })
+})
