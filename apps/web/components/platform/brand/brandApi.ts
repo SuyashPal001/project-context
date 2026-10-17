@@ -17,7 +17,10 @@ export interface BrandRecord {
 export type BrandPatch = Partial<{
     name: string | null; oneLiner: string | null; audience: string | null; region: string;
     toneWords: string[]; emojiPolicy: string; signaturePhrases: string[]; bannedPhrases: string[];
-    ctaExamples: string[]; voiceNotes: string | null; colors: BrandRecord['colors']; headlineFont: string | null;
+    ctaExamples: string[]; voiceNotes: string | null;
+    // null clears a role — the API merges this against what's saved and
+    // deletes any role sent as null.
+    colors: Partial<Record<typeof COLOR_ROLES[number], string | null>>; headlineFont: string | null;
     logoFileId: string | null; faviconFileId: string | null; mascotFileId: string | null;
 }>;
 

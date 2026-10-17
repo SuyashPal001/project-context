@@ -18,7 +18,7 @@ const baseProps = {
 };
 
 describe('BrandForm', () => {
-    it('shows a tick on Basics only once name and audience are both set', () => {
+    it('shows a tick on Identity only once name and audience are both set', () => {
         render(<BrandForm {...baseProps} brand={brand} />);
         expect(screen.getByTestId('tab-basics').getAttribute('data-done')).toBe('false'); // audience missing
         render(<BrandForm {...baseProps} brand={{ ...brand, audience: 'Women in Indian cities' }} />);
@@ -32,14 +32,24 @@ describe('BrandForm', () => {
         expect(screen.getAllByTestId('tab-voice').pop()!.getAttribute('data-done')).toBe('false');
     });
 
-    it('shows a tick on Look once a logo or a colour is set', () => {
+    it('shows a tick on Visuals once a logo or a colour is set', () => {
         render(<BrandForm {...baseProps} brand={brand} />);
         expect(screen.getByTestId('tab-look').getAttribute('data-done')).toBe('true'); // has a colour
         render(<BrandForm {...baseProps} brand={{ ...brand, colors: {} }} />);
         expect(screen.getAllByTestId('tab-look').pop()!.getAttribute('data-done')).toBe('false');
     });
 
-    it('defaults to the Basics tab and shows its fields', () => {
+    it('shows a Check icon only when a tab is done, nothing otherwise', () => {
+        render(<BrandForm {...baseProps} brand={{ ...brand, colors: {} }} />);
+        const look = screen.getByTestId('tab-look');
+        expect(look.getAttribute('data-done')).toBe('false');
+        expect(look.querySelector('svg')).toBeNull();
+        const voice = screen.getByTestId('tab-voice');
+        expect(voice.getAttribute('data-done')).toBe('true');
+        expect(voice.querySelector('svg')).toBeTruthy();
+    });
+
+    it('defaults to the Identity tab and shows its fields', () => {
         render(<BrandForm {...baseProps} brand={brand} />);
         expect(screen.getByLabelText('Brand name')).toBeTruthy();
     });
@@ -94,20 +104,22 @@ describe('BrandForm', () => {
     // The colour picker itself (native input vs. react-colorful card, drag
     // ticks, unset-swatch-never-saves-white guarantees) is covered in
     // BrandColorField.test.tsx. This file keeps only the resting-row basics.
-    it('shows the Colours row with the set role and the others "Not set"', () => {
+    it('shows the Colours row with the set role and the others "Olmo picks"', () => {
         render(<BrandForm {...baseProps} brand={brand} />);
-        fireEvent.click(screen.getByRole('tab', { name: 'Look' }));
+        fireEvent.click(screen.getByRole('tab', { name: 'Visuals' }));
         expect(screen.getByText('#00A651')).toBeTruthy();
-        expect(screen.getAllByText('Not set').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('Olmo picks').length).toBeGreaterThan(0);
     });
 
-    it('syncs the font field when the prop changes (e.g. after Refresh/import), unlike an uncontrolled input', () => {
+    it('selects the matching font card and switches when the prop changes (e.g. after Refresh/import)', () => {
         const onSave = vi.fn();
         const { rerender } = render(<BrandForm {...baseProps} brand={brand} onSave={onSave} />);
-        fireEvent.click(screen.getByRole('tab', { name: 'Look' }));
-        expect((screen.getByLabelText('Font') as HTMLInputElement).value).toBe('Poppins');
+        fireEvent.click(screen.getByRole('tab', { name: 'Visuals' }));
+        expect(screen.getByRole('button', { name: /Poppins/ }).getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByRole('button', { name: /Inter/ }).getAttribute('aria-pressed')).toBe('false');
 
         rerender(<BrandForm {...baseProps} brand={{ ...brand, headlineFont: 'Inter' }} onSave={onSave} />);
-        expect((screen.getByLabelText('Font') as HTMLInputElement).value).toBe('Inter');
+        expect(screen.getByRole('button', { name: /Poppins/ }).getAttribute('aria-pressed')).toBe('false');
+        expect(screen.getByRole('button', { name: /Inter/ }).getAttribute('aria-pressed')).toBe('true');
     });
 });

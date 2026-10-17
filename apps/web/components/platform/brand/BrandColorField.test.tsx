@@ -28,7 +28,7 @@ const baseProps = {
 
 function renderLook(onSave = vi.fn(), brandRecord = brand) {
     render(<BrandForm {...baseProps} brand={brandRecord} onSave={onSave} />);
-    fireEvent.click(screen.getByRole('tab', { name: 'Look' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Visuals' }));
     return onSave;
 }
 
@@ -38,12 +38,12 @@ beforeEach(() => {
 });
 
 describe('brand colour fields', () => {
-    it('shows role name and uppercase hex for a set colour, "Not set" for unset', () => {
+    it('shows role name and uppercase hex for a set colour, "Olmo picks" for unset', () => {
         renderLook();
         expect(screen.getByText('primary')).toBeTruthy();
         expect(screen.getByText('#00A651')).toBeTruthy();
         expect(screen.getByText('secondary')).toBeTruthy();
-        expect(screen.getAllByText('Not set').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('Olmo picks').length).toBeGreaterThan(0);
     });
 
     it('shows a copy button only for a set colour, and copies its hex', async () => {
@@ -102,5 +102,19 @@ describe('brand colour fields', () => {
         expect(onSave).not.toHaveBeenCalled();
         fireEvent.click(screen.getByRole('button', { name: 'Done' }));
         expect(onSave).toHaveBeenCalledTimes(1);
+    });
+
+    it('a set role\'s picker has a Clear button that sends that role as null', () => {
+        const onSave = renderLook();
+        fireEvent.click(screen.getByLabelText('Edit primary colour'));
+        fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+        expect(onSave).toHaveBeenCalledTimes(1);
+        expect(onSave.mock.calls[0][0].colors.primary).toBeNull();
+    });
+
+    it('an unset role\'s picker has no Clear button', () => {
+        renderLook();
+        fireEvent.click(screen.getByLabelText('Edit secondary colour'));
+        expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull();
     });
 });

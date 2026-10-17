@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Check, Circle, Copy, ImagePlus, Loader2, Plus, RefreshCw, X } from 'lucide-react';
+import {
+    Check, Copy, Image as ImageIcon, Loader2, Plus, RefreshCw, Smile, Sparkles, Type, X,
+} from 'lucide-react';
 import { HexColorPicker } from 'react-colorful';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -14,9 +16,11 @@ import {
     COLOR_ROLES, FONT_CHOICES, sourceLine,
     type BrandPatch, type BrandRecord,
 } from './brandApi';
+import { BRAND_FONT_CARDS, BRAND_FONT_CLASS } from './brandFonts';
 import { BrandFillRow } from './BrandFillRow';
 
 type ImageSlot = 'logo' | 'favicon' | 'mascot';
+type ColorRole = typeof COLOR_ROLES[number];
 interface Props {
     brand: BrandRecord;
     onSave: (patch: BrandPatch) => void;
@@ -44,9 +48,9 @@ function Row({ label, hint, htmlFor, children }: { label: string; hint?: string;
 
 // The tab already names the section, so only its one-line description shows here.
 // Fields sit in one even column, the same width and spacing as the profile page.
-function Section({ title, subtitle, action, children }: { title: string; subtitle: string; action?: ReactNode; children: ReactNode }) {
+function Section({ title, subtitle, action, wide, children }: { title: string; subtitle: string; action?: ReactNode; wide?: boolean; children: ReactNode }) {
     return (
-        <section aria-label={title} className="max-w-xl space-y-8">
+        <section aria-label={title} className={cn('space-y-8', wide ? 'max-w-3xl' : 'max-w-xl')}>
             <div className="flex items-center justify-between gap-4">
                 <p className="text-sm text-muted-foreground">{subtitle}</p>
                 {action}
@@ -114,22 +118,42 @@ function ToneWords({ words, onSave }: { words: string[]; onSave: (w: string[]) =
     );
 }
 
-function ImageField({ slot, label, image, onUpload }: { slot: ImageSlot; label: string; image: BrandRecord['logo']; onUpload: Props['onUploadImage'] }) {
+/**
+ * A soft-filled tile for logo/favicon/mascot: a small framed preview (or a
+ * muted placeholder icon), a title + description that says what's missing
+ * in plain words, and Upload/Replace + Remove on the right. Replaces the old
+ * ImageField label/control/hint row — these three read as choices, not form
+ * fields.
+ */
+function LogoTile({ slot, title, optional, icon: Icon, image, descSet, descUnset, onUpload }: {
+    slot: ImageSlot; title: string; optional?: boolean; icon: typeof ImageIcon;
+    image: BrandRecord['logo']; descSet: string; descUnset: string; onUpload: Props['onUploadImage'];
+}) {
     const input = useRef<HTMLInputElement>(null);
+    const set = !!image;
     return (
-        <Row label={label}>
-            <div className="flex items-center gap-3 text-sm">
+        <div className="flex items-center gap-4 rounded-xl bg-muted/40 p-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-background">
                 {image?.url
-                    ? <img src={image.url} alt={label} className="h-10 w-10 rounded object-contain" />
-                    : <span className="text-muted-foreground">Not set</span>}
+                    ? <img src={image.url} alt={title} className="h-full w-full object-contain" />
+                    : <Icon className="h-5 w-5 text-muted-foreground" />}
+            </div>
+            <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">{title}</span>
+                    {optional && <span className="rounded-full border border-border px-2 text-xs text-muted-foreground">Optional</span>}
+                </div>
+                <p className="text-xs text-muted-foreground">{set ? descSet : descUnset}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
                 <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
                     onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(slot, f); e.target.value = ''; }} />
-                <button type="button" className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground" onClick={() => input.current?.click()}>
-                    <ImagePlus className="h-3.5 w-3.5" />{image ? 'Replace' : 'Upload'}
-                </button>
-                {image && <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => onUpload(slot, null)}>Remove</button>}
+                <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={() => input.current?.click()}>
+                    {set ? 'Replace' : 'Upload'}
+                </Button>
+                {set && <Button type="button" variant="ghost" size="sm" onClick={() => onUpload(slot, null)}>Remove</Button>}
             </div>
-        </Row>
+        </div>
     );
 }
 
@@ -151,10 +175,11 @@ function normalizeHex(raw: string): string | null {
  * outside, Esc) — and only when it is a valid, changed colour. An unset
  * role closed without a pick never saves anything (no accidental white).
  */
-function ColorField({ role, value, otherColors, onSave }: {
+function ColorField({ role, value, otherColors, onSave, onClear }: {
     role: string; value: string | undefined;
     otherColors: Array<{ role: string; hex: string }>;
     onSave: (hex: string) => void;
+    onClear: () => void;
 }) {
     const [open, setOpen] = useState(false);
     const [draft, setDraft] = useState(value ?? '');
@@ -211,14 +236,16 @@ function ColorField({ role, value, otherColors, onSave }: {
                         <span
                             className={cn(
                                 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border',
-                                !value && 'bg-[repeating-conic-gradient(var(--muted-foreground)_0%_25%,transparent_0%_50%)] bg-[length:10px_10px] opacity-40',
+                                !value && 'border-2 border-dashed',
                             )}
                             style={value ? { backgroundColor: value } : undefined}>
-                            {!value && <Plus className="h-4 w-4 text-muted-foreground opacity-100" />}
+                            {!value && <Plus className="h-4 w-4 text-muted-foreground" />}
                         </span>
                         <span className="min-w-0">
                             <span className="block text-sm font-medium capitalize text-foreground">{role}</span>
-                            <span className="block font-mono text-xs uppercase text-muted-foreground">{value ?? 'Not set'}</span>
+                            <span className={cn('block text-xs text-muted-foreground', value && 'font-mono uppercase')}>
+                                {value ?? 'Olmo picks'}
+                            </span>
                         </span>
                     </button>
                 </PopoverTrigger>
@@ -244,7 +271,14 @@ function ColorField({ role, value, otherColors, onSave }: {
                                     onClick={() => pickFromPicker(c.hex)} />
                             ))}
                         </div>
-                        <Button size="sm" onClick={() => handleOpenChange(false)}>Done</Button>
+                        <div className="flex items-center gap-1">
+                            {value && (
+                                <Button type="button" variant="ghost" size="sm" onClick={() => { setOpen(false); onClear(); }}>
+                                    Clear
+                                </Button>
+                            )}
+                            <Button size="sm" onClick={() => handleOpenChange(false)}>Done</Button>
+                        </div>
                     </div>
                 </PopoverContent>
             </Popover>
@@ -288,28 +322,178 @@ export function VoiceSection({ brand, onSave }: SectionProps) {
     );
 }
 
+type PaletteColors = Record<ColorRole, string>;
+interface Palette { name: string; colors: PaletteColors }
+
+// Seven curated palettes. Each strip shows primary/secondary/accent/text/
+// background; `muted` still saves with the rest, it's just not in the strip.
+const PALETTES: ReadonlyArray<Palette> = [
+    { name: 'Electric', colors: { primary: '#D4F74B', secondary: '#111827', accent: '#7C3AED', text: '#111827', background: '#F7FAF0', muted: '#6B7280' } },
+    { name: 'Ocean', colors: { primary: '#2F6F8F', secondary: '#23495A', accent: '#E8A33D', text: '#111827', background: '#EEF6FD', muted: '#6B7280' } },
+    { name: 'Sunset', colors: { primary: '#EA7A35', secondary: '#CF3D7A', accent: '#F2CE4A', text: '#1F2937', background: '#FFF7EC', muted: '#6B7280' } },
+    { name: 'Forest', colors: { primary: '#3A7D44', secondary: '#254D32', accent: '#E2B53A', text: '#1A1A1A', background: '#F7FBEF', muted: '#6B7280' } },
+    { name: 'Berry', colors: { primary: '#B4285A', secondary: '#6D28D9', accent: '#E879B0', text: '#1E1B4B', background: '#FBEFF4', muted: '#6B7280' } },
+    { name: 'Mono', colors: { primary: '#111827', secondary: '#374151', accent: '#9CA3AF', text: '#111827', background: '#FFFFFF', muted: '#6B7280' } },
+];
+const PALETTE_STRIP_ROLES: ReadonlyArray<ColorRole> = ['primary', 'secondary', 'accent', 'text', 'background'];
+const NO_COLORS: Partial<Record<ColorRole, null>> = Object.fromEntries(COLOR_ROLES.map((r) => [r, null]));
+
+const isPaletteSelected = (brand: BrandRecord, palette: Palette) =>
+    COLOR_ROLES.every((r) => brand.colors[r] === palette.colors[r]);
+const noColorsSet = (brand: BrandRecord) => COLOR_ROLES.every((r) => !brand.colors[r]);
+
+/** Palette tiles: "Olmo picks" (clears all six) + the seven presets (set all six in one PATCH). */
+function PaletteGrid({ brand, onSave }: SectionProps) {
+    const olmoSelected = noColorsSet(brand);
+    return (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <button type="button" aria-pressed={olmoSelected} onClick={() => onSave({ colors: NO_COLORS })}
+                className={cn('rounded-xl p-2 text-left hover:bg-muted/40', olmoSelected && 'ring-2 ring-primary')}>
+                <div className="flex h-10 items-center justify-center rounded-lg bg-muted/60">
+                    <Sparkles className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <p className="mt-1.5 text-sm text-foreground">Olmo picks</p>
+            </button>
+            {PALETTES.map((palette) => {
+                const selected = isPaletteSelected(brand, palette);
+                return (
+                    <button key={palette.name} type="button" aria-pressed={selected} onClick={() => onSave({ colors: { ...palette.colors } })}
+                        className={cn('rounded-xl p-2 text-left hover:bg-muted/40', selected && 'ring-2 ring-primary')}>
+                        <div className="flex h-10 overflow-hidden rounded-lg">
+                            {PALETTE_STRIP_ROLES.map((role) => (
+                                <span key={role} className="flex-1" style={{ backgroundColor: palette.colors[role] }} />
+                            ))}
+                        </div>
+                        <p className="mt-1.5 text-sm text-foreground">{palette.name}</p>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
+/** Purely presentational live preview: updates from the saved record only
+ * (not the picker's in-progress draft — the draft belongs to one role and
+ * would make the preview flicker between an old and a half-picked brand). */
+function BrandPreview({ brand }: { brand: BrandRecord }) {
+    const { colors, headlineFont } = brand;
+    const fontClass = headlineFont ? BRAND_FONT_CLASS[headlineFont] : undefined;
+    const hasColors = !noColorsSet(brand);
+    return (
+        <div className="w-full space-y-2 sm:w-56">
+            <div className="rounded-2xl border border-border p-4" style={{ backgroundColor: colors.background || 'var(--card)' }}>
+                <div className="relative overflow-hidden">
+                    <span className="block h-1.5 w-10 rounded-full" style={{ backgroundColor: colors.muted || 'var(--muted-foreground)' }} />
+                    <span className="absolute -right-4 -top-6 h-20 w-20 rounded-full" style={{ backgroundColor: colors.accent || 'var(--primary)', opacity: 0.25 }} />
+                    <hr className="my-3 border-border/60" />
+                    <p className={cn('text-lg font-semibold', fontClass)} style={{ color: colors.text || 'var(--foreground)' }}>
+                        Your headline here
+                    </p>
+                    <p className="mt-1 text-xs" style={{ color: colors.muted || 'var(--muted-foreground)' }}>
+                        A short line that backs it up
+                    </p>
+                    <span className="mt-3 inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium"
+                        style={{ backgroundColor: colors.primary || 'var(--primary)', color: colors.background || 'var(--primary-foreground)' }}>
+                        Learn more
+                    </span>
+                </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+                {hasColors ? 'Preview with your colours' : 'Olmo picks colours to suit each ad'}
+            </p>
+        </div>
+    );
+}
+
+/** Font cards: "Olmo picks" + the six curated fonts (each shown in its own
+ * typeface) + "Other font", which reveals the same controlled text input
+ * FontField always used, so a typed family name still saves on blur. */
+function FontCards({ brand, onSave }: SectionProps) {
+    const { headlineFont } = brand;
+    const isCurated = !!headlineFont && headlineFont in BRAND_FONT_CLASS;
+    const isOtherSaved = !!headlineFont && !isCurated;
+    // "Other font" reveals an input on click even before anything is typed —
+    // that open state is local, synced from the saved record (a custom font
+    // from import/Refresh should open it too), not written back until blur.
+    const [otherOpen, setOtherOpen] = useState(isOtherSaved);
+    useEffect(() => setOtherOpen(isOtherSaved), [isOtherSaved]);
+
+    return (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <button type="button" aria-pressed={!headlineFont} onClick={() => onSave({ headlineFont: null })}
+                className={cn('rounded-xl bg-muted/40 p-4 text-left hover:bg-muted/60', !headlineFont && 'ring-2 ring-primary')}>
+                <Sparkles className="h-5 w-5 text-muted-foreground" />
+                <p className="mt-2 text-sm font-medium text-foreground">Olmo picks</p>
+                <p className="text-xs text-muted-foreground">Suits the ad</p>
+            </button>
+            {BRAND_FONT_CARDS.map(({ name, subtitle }) => (
+                <button key={name} type="button" aria-pressed={headlineFont === name} onClick={() => onSave({ headlineFont: name })}
+                    className={cn('rounded-xl bg-muted/40 p-4 text-left hover:bg-muted/60', headlineFont === name && 'ring-2 ring-primary')}>
+                    <p className={cn('text-3xl text-foreground', BRAND_FONT_CLASS[name])}>Aa</p>
+                    <p className="mt-2 text-sm font-medium text-foreground">{name}</p>
+                    <p className="text-xs text-muted-foreground">{subtitle}</p>
+                </button>
+            ))}
+            <button type="button" aria-pressed={isOtherSaved || otherOpen} onClick={() => setOtherOpen(true)}
+                className={cn('rounded-xl bg-muted/40 p-4 text-left hover:bg-muted/60', (isOtherSaved || otherOpen) && 'ring-2 ring-primary')}>
+                <Type className="h-5 w-5 text-muted-foreground" />
+                <p className="mt-2 text-sm font-medium text-foreground">Other font</p>
+                <p className="text-xs text-muted-foreground">Any font you like</p>
+            </button>
+            {otherOpen && (
+                <div className="col-span-2 sm:col-span-4">
+                    <FontField id="brand-font-other" value={headlineFont ?? ''} onSave={(v) => onSave({ headlineFont: v || null })} />
+                </div>
+            )}
+        </div>
+    );
+}
+
 export function LookSection({ brand, onSave, onUploadImage }: SectionProps & {
     onUploadImage: Props['onUploadImage'];
 }) {
     return (
-        <Section title="Visual identity" subtitle="The colours, type and marks Olmo puts in every image.">
-            <ImageField slot="logo" label="Logo" image={brand.logo} onUpload={onUploadImage} />
-            <ImageField slot="favicon" label="Favicon" image={brand.favicon} onUpload={onUploadImage} />
-            <ImageField slot="mascot" label="Mascot" image={brand.mascot} onUpload={onUploadImage} />
-            <Row label="Colours">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {COLOR_ROLES.map((role) => (
-                        <ColorField key={role} role={role} value={brand.colors[role]}
-                            otherColors={COLOR_ROLES
-                                .filter((r) => r !== role && brand.colors[r])
-                                .map((r) => ({ role: r, hex: brand.colors[r]! }))}
-                            onSave={(hex) => onSave({ colors: { ...brand.colors, [role]: hex } })} />
-                    ))}
+        <Section title="Visual identity" subtitle="The colours, type and marks Olmo puts in every image." wide>
+            <div className="space-y-3">
+                <p className="text-sm font-medium text-foreground">Logo and mascot</p>
+                <LogoTile slot="logo" title="Logo" icon={ImageIcon} image={brand.logo} onUpload={onUploadImage}
+                    descSet="On every end card." descUnset="No logo yet. Add one, or go without." />
+                <LogoTile slot="favicon" title="Favicon" icon={ImageIcon} image={brand.favicon} onUpload={onUploadImage}
+                    descSet="Used where a small icon fits." descUnset="Optional. Picked up from your site when you fill it in." />
+                <LogoTile slot="mascot" title="Mascot" optional icon={Smile} image={brand.mascot} onUpload={onUploadImage}
+                    descSet="Olmo can feature it in ads." descUnset="Upload one if your brand has a character." />
+            </div>
+
+            <div className="space-y-4">
+                <div>
+                    <p className="text-sm font-medium text-foreground">Colours</p>
+                    <p className="text-xs text-muted-foreground">Pick a palette, set your own, or leave it to Olmo.</p>
                 </div>
-            </Row>
-            <Row label="Font" htmlFor="brand-font">
-                <FontField id="brand-font" value={brand.headlineFont ?? ''} onSave={(v) => onSave({ headlineFont: v || null })} />
-            </Row>
+                <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+                    <div className="min-w-0 flex-1 space-y-4">
+                        <PaletteGrid brand={brand} onSave={onSave} />
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            {COLOR_ROLES.map((role) => (
+                                <ColorField key={role} role={role} value={brand.colors[role]}
+                                    otherColors={COLOR_ROLES
+                                        .filter((r) => r !== role && brand.colors[r])
+                                        .map((r) => ({ role: r, hex: brand.colors[r]! }))}
+                                    onSave={(hex) => onSave({ colors: { ...brand.colors, [role]: hex } })}
+                                    onClear={() => onSave({ colors: { ...brand.colors, [role]: null } })} />
+                            ))}
+                        </div>
+                    </div>
+                    <BrandPreview brand={brand} />
+                </div>
+            </div>
+
+            <div className="space-y-3">
+                <div>
+                    <p className="text-sm font-medium text-foreground">Typography</p>
+                    <p className="text-xs text-muted-foreground">Olmo picks one to suit each ad, or choose your own.</p>
+                </div>
+                <FontCards brand={brand} onSave={onSave} />
+            </div>
         </Section>
     );
 }
@@ -319,9 +503,9 @@ type TabKey = 'basics' | 'voice' | 'look';
 // carries its own tick, computed the same way the line used to read
 // `brand.missing`, just scoped to what that tab holds.
 const FORM_TABS: ReadonlyArray<{ key: TabKey; label: string; done: (b: BrandRecord) => boolean }> = [
-    { key: 'basics', label: 'Basics', done: (b) => !!b.name?.trim() && !!b.audience?.trim() },
+    { key: 'basics', label: 'Identity', done: (b) => !!b.name?.trim() && !!b.audience?.trim() },
     { key: 'voice', label: 'Voice', done: (b) => b.toneWords.length > 0 },
-    { key: 'look', label: 'Look', done: (b) => !!b.logo || Object.keys(b.colors).length > 0 },
+    { key: 'look', label: 'Visuals', done: (b) => !!b.logo || Object.keys(b.colors).length > 0 },
 ];
 
 export function BrandForm({ brand, onSave, onRefresh, onUploadImage, refreshing, chatHref, onImport, importing, importFailed }: Props) {
@@ -343,7 +527,7 @@ export function BrandForm({ brand, onSave, onRefresh, onUploadImage, refreshing,
                                 'inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors',
                                 active ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
                             )}>
-                            {done ? <Check className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+                            {done && <Check className="h-3.5 w-3.5" />}
                             {t.label}
                         </button>
                     );
