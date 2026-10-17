@@ -1,8 +1,8 @@
 import { and, eq } from 'drizzle-orm';
 import { storageService } from '@serverless-saas/storage';
-import { creativeBrand, type CreativeBrand, type NewCreativeBrand } from '@serverless-saas/agent-schema/creativeBrand';
+import { creativeBrand, type BrandColors, type CreativeBrand, type NewCreativeBrand } from '@serverless-saas/agent-schema/creativeBrand';
 import { db } from '../db';
-import type { BrandFill, BrandPatch, BrandRecord, BrandRegion, EmojiPolicy } from './brandSchema';
+import type { BrandFill, BrandPatch, BrandRecord, BrandRegion, ColorRole, EmojiPolicy } from './brandSchema';
 
 /** A run older than this is reported failed: the workflow died without reporting. */
 export const IMPORT_STALE_MS = 180_000;
@@ -105,6 +105,29 @@ export async function markImportFailed(tenantId: string, reason: string): Promis
     .where(and(eq(creativeBrand.tenantId, tenantId), eq(creativeBrand.importStatus, 'importing')));
 }
 
+/**
+ * Colours merge per role: a role absent from the patch stays as saved, so a
+ * caller that names one role (update_brand) never wipes the others. A role
+ * whose patch value is `null` (the removal marker colorsSchema produces for
+ * `null`/`''`) is deleted from the merged result instead of being kept.
+ */
+function mergeColors(existing: BrandColors | null | undefined, patch: Partial<Record<ColorRole, string | null>>): BrandColors {
+  const merged: Record<string, string | null> = { ...(existing ?? {}), ...patch };
+  const out: BrandColors = {};
+  for (const [role, value] of Object.entries(merged)) {
+    if (value !== null) out[role as ColorRole] = value;
+  }
+  return out;
+}
+
+type PatchForDb = Omit<BrandPatch, 'colors'> & { colors?: BrandColors };
+
+/** `patch` with its colours (if any) merged against what's saved and removal markers resolved away. */
+function withMergedColors(existing: CreativeBrand | null, patch: BrandPatch): PatchForDb {
+  if (!patch.colors) return patch as PatchForDb;
+  return { ...patch, colors: mergeColors(existing?.colors, patch.colors) };
+}
+
 /** Saves the user's fields and records them in edited_by_user. Creates the row (source 'chat') if none. */
 export async function patchBrand(tenantId: string, userId: string, patch: BrandPatch): Promise<void> {
   const keys = Object.keys(patch);
@@ -113,15 +136,13 @@ export async function patchBrand(tenantId: string, userId: string, patch: BrandP
   // Image keys are stored under the image name ('logo'), the rest under their own name.
   const editedKeys = keys.map((k) => k.replace(/FileId$/, ''));
   const editedByUser = Array.from(new Set([...(existing?.editedByUser ?? []), ...editedKeys]));
+  const merged = withMergedColors(existing, patch);
   if (!existing) {
     await db.insert(creativeBrand)
-      .values({ tenantId, createdBy: userId, sourceType: 'chat', ...patch, editedByUser })
-      .onConflictDoUpdate({ target: creativeBrand.tenantId, set: { ...patch, editedByUser } });
+      .values({ tenantId, createdBy: userId, sourceType: 'chat', ...merged, editedByUser })
+      .onConflictDoUpdate({ target: creativeBrand.tenantId, set: { ...merged, editedByUser } });
     return;
   }
-  // Colours merge per role: a role absent from the patch stays as saved, so a
-  // caller that names one role (update_brand) never wipes the others.
-  const merged = patch.colors ? { ...patch, colors: { ...(existing.colors ?? {}), ...patch.colors } } : patch;
   await db.update(creativeBrand).set({ ...merged, editedByUser }).where(eq(creativeBrand.tenantId, tenantId));
 }
 

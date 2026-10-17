@@ -164,4 +164,24 @@ describe('patchBrand', () => {
     expect(set.mock.calls[0][0]).toMatchObject({ name: 'X' });
     expect(set.mock.calls[0][0]).not.toHaveProperty('colors');
   });
+
+  it('removes one role when its patch value is the null removal marker', async () => {
+    const set = mockRow(row({ colors: { primary: '#111111', secondary: '#222222' } }));
+    await patchBrand('t1', 'u1', { colors: { primary: null } });
+    expect(set.mock.calls[0][0].colors).toEqual({ secondary: '#222222' });
+  });
+
+  it('clears all colours when every role is sent as the null removal marker', async () => {
+    const set = mockRow(row({ colors: { primary: '#111111', secondary: '#222222', accent: '#333333' } }));
+    await patchBrand('t1', 'u1', { colors: { primary: null, secondary: null, accent: null, text: null, background: null, muted: null } });
+    expect(set.mock.calls[0][0].colors).toEqual({});
+  });
+});
+
+describe('colorsSchema removal marker', () => {
+  it('turns null or empty string into the null removal marker, keeps valid hex, drops other invalid values', () => {
+    const parsed = brandPatchSchema.parse({ colors: { primary: null, secondary: '', accent: '#00a651', text: 'not-a-colour' } });
+    expect(parsed.colors).toEqual({ primary: null, secondary: null, accent: '#00A651' });
+    expect(parsed.colors).not.toHaveProperty('text');
+  });
 });

@@ -13,14 +13,20 @@ const list = (max: number, items: number) => z.array(line(max)).max(items);
 const nullableText = (max: number) =>
   z.string().trim().max(max).nullable().transform((v) => (v === '' ? null : v));
 
-/** Lenient colours: invalid hex values are dropped, not rejected (AI output and old clients). */
+/**
+ * Lenient colours: invalid hex values are dropped, not rejected (AI output
+ * and old clients). `null` or `''` for a role is kept as a removal marker
+ * (output `null`) so the caller can clear that role; `patchBrand` deletes
+ * marked roles after merging with what's saved.
+ */
 export const colorsSchema = z
   .record(z.string(), z.unknown())
   .transform((raw) => {
-    const out: Partial<Record<ColorRole, string>> = {};
+    const out: Partial<Record<ColorRole, string | null>> = {};
     for (const role of COLOR_ROLES) {
       const v = raw[role];
-      if (typeof v === 'string' && HEX.test(v.trim())) out[role] = v.trim().toUpperCase();
+      if (v === null || v === '') out[role] = null;
+      else if (typeof v === 'string' && HEX.test(v.trim())) out[role] = v.trim().toUpperCase();
     }
     return out;
   });
