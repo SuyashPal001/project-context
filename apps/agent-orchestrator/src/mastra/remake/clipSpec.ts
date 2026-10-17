@@ -85,7 +85,7 @@ export function clipPrompt(plan: RemakePlan, look: RemakeLook, _brand: Brand, en
     const legsMove = look.moveLines.some((m) => /\blegs?\b|knee|feet|foot/i.test(m))
     const side = look.start?.legs_toward
     if (!legsMove && side && side !== 'unknown') parts.push(`Her legs lie ${side === 'center' ? 'straight' : `to the ${side.replace('image-', '')}`} and stay still.`)
-    if (look.start?.facing === 'front') parts.push('She looks straight at the camera, eyes on the lens.')
+    if (look.start?.facing === 'front') parts.push('She looks into the camera, eyes on the lens.')
     const expression = shown(plan, `looks[${i}].expression`, look.expression)
     if (expression) parts.push(`Expression: ${expression}.`)
   }
@@ -106,7 +106,9 @@ export function clipGateInput(plan: RemakePlan, look: RemakeLook, prompt: string
   const mine = plan.lines.filter((l) => l.ref.startsWith(`looks[${i}].`) || l.ref.startsWith('props['))
   return {
     prompt,
-    planLine: [`clip of look ${look.n}`, ...(personIn(look) ? [CAST_BY_IMAGE] : []), ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}${/\.(outfit|styling)$/.test(l.ref) ? ' (given by the start image, not described in words)' : ''}`)].join('; '),
+    planLine: [`clip of look ${look.n}`, ...(personIn(look) ? [CAST_BY_IMAGE] : []),
+      // the gaze line was blocked as contradicting "gazing upward" in an overhead shot (fan run real25)
+      ...(personIn(look) && look.start?.facing === 'front' ? ["her eyes on the camera are the original's gaze (when the camera is above her, looking up is looking at it)"] : []), ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}${/\.(outfit|styling)$/.test(l.ref) ? ' (given by the start image, not described in words)' : ''}`)].join('; '),
     look: {
       expression: shown(plan, `looks[${i}].expression`, look.expression) ?? undefined, start_pose: look.startPose, end_pose: look.endPose,
       body_at_start: look.start ? personWords(look.start, null).join(', ') : undefined,

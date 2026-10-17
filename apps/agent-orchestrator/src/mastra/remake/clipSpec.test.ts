@@ -76,7 +76,9 @@ describe('clipPrompt', () => {
   it('her eyes look at the camera when the original faces it', async () => {
     const p = await plan()
     const front = { ...p.looks[0], start: { ...p.looks[0].start!, facing: 'front' as const } }
-    expect(clipPrompt(p, front, brand, 'omni')).toMatch(/She looks straight at the camera, eyes on the lens\./)
+    // overhead: "looking upward" in the original IS looking at the camera; the words must agree (the prompt check
+    // blocked "looks straight at the camera" against "gazing upward", fan run real25)
+    expect(clipPrompt(p, front, brand, 'omni')).toMatch(/She looks into the camera, eyes on the lens\./)
     const back = { ...p.looks[0], start: { ...p.looks[0].start!, facing: 'back' as const } }
     expect(clipPrompt(p, back, brand, 'omni')).not.toMatch(/eyes on the lens/)
   })
@@ -155,5 +157,14 @@ describe('the clip check knows the look comes from the images', () => {
     p.lines.push({ ref: 'looks[0].outfit', action: 'swap', to: 'emerald anarkali' })
     const line = clipGateInput(p, p.looks[0], 'x').planLine
     expect(line).toMatch(/looks\[0\]\.outfit: swap to emerald anarkali \(given by the start image, not described in words\)/)
+  })
+})
+
+describe('the gaze line agrees with the check', () => {
+  it('the check is told her gaze at the camera is the original\'s (overhead, "upward" is the camera)', async () => {
+    const p = await plan()
+    const front = { ...p.looks[0], start: { ...p.looks[0].start!, facing: 'front' as const } }
+    const g = clipGateInput(p, front, clipPrompt(p, front, brand, 'omni'))
+    expect(g.planLine).toMatch(/her eyes on the camera are the original's gaze \(when the camera is above her, looking up is looking at it\)/)
   })
 })
