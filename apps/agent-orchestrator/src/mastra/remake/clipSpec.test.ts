@@ -45,21 +45,16 @@ describe('clipSpecs', () => {
 })
 
 describe('clipPrompt', () => {
-  it('carries the measured moves with look-relative times, holds the camera, adds nothing', async () => {
-    const p = await plan()
-    const s = clipPrompt(p, p.looks[1], brand, 'veo')
-    expect(s).toMatch(/at 1\.9s: legs/)
-    expect(s).toMatch(/image-up|up/)
+  it('carries the moves said in words with look-relative times, holds the camera, adds nothing', async () => {
+    const p = await noPeople()
+    const look = { ...p.looks[1], moveLines: [...p.looks[1].moveLines, 'at 1.9s: arm/hand: lifts the can (up)'] }
+    const s = clipPrompt(p, look, brand, 'veo')
+    expect(s).toMatch(/at 1\.9s: arm\/hand: lifts the can/)
+    expect(s).not.toMatch(/legs moves|upper body moves/)          // measured motion readings never reach a model
     expect(s).toMatch(/The first image is the first frame and the second image is the last frame/)
     expect(s).toMatch(/Add nothing/)
-    // Rule 7.1 forbids ADDING an expression, not keeping one: look b's kept expression is "smiles".
-    expect(s.match(/Expression: smiles/g)).toHaveLength(1)
     expect(precheckPrompt(clipPrompt(p, p.looks[0], brand, 'omni'), { expression: p.looks[0].expression })).toEqual([])
   })
-  // fan run real24 (user, 2026-10-17: "legs are so weird... keep it like left or right style, and make her face to
-  // camera, like eyes"): measured words like "upright in frame, knees bent, knees fall to image-left, feet to
-  // image-right" made Omni twist her legs under a long dress. The prompt says the leg side plainly and her eyes
-  // on the camera.
   it('no measured body jargon in a clip prompt', async () => {
     const p = await plan()
     for (const look of p.looks) for (const e of ['veo', 'omni'] as const) {
@@ -82,7 +77,11 @@ describe('clipPrompt', () => {
     expect(s).toMatch(/^Fashion lookbook shot\./)
     expect(s).toMatch(/raises remote toward ceiling/)
     expect(s).not.toMatch(/legs moves up/)
-    expect(s).toMatch(/then she slowly slides both legs together to the right side of the image, knees softly bent, and holds the pose\./)
+    expect(s).toMatch(/Then she slowly slides both legs together to the right side of the image, knees softly bent, and holds the pose\./)
+    // the energy line replaces the plain expression line (they clashed: the check blocked "a subtle knowing look"
+    // against "Serene, gazing upward", fan run real26) and the check is told it is the house style
+    expect(s).not.toMatch(/Expression:/)
+    expect(clipGateInput(p, look, s).planLine).toMatch(/the influencer energy line is the house style for a person on camera, not invented content/)
     // the user (2026-10-17): "energy of the influencer, pulling towards, not blank, not too much giggling... slay"
     expect(s).toMatch(/Confident influencer energy: she owns the camera, eyes locked on the lens with a subtle knowing look; poised and magnetic, never blank, no big smile or giggling; she does not speak\./)
     expect(s).toMatch(/The camera is locked off and never moves or zooms; her whole body stays in frame\. All directions are as seen in the image\./)

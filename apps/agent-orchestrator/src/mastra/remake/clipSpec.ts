@@ -91,12 +91,10 @@ export function clipPrompt(plan: RemakePlan, look: RemakeLook, _brand: Brand, en
   const moves = describedMoves(look.moveLines)
   if (person) {
     parts.push('Keep the same person, face, outfit and setting the whole time.')
-    const expression = shown(plan, `looks[${i}].expression`, look.expression)
-    if (expression) parts.push(`Expression: ${expression}.`)
     if (moves.length) parts.push(`Movement (directions as the viewer sees the frame): ${scaleTimes(moves, factor, shift).join('; ')}.`)
     const from = look.start ? legSide(look.start) : null
     const to = look.end ? legSide(look.end) : null
-    if (to && to !== 'center' && to !== from) parts.push(`${moves.length ? 'Then' : 'Slowly'} she ${moves.length ? 'slowly ' : ''}slides both legs together to the ${to.replace('image-', '')} side of the image${look.end?.knees === 'bent' ? ', knees softly bent,' : ''} and holds the pose.`.replace(/^Slowly she slides/, 'She slowly slides').replace(/^Then she slowly/, 'then she slowly'))
+    if (to && to !== 'center' && to !== from) parts.push(`${moves.length ? 'Then she' : 'She'} slowly slides both legs together to the ${to.replace('image-', '')} side of the image${look.end?.knees === 'bent' ? ', knees softly bent,' : ''} and holds the pose.`)
     else parts.push('She holds the pose, breathing softly.')
     // the user (2026-10-17): "energy of the influencer, pulling towards, not blank, not too much giggling... slay"
     if (look.start?.facing !== 'back') parts.push('Confident influencer energy: she owns the camera, eyes locked on the lens with a subtle knowing look; poised and magnetic, never blank, no big smile or giggling; she does not speak.')
@@ -128,7 +126,9 @@ export function clipGateInput(plan: RemakePlan, look: RemakeLook, prompt: string
     prompt,
     planLine: [`clip of look ${look.n}`, ...(personIn(look) ? [CAST_BY_IMAGE] : []),
       // the gaze line was blocked as contradicting "gazing upward" in an overhead shot (fan run real25)
-      ...(personIn(look) && look.start?.facing === 'front' ? ["her eyes on the camera are the original's gaze (when the camera is above her, looking up is looking at it)"] : []), ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}${/\.(outfit|styling)$/.test(l.ref) ? ' (given by the start image, not described in words)' : ''}`)].join('; '),
+      ...(personIn(look) && look.start?.facing === 'front' ? ["her eyes on the camera are the original's gaze (when the camera is above her, looking up is looking at it)"] : []),
+      // the user asked for it (2026-10-17: "energy of the influencer... slay"); it replaces the plain expression line
+      ...(personIn(look) ? ['the influencer energy line is the house style for a person on camera, not invented content; it stands in for the expression'] : []), ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}${/\.(outfit|styling)$/.test(l.ref) ? ' (given by the start image, not described in words)' : ''}`)].join('; '),
     look: {
       expression: shown(plan, `looks[${i}].expression`, look.expression) ?? undefined, start_pose: look.startPose, end_pose: look.endPose,
       body_at_start: look.start ? personWords(look.start, null).join(', ') : undefined,
