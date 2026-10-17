@@ -25,6 +25,7 @@ POSE_URL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk
 MODEL_NAME = "yolox-tiny + rtmpose-s"
 VIS = 0.3               # a joint counts as seen at this score
 HEAD_SEEN = 0.65        # mean score of the 5 head points for a seen head (a head guessed under a blade scores ~0.5)
+BODY_SEEN = 0.6         # mean score of the 12 body points for a well-seen body
 MIN_JOINTS = 4          # a detection needs this many seen joints to count as a person
 MIN_BOX_AREA = 0.004    # of the frame; smaller boxes are noise
 WINDOW_S = 1.0          # look start / end window
@@ -165,6 +166,12 @@ def _key_frame(t, persons):
             "keypoints": [[round(float(x), 3), round(float(y), 3), round(float(s), 2)] for (x, y), s in zip(kp, sc)]} for kp, sc, box in persons]}
 
 
+def _well_seen(persons) -> bool:
+    """The main person's head and body are both confidently seen (nothing in front of them)."""
+    sc = np.asarray(max(persons, key=lambda p: _box_area(p[2]))[1])
+    return bool(sc[:5].mean() >= HEAD_SEEN and sc[5:].mean() >= BODY_SEEN)
+
+
 def summarise_looks(looks: list[dict], frames, aspect: float = 1.0) -> list[dict]:
     """frames: [(t_s, [(kp 17x2 fractions, scores 17, box [x0,y0,x1,y1] fractions), ...])] outside excluded spans."""
     out = []
@@ -188,7 +195,8 @@ def summarise_looks(looks: list[dict], frames, aspect: float = 1.0) -> list[dict
             # kept for callers of the first version
             "leg_side_start": side(main_start), "leg_side_end": side(main_end),
             "body_angle_end": main_end["torso_angle_deg"] if main_end else None,
-            "key_frames": [_key_frame(*people_frames[0]), _key_frame(*people_frames[-1])] if people_frames else [],
+            # the first and last frames where the person is well seen: a covered frame gives a pose edit nothing to copy
+            "key_frames": [_key_frame(*seen[0]), _key_frame(*seen[-1])] if (seen := [f for f in people_frames if _well_seen(f[1])] or people_frames) else [],
         })
     return out
 

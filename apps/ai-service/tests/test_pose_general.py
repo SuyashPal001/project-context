@@ -122,3 +122,21 @@ def test_facing_front_back_and_side_from_the_shoulder_order():
 
 def test_facing_unknown_without_both_shoulders():
     assert pose.read_person(*turned(60, 40, hide=(6,)))["facing"] == "unknown"
+
+# The end frame of a look was taken while a fan blade covered most of her (fan run real12), so the edit had
+# almost no pose to copy and the end photos came out like the starts. The look's key frames are its first
+# and last frames where the person is well seen (head and body confident); the last frame only when none is.
+def test_key_frames_skip_frames_where_the_person_is_covered():
+    looks = [{"label": "a", "start_s": 0, "end_s": 3}]
+    seen, covered = person(), person()
+    covered[1][:5] = 0.53; covered[1][5:] = 0.5
+    box = (0.2, 0.1, 0.8, 0.95)
+    frames = [(t, [(seen[0], seen[1], box)]) for t in (0.0, 0.4, 0.8, 1.2, 1.6)] + [(t, [(covered[0], covered[1], box)]) for t in (2.0, 2.4, 2.8)]
+    kf = pose.summarise_looks(looks, frames)[0]["key_frames"]
+    assert [k["t_s"] for k in kf] == [0.0, 1.6]
+
+def test_key_frames_fall_back_to_the_edges_when_never_well_seen():
+    looks = [{"label": "a", "start_s": 0, "end_s": 3}]
+    covered = person(); covered[1][:] = 0.5
+    frames = [(t, [(covered[0], covered[1], (0.2, 0.1, 0.8, 0.95))]) for t in (0.0, 1.0, 2.0)]
+    assert [k["t_s"] for k in pose.summarise_looks(looks, frames)[0]["key_frames"]] == [0.0, 2.0]
