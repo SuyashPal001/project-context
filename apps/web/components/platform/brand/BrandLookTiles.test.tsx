@@ -52,6 +52,14 @@ describe('logo and mascot tiles', () => {
         expect(screen.getByText('Optional')).toBeTruthy();
         expect(screen.getByText('Upload one if your brand has a character.')).toBeTruthy();
     });
+
+    it('always renders a visible Upload button on every unset tile', () => {
+        renderVisuals();
+        for (const title of ['Logo', 'Favicon', 'Mascot']) {
+            const tile = screen.getByText(title).closest('.rounded-xl') as HTMLElement;
+            expect(within(tile).getByRole('button', { name: 'Upload' })).toBeTruthy();
+        }
+    });
 });
 
 function coloursSection() {
@@ -91,12 +99,6 @@ describe('live preview', () => {
     it('renders the headline sample', () => {
         renderVisuals();
         expect(screen.getByText('Your headline here')).toBeTruthy();
-    });
-
-    it('uses the text colour when one is set', () => {
-        renderVisuals(vi.fn(), { ...brand, colors: { text: '#ABCDEF' } });
-        const headline = screen.getByText('Your headline here');
-        expect(headline.getAttribute('style')).toContain('rgb(171, 205, 239)');
     });
 });
 

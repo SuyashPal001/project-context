@@ -118,3 +118,41 @@ describe('brand colour fields', () => {
         expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull();
     });
 });
+
+describe('picker footer layout', () => {
+    it('"From your brand" and the swatches sit on one row, Clear/Done on another that does not contain the swatches', () => {
+        renderLook();
+        // secondary is unset; primary ('#00A651') is the only other brand
+        // colour, so opening secondary shows exactly one "from your brand" swatch.
+        fireEvent.click(screen.getByLabelText('Edit secondary colour'));
+        const label = screen.getByText('From your brand');
+        const row = label.parentElement as HTMLElement;
+        expect(within(row).getByLabelText('Use primary colour')).toBeTruthy();
+        expect(within(row).queryByRole('button', { name: 'Done' })).toBeNull();
+
+        const doneButton = screen.getByRole('button', { name: 'Done' });
+        expect(within(doneButton.parentElement as HTMLElement).queryByLabelText('Use primary colour')).toBeNull();
+    });
+
+    it('shows no "From your brand" row when there are no other brand colours', () => {
+        renderLook(vi.fn(), { ...brand, colors: { primary: '#00A651' } });
+        fireEvent.click(screen.getByLabelText('Edit primary colour'));
+        expect(screen.queryByText('From your brand')).toBeNull();
+    });
+});
+
+describe('live preview while a colour is being picked', () => {
+    it('typing a valid hex updates the preview without closing or saving', () => {
+        const onSave = renderLook();
+        const cta = () => within(screen.getByTestId('brand-preview-cta'));
+        expect(cta().getByText('Shop now').parentElement).toBeTruthy();
+        expect(screen.getByTestId('brand-preview-cta').getAttribute('style')).toContain('rgb(0, 166, 81)'); // #00A651
+
+        fireEvent.click(screen.getByLabelText('Edit primary colour'));
+        const hexInput = screen.getByLabelText('primary hex value');
+        fireEvent.change(hexInput, { target: { value: 'FF0000' } });
+
+        expect(screen.getByTestId('brand-preview-cta').getAttribute('style')).toContain('rgb(255, 0, 0)');
+        expect(onSave).not.toHaveBeenCalled();
+    });
+});

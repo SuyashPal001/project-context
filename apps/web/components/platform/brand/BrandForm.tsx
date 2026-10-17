@@ -18,6 +18,7 @@ import {
 } from './brandApi';
 import { BRAND_FONT_CARDS, BRAND_FONT_CLASS } from './brandFonts';
 import { BrandFillRow } from './BrandFillRow';
+import { BrandPreviewCard, BrandPreviewMobileBar } from './BrandPreviewCard';
 
 type ImageSlot = 'logo' | 'favicon' | 'mascot';
 type ColorRole = typeof COLOR_ROLES[number];
@@ -132,7 +133,7 @@ function LogoTile({ slot, title, optional, icon: Icon, image, descSet, descUnset
     const input = useRef<HTMLInputElement>(null);
     const set = !!image;
     return (
-        <div className="flex items-center gap-4 rounded-xl bg-muted/40 p-4">
+        <div className="flex flex-wrap items-center gap-4 rounded-xl bg-muted/40 p-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-background">
                 {image?.url
                     ? <img src={image.url} alt={title} className="h-full w-full object-contain" />
@@ -175,11 +176,15 @@ function normalizeHex(raw: string): string | null {
  * outside, Esc) — and only when it is a valid, changed colour. An unset
  * role closed without a pick never saves anything (no accidental white).
  */
-function ColorField({ role, value, otherColors, onSave, onClear }: {
+function ColorField({ role, value, otherColors, onSave, onClear, onDraftChange }: {
     role: string; value: string | undefined;
     otherColors: Array<{ role: string; hex: string }>;
     onSave: (hex: string) => void;
     onClear: () => void;
+    /** Fires with the in-progress pick (drag or a fully-typed hex) while the
+     * picker is open, and with null once it closes — lets the preview track
+     * the live pick without the draft ever being saved early. */
+    onDraftChange: (hex: string | null) => void;
 }) {
     const [open, setOpen] = useState(false);
     const [draft, setDraft] = useState(value ?? '');
@@ -202,6 +207,7 @@ function ColorField({ role, value, otherColors, onSave, onClear }: {
             savedRef.current = value;
         } else {
             commit(draft);
+            onDraftChange(null);
         }
         setOpen(next);
     };
@@ -210,13 +216,25 @@ function ColorField({ role, value, otherColors, onSave, onClear }: {
         const upper = hex.toUpperCase();
         setDraft(upper);
         setHexText(upper.slice(1));
+        onDraftChange(upper);
+    };
+
+    // Updates the live draft (and the preview) as soon as what's typed is a
+    // complete, valid hex — but never saves. Enter (commitHexText) is the
+    // only thing in this field that commits.
+    const handleHexTextChange = (raw: string) => {
+        const upper = raw.toUpperCase();
+        setHexText(upper);
+        const normalized = normalizeHex(upper);
+        if (normalized) {
+            setDraft(normalized);
+            onDraftChange(normalized);
+        }
     };
 
     const commitHexText = () => {
         const normalized = normalizeHex(hexText);
         if (!normalized) return;
-        setDraft(normalized);
-        setHexText(normalized.slice(1));
         commit(normalized);
     };
 
@@ -258,27 +276,30 @@ function ColorField({ role, value, otherColors, onSave, onClear }: {
                             style={{ backgroundColor: draft || undefined }} />
                         <span className="text-muted-foreground">#</span>
                         <input value={hexText} aria-label={`${role} hex value`} maxLength={6}
-                            onChange={(e) => setHexText(e.target.value.toUpperCase())}
+                            onChange={(e) => handleHexTextChange(e.target.value)}
                             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitHexText(); } }}
                             className="min-w-0 flex-1 border-0 bg-transparent p-0 font-mono text-base uppercase text-foreground outline-none" />
                     </div>
+                    {otherColors.length > 0 && (
+                        <div className="space-y-1.5">
+                            <p className="text-xs text-muted-foreground">From your brand</p>
+                            <div className="flex flex-wrap gap-2">
+                                {otherColors.map((c) => (
+                                    <button key={c.role} type="button" aria-label={`Use ${c.role} colour`}
+                                        className="h-6 w-6 shrink-0 rounded-md border border-border" style={{ backgroundColor: c.hex }}
+                                        onClick={() => pickFromPicker(c.hex)} />
+                                ))}
+                            </div>
+                        </div>
+                    )}
                     <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5">
-                            {otherColors.length > 0 && <span className="text-xs text-muted-foreground">From your brand</span>}
-                            {otherColors.map((c) => (
-                                <button key={c.role} type="button" aria-label={`Use ${c.role} colour`}
-                                    className="h-6 w-6 rounded-md border border-border" style={{ backgroundColor: c.hex }}
-                                    onClick={() => pickFromPicker(c.hex)} />
-                            ))}
-                        </div>
-                        <div className="flex items-center gap-1">
-                            {value && (
-                                <Button type="button" variant="ghost" size="sm" onClick={() => { setOpen(false); onClear(); }}>
-                                    Clear
-                                </Button>
-                            )}
-                            <Button size="sm" onClick={() => handleOpenChange(false)}>Done</Button>
-                        </div>
+                        {value ? (
+                            <Button type="button" variant="ghost" size="sm"
+                                onClick={() => { setOpen(false); onDraftChange(null); onClear(); }}>
+                                Clear
+                            </Button>
+                        ) : <span />}
+                        <Button size="sm" onClick={() => handleOpenChange(false)}>Done</Button>
                     </div>
                 </PopoverContent>
             </Popover>
@@ -372,39 +393,6 @@ function PaletteGrid({ brand, onSave }: SectionProps) {
     );
 }
 
-/** Purely presentational live preview: updates from the saved record only
- * (not the picker's in-progress draft — the draft belongs to one role and
- * would make the preview flicker between an old and a half-picked brand). */
-function BrandPreview({ brand }: { brand: BrandRecord }) {
-    const { colors, headlineFont } = brand;
-    const fontClass = headlineFont ? BRAND_FONT_CLASS[headlineFont] : undefined;
-    const hasColors = !noColorsSet(brand);
-    return (
-        <div className="w-full space-y-2 sm:w-56">
-            <div className="rounded-2xl border border-border p-4" style={{ backgroundColor: colors.background || 'var(--card)' }}>
-                <div className="relative overflow-hidden">
-                    <span className="block h-1.5 w-10 rounded-full" style={{ backgroundColor: colors.muted || 'var(--muted-foreground)' }} />
-                    <span className="absolute -right-4 -top-6 h-20 w-20 rounded-full" style={{ backgroundColor: colors.accent || 'var(--primary)', opacity: 0.25 }} />
-                    <hr className="my-3 border-border/60" />
-                    <p className={cn('text-lg font-semibold', fontClass)} style={{ color: colors.text || 'var(--foreground)' }}>
-                        Your headline here
-                    </p>
-                    <p className="mt-1 text-xs" style={{ color: colors.muted || 'var(--muted-foreground)' }}>
-                        A short line that backs it up
-                    </p>
-                    <span className="mt-3 inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium"
-                        style={{ backgroundColor: colors.primary || 'var(--primary)', color: colors.background || 'var(--primary-foreground)' }}>
-                        Learn more
-                    </span>
-                </div>
-            </div>
-            <p className="text-xs text-muted-foreground">
-                {hasColors ? 'Preview with your colours' : 'Olmo picks colours to suit each ad'}
-            </p>
-        </div>
-    );
-}
-
 /** Font cards: "Olmo picks" + the six curated fonts (each shown in its own
  * typeface) + "Other font", which reveals the same controlled text input
  * FontField always used, so a typed family name still saves on blur. */
@@ -452,25 +440,34 @@ function FontCards({ brand, onSave }: SectionProps) {
 export function LookSection({ brand, onSave, onUploadImage }: SectionProps & {
     onUploadImage: Props['onUploadImage'];
 }) {
+    // The role being dragged/typed in its still-open picker — lifted here so
+    // the pinned preview card can track the live pick without any of the
+    // ColorFields having to know the preview exists.
+    const [draftColor, setDraftColor] = useState<{ role: ColorRole; hex: string } | null>(null);
+
     return (
         <Section title="Visual identity" subtitle="The colours, type and marks Olmo puts in every image." wide>
-            <div className="space-y-3">
-                <p className="text-sm font-medium text-foreground">Logo and mascot</p>
-                <LogoTile slot="logo" title="Logo" icon={ImageIcon} image={brand.logo} onUpload={onUploadImage}
-                    descSet="On every end card." descUnset="No logo yet. Add one, or go without." />
-                <LogoTile slot="favicon" title="Favicon" icon={ImageIcon} image={brand.favicon} onUpload={onUploadImage}
-                    descSet="Used where a small icon fits." descUnset="Optional. Picked up from your site when you fill it in." />
-                <LogoTile slot="mascot" title="Mascot" optional icon={Smile} image={brand.mascot} onUpload={onUploadImage}
-                    descSet="Olmo can feature it in ads." descUnset="Upload one if your brand has a character." />
+            <div className="lg:hidden">
+                <BrandPreviewMobileBar brand={brand} draftColor={draftColor} />
             </div>
 
-            <div className="space-y-4">
-                <div>
-                    <p className="text-sm font-medium text-foreground">Colours</p>
-                    <p className="text-xs text-muted-foreground">Pick a palette, set your own, or leave it to Olmo.</p>
-                </div>
-                <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
-                    <div className="min-w-0 flex-1 space-y-4">
+            <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
+                <div className="min-w-0 flex-1 space-y-8">
+                    <div className="space-y-3">
+                        <p className="text-sm font-medium text-foreground">Logo and mascot</p>
+                        <LogoTile slot="logo" title="Logo" icon={ImageIcon} image={brand.logo} onUpload={onUploadImage}
+                            descSet="On every end card." descUnset="No logo yet. Add one, or go without." />
+                        <LogoTile slot="favicon" title="Favicon" icon={ImageIcon} image={brand.favicon} onUpload={onUploadImage}
+                            descSet="Used where a small icon fits." descUnset="Optional. Picked up from your site when you fill it in." />
+                        <LogoTile slot="mascot" title="Mascot" optional icon={Smile} image={brand.mascot} onUpload={onUploadImage}
+                            descSet="Olmo can feature it in ads." descUnset="Upload one if your brand has a character." />
+                    </div>
+
+                    <div className="space-y-4">
+                        <div>
+                            <p className="text-sm font-medium text-foreground">Colours</p>
+                            <p className="text-xs text-muted-foreground">Pick a palette, set your own, or leave it to Olmo.</p>
+                        </div>
                         <PaletteGrid brand={brand} onSave={onSave} />
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             {COLOR_ROLES.map((role) => (
@@ -479,20 +476,24 @@ export function LookSection({ brand, onSave, onUploadImage }: SectionProps & {
                                         .filter((r) => r !== role && brand.colors[r])
                                         .map((r) => ({ role: r, hex: brand.colors[r]! }))}
                                     onSave={(hex) => onSave({ colors: { ...brand.colors, [role]: hex } })}
-                                    onClear={() => onSave({ colors: { ...brand.colors, [role]: null } })} />
+                                    onClear={() => onSave({ colors: { ...brand.colors, [role]: null } })}
+                                    onDraftChange={(hex) => setDraftColor(hex ? { role, hex } : null)} />
                             ))}
                         </div>
                     </div>
-                    <BrandPreview brand={brand} />
-                </div>
-            </div>
 
-            <div className="space-y-3">
-                <div>
-                    <p className="text-sm font-medium text-foreground">Typography</p>
-                    <p className="text-xs text-muted-foreground">Olmo picks one to suit each ad, or choose your own.</p>
+                    <div className="space-y-3">
+                        <div>
+                            <p className="text-sm font-medium text-foreground">Typography</p>
+                            <p className="text-xs text-muted-foreground">Olmo picks one to suit each ad, or choose your own.</p>
+                        </div>
+                        <FontCards brand={brand} onSave={onSave} />
+                    </div>
                 </div>
-                <FontCards brand={brand} onSave={onSave} />
+
+                <div className="hidden shrink-0 lg:sticky lg:top-6 lg:block lg:self-start">
+                    <BrandPreviewCard brand={brand} draftColor={draftColor} />
+                </div>
             </div>
         </Section>
     );
