@@ -11,7 +11,7 @@ import { remakeDeps, type RemakeDeps } from './deps.js'
 import { runToken } from './runTokens.js'
 import { writePlan, applyEdits } from './plan.js'
 import { estimateCost, estimateClipsCost, ledgerSummary } from './cost.js'
-import { castSheetPrompt, stylingOf, outfitOf, propsAt, reelProps, stillPrompt, stillGateInput, usesProduct, REFERENCE_SHEET_PROMPT, CAST_BY_IMAGE, charactersAt, characterPortraitPrompt, stillTime, type CharacterImages } from './prompts.js'
+import { castSheetPrompt, stylingOf, outfitOf, propsAt, reelProps, trickProps, stillPrompt, stillGateInput, usesProduct, REFERENCE_SHEET_PROMPT, CAST_BY_IMAGE, charactersAt, characterPortraitPrompt, stillTime, type CharacterImages } from './prompts.js'
 import { hideFaceArgs } from '../tools/hideFace.js'
 import { makeStill, type StillCtx, type StillJob } from './paidStill.js'
 import { looksUnder18 } from './stillChecks.js'
@@ -328,13 +328,13 @@ const stillsStep = createStep({
         const extra = [...images.entries()].map(([i, n]) => `the ${plan.reference.characters?.[i]?.who ?? 'other person'} is the person in image ${n}`).join('; ')
         const change = { ...base.change, ...(extra ? { extra } : {}) }
         const prompt = editShotPrompt(change)
-        return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, guide: guideFrame.id, guideRef: g, faceRef: base.fileId, editOf: { fileId: base.fileId, change: changeSummary(change) }, props: reelProps(plan), gate: { prompt, planLine: editShotGateLine(change, `looks[${refOf(look)}]`), look: {}, startFrameObjects: [], keyMoments: [] }, ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}) }
+        return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, guide: guideFrame.id, guideRef: g, faceRef: base.fileId, editOf: { fileId: base.fileId, change: changeSummary(change) }, props: reelProps(plan), trick: trickProps(plan), gate: { prompt, planLine: editShotGateLine(change, `looks[${refOf(look)}]`), look: {}, startFrameObjects: [], keyMoments: [] }, ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}) }
       }
       const who = personFor(look)
       const { references, images } = withCharacters([...(person && who ? [who] : []), g, ...(product ? [product] : person && anchor ? [anchor] : [])], chars)
       const prompt = stillPrompt(plan, look, kind, brand, !!product, images)
       const room = person && anchor && anchorGuide && !product ? { room: { fileId: anchor, guides: [anchorGuide, guideFrame.id] as [string, string] } } : {}
-      return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, guide: guideFrame.id, guideRef: g, props: reelProps(plan), gate: stillGateInput(plan, look, kind, prompt, images), ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}), ...room }
+      return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, guide: guideFrame.id, guideRef: g, props: reelProps(plan), trick: trickProps(plan), gate: stillGateInput(plan, look, kind, prompt, images), ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}), ...room }
     }
     const single = async (look: RemakeLook, kind: 'start' | 'end', firstTry?: { fileId: string; creditsMicro: string }, base?: Base): Promise<Made> => {
       // Never paid: a look whose people were not measured (spec §8a).

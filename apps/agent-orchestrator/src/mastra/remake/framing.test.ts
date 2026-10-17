@@ -103,3 +103,17 @@ describe('an edit adds nothing it was not asked for', () => {
     expect(r.result.status).toBe('passed')
   })
 })
+
+// fan run real21: the fan blade sat in the top corner of every photo, copied from the original's frames, though
+// the prompt said not to draw it; the trick is added over the video later, so a drawn one would show twice.
+describe('the trick object is never in a photo', () => {
+  it('a drawn fan blade fails and is fixed by an edit that removes it', async () => {
+    const d = deps({ 'guide-1': [0.3, 0.2, 0.7, 0.8], 'still-1': [0.3, 0.2, 0.7, 0.8], 'still-2': [0.3, 0.2, 0.7, 0.8] })
+    ;(d as { ask: unknown }).ask = () => vi.fn(async (parts: Array<{ image?: { data: string }; text?: string }>) =>
+      /Count how many/.test(parts.at(-1)!.text ?? '') ? { counts: { 'Ceiling fan blade': parts[0].image!.data === 'still-1' ? 1 : 0 } } : {})
+    const r = await makeStill({ ...job, trick: ['Ceiling fan blade'] }, ctx, d)
+    expect(r.result.tries?.[0].why.join(' ')).toMatch(/the trick is drawn in the photo: Ceiling fan blade/)
+    expect((d.generateStill as ReturnType<typeof vi.fn>).mock.calls[1][0].prompt).toMatch(/Change only this: remove the Ceiling fan blade entirely, nothing of it anywhere in the frame/)
+    expect(r.result.status).toBe('passed')
+  })
+})

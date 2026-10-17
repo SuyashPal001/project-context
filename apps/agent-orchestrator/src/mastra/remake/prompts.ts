@@ -55,7 +55,7 @@ export const stillTime = (look: RemakeLook, kind: 'start' | 'end'): number => (k
 // An end still with no end pose of its own (the first part of a split shot) says no pose: repeating the
 // start pose asked for the same picture twice (metro A/B: both selfie stills came out identical).
 const poseOf = (look: RemakeLook, kind: 'start' | 'end'): string => (kind === 'start' ? look.startPose : look.endPose)
-const trickProps = (plan: RemakePlan): string[] => plan.reference.props.filter((p) => p.trick).map((p) => p.prop)
+export const trickProps = (plan: RemakePlan): string[] => plan.reference.props.filter((p) => p.trick).map((p) => p.prop)
 
 export function usesProduct(plan: RemakePlan, brand: Brand): boolean {
   const name = brand.product.toLowerCase()
