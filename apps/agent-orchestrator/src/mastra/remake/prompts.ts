@@ -159,7 +159,9 @@ export function stillGateInput(plan: RemakePlan, look: RemakeLook, kind: 'start'
   return {
     prompt, planLine,
     look: { expression: shown(plan, `looks[${i}].expression`, look.expression) ?? undefined, pose, body_measured: body ? personWords(body, null).join(', ') : undefined } as Record<string, unknown> & { expression?: string },
-    startFrameObjects: propsAt(plan, stillTime(look, kind)),
+    // an object the direction places is in the shot, whatever time the plan guessed for it (fan run real28:
+    // "hand_on_absent_object: remote" blocked a still the direction put the remote in)
+    startFrameObjects: [...new Set([...propsAt(plan, stillTime(look, kind)), ...(direction?.objects ? reelProps(plan).filter((o) => direction.objects.toLowerCase().includes(o.toLowerCase().split(' ')[0])) : [])])],
     keyMoments: [] as string[],
   }
 }

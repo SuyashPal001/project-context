@@ -2,7 +2,7 @@
 // exceptional"; "she keeps the remote in her hand"; "not comfortable posing"). v12's poses were directed per look
 // ("one hand resting on her chest, one knee bent over the other leg"; "the remote stays still on the rug").
 import { describe, it, expect, vi } from 'vitest'
-import { lookDirection, LOOK_DIRECTION_QUESTION } from './lookDirection.js'
+import { lookDirection, followsDirection, LOOK_DIRECTION_QUESTION } from './lookDirection.js'
 
 const img = (d: string) => ({ data: d, mime: 'image/jpeg' })
 
@@ -23,5 +23,21 @@ describe('lookDirection', () => {
     const q = LOOK_DIRECTION_QUESTION(['Remote control'])
     expect(q).toMatch(/how a photographer would direct the model/)
     expect(q).toMatch(/image-left|image-right/)
+  })
+})
+
+// fan run real28: look 3's photo kept the remote in her hand though the direction put it on the rug, and look 4's
+// legs were not crossed as directed; nothing checked a photo against its direction.
+describe('followsDirection', () => {
+  const d = { start: 'one hand on her midriff, left leg crossed over the right', moves: '', objects: 'the black remote lies on the rug left of her torso' }
+  it('a photo that differs from its direction fails, saying what differs', async () => {
+    const ask = vi.fn().mockResolvedValue({ pose_matches: false, objects_match: false, differs: 'her legs are not crossed; the remote is in her hand' })
+    const r = await followsDirection(ask, img('p'), d)
+    expect(r).toEqual({ status: 'fail', reason: 'not as directed: her legs are not crossed; the remote is in her hand' })
+    expect(ask.mock.calls[0][0].at(-1).text).toMatch(/left leg crossed over the right/)
+  })
+  it('a match passes; no answer is unknown, never a pass', async () => {
+    expect((await followsDirection(vi.fn().mockResolvedValue({ pose_matches: true, objects_match: true, differs: '' }), img('p'), d)).status).toBe('pass')
+    expect((await followsDirection(vi.fn().mockRejectedValue(new Error('x')), img('p'), d)).status).toBe('unknown')
   })
 })

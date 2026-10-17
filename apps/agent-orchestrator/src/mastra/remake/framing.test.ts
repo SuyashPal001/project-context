@@ -117,3 +117,16 @@ describe('the trick object is never in a photo', () => {
     expect(r.result.status).toBe('passed')
   })
 })
+
+describe('a start photo follows its direction', () => {
+  it('not as directed fails and is fixed by an edit toward the direction', async () => {
+    const d = deps({ 'guide-1': [0.3, 0.2, 0.7, 0.8], 'still-1': [0.3, 0.2, 0.7, 0.8], 'still-2': [0.3, 0.2, 0.7, 0.8] })
+    ;(d as { ask: unknown }).ask = () => vi.fn(async (parts: Array<{ image?: { data: string }; text?: string }>) =>
+      /A model was directed to pose like this/.test(parts.at(-1)!.text ?? '') ? (parts[0].image!.data === 'still-1' ? { pose_matches: true, objects_match: false, differs: 'the remote is in her hand' } : { pose_matches: true, objects_match: true, differs: '' }) : {})
+    const direction = { start: 'one hand on her midriff', moves: '', objects: 'the black remote lies on the rug left of her torso' }
+    const r = await makeStill({ ...job, direction }, ctx, d)
+    expect(r.result.tries?.[0].why.join(' ')).toMatch(/not as directed: the remote is in her hand/)
+    expect((d.generateStill as ReturnType<typeof vi.fn>).mock.calls[1][0].prompt).toMatch(/Change only this: .*as directed: one hand on her midriff; the black remote lies on the rug left of her torso/)
+    expect(r.result.status).toBe('passed')
+  })
+})

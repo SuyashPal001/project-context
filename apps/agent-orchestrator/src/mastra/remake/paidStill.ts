@@ -11,6 +11,7 @@ import { personIn } from './looks.js'
 import { compareFraming } from '../tools/framingCheck.js'
 import { missingProps, countProps } from '../tools/propCount.js'
 import { addedByEdit } from '../tools/editCheck.js'
+import { followsDirection, type LookDirection } from '../tools/lookDirection.js'
 import type { stillGateInput } from './prompts.js'
 import type { LedgerEntry, RemakeLook, StillResult, StillTry } from './types.js'
 
@@ -39,7 +40,9 @@ export interface StillJob { look: RemakeLook; kind: 'start' | 'end'; prompt: str
   /** an edit of an approved photo: nothing may appear that the photo lacks and the change does not explain */
   editOf?: { fileId: string; change: string }
   /** the reel's trick objects (a fan blade): added over the video later, so never in a photo */
-  trick?: string[] }
+  trick?: string[]
+  /** a start photo's direction from the original look (tools/lookDirection): the photo must follow it */
+  direction?: LookDirection | null }
 
 export const slotFor = (n: number, kind: 'start' | 'end', attempt: number): number => n * 4 + (kind === 'end' ? 2 : 0) + attempt
 
@@ -51,6 +54,7 @@ type StillCheck = { status: CheckResult['status']; hard: string[]; warnings: str
 // different nose") read to the prompt check as invented content and blocked the retry (fan rerun).
 const FIXES: Array<[RegExp, string | ((reason: string) => string)]> = [
   [/^the trick is drawn in the photo: /i, (r) => r.replace(/^the trick is drawn in the photo: /i, '').split(', ').map((t) => `remove the ${t} entirely, nothing of it anywhere in the frame`).join('; ')],
+  [/^not as directed: /i, (r) => { const m = /\(directed: (.*)\)$/.exec(r); return `${r.replace(/^not as directed: /i, '').replace(/ \(directed: .*\)$/, '')} is wrong; make it as directed: ${m ? m[1] : ''}` }],
   [/^not in the photo it was edited from: /i, (r) => `remove ${r.replace(/^not in the photo it was edited from: /i, '')}; the photo it was edited from has none of it`],
   [/face differs/i, 'the face must be exactly the person in the first image'],
   [/appears twice/i, 'show each object only once'],
@@ -100,6 +104,8 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
     ])
     const room = job.room ? await roomCheck(still, job.room, ctx, deps) : null
     const added = job.editOf ? await addedByEdit(deps.ask(ctx.tenantId), await deps.fetchImage(job.editOf.fileId, ctx.idToken), still, job.editOf.change, job.props ?? []) : null
+    // a start photo follows its direction (look 3 kept the remote in her hand, fan run real28)
+    const directed = job.kind === 'start' && job.direction ? await followsDirection(deps.ask(ctx.tenantId), still, job.direction) : null
     const trickCounts = job.trick?.length ? await countProps(deps.ask(ctx.tenantId), still, job.trick) : {}
     const drawnTrick = Object.entries(trickCounts).filter(([, n]) => (n ?? 0) > 0).map(([t]) => t)
     const missing = job.guide && job.props?.length ? await missingProps(deps.ask(ctx.tenantId), await deps.fetchImage(job.guide, ctx.idToken), still, job.props).catch(() => null) : null
@@ -124,7 +130,7 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
         console.error('[remake] crop to the original framing failed:', err instanceof Error ? err.message : String(err))
       }
     }
-    const hard = [...looks.reasons, ...(p.status === 'fail' && p.hard ? [p.reason] : []), ...(room?.hard ? [room.hard] : []), ...(framing?.ok === false && !cropped ? [`the camera framing differs from the original: ${framing.why}`] : []), ...(missing?.status === 'fail' ? [missing.reason] : []), ...(added?.status === 'fail' ? [added.reason] : []), ...(drawnTrick.length ? [`the trick is drawn in the photo: ${drawnTrick.join(', ')}`] : [])]
+    const hard = [...looks.reasons, ...(p.status === 'fail' && p.hard ? [p.reason] : []), ...(room?.hard ? [room.hard] : []), ...(framing?.ok === false && !cropped ? [`the camera framing differs from the original: ${framing.why}`] : []), ...(missing?.status === 'fail' ? [missing.reason] : []), ...(added?.status === 'fail' ? [added.reason] : []), ...(drawnTrick.length ? [`the trick is drawn in the photo: ${drawnTrick.join(', ')}`] : []), ...(directed?.status === 'fail' && job.direction ? [`${directed.reason} (directed: ${[job.direction.start, job.direction.objects].filter(Boolean).join('; ')})`] : [])]
     const warnings = [...(looks.warnings ?? []), ...(p.status === 'fail' && !p.hard ? [p.reason] : []), ...(room?.warning ? [room.warning] : []), ...(framing?.ok === null ? [/partly hidden/.test(framing.why) ? `the framing was only partly compared with the original: ${framing.why}` : 'the framing could not be compared with the original'] : [])]
     if (hard.length) return { status: 'fail', hard, warnings, reason: hard.join('; ') }
     if (p.status === 'unknown' && !warnings.length) return { status: 'unknown', hard, warnings, reason: p.reason, fileId: cropped }

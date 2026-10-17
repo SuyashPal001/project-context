@@ -54,3 +54,14 @@ describe('the clips are directed from the original', () => {
     expect(clipGateInput(p, p.looks[0], s, undefined, undefined, direction).planLine).toMatch(/the photographer's direction read from the original look/)
   })
 })
+
+describe('the prompt check knows the objects the direction places', () => {
+  it('an object the direction puts in the shot is counted present, though the plan guessed another time', async () => {
+    const { stillGateInput } = await import('./prompts.js')
+    const b = breakdown()
+    b.overview.props = [{ prop: 'Remote control', where: 'hand', when: '00:00 - 00:01', part_of_trick: false } as never]
+    const p = await writePlan(b, brand, vi.fn().mockResolvedValue({ lines: [] }))
+    const g = stillGateInput(p, p.looks[1], 'start', 'x', undefined, direction)
+    expect(g.startFrameObjects).toContain('Remote control')
+  })
+})

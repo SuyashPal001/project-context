@@ -25,3 +25,14 @@ export async function lookDirection(ask: AskFn, frames: Img[], objects: string[]
     return null
   }
 }
+
+/** Does a made photo follow its direction (her pose, where the objects rest)? Look 3 kept the remote in her hand
+ *  and look 4's legs were not crossed (fan run real28). No answer is unknown, never a pass. */
+export async function followsDirection(ask: AskFn, photo: Img, d: LookDirection): Promise<{ status: 'pass' | 'fail' | 'unknown'; reason: string }> {
+  try {
+    const v = await ask([{ image: photo }, { text: `A model was directed to pose like this: ${d.start}.${d.objects ? ` Objects: ${d.objects}.` : ''} Sides are as seen in the image. Judge the photo: does her pose broadly follow it (arms, hands, legs; small differences are fine), and are the objects where the direction says? Reply ONLY JSON {"pose_matches":true|false,"objects_match":true|false,"differs":"short, what is different"}` }])
+    if (v.pose_matches === true && (v.objects_match === true || !d.objects)) return { status: 'pass', reason: 'as directed' }
+    if (v.pose_matches === false || v.objects_match === false) return { status: 'fail', reason: `not as directed: ${String(v.differs ?? '').replace(/\.+$/, '') || 'the pose or the objects differ'}` }
+  } catch { /* unknown */ }
+  return { status: 'unknown', reason: 'the photo could not be compared with its direction' }
+}
