@@ -12,11 +12,9 @@
     "benchmark:ugc-avatar": "tsx scripts/ugc-avatar-benchmark.ts"
   },
   "dependencies": {
-    "puppeteer": "^23.11.1",
     "@ai-sdk/google": "^3.0.121",
     "@ai-sdk/google-vertex": "^4.0.197",
     "@ai-sdk/openai-compatible": "^2.0.74",
-    "ai": "^6.0.276",
     "@composio/client": "0.1.0-alpha.76",
     "@composio/core": "0.18.0",
     "@composio/mastra": "0.10.4",
@@ -39,6 +37,7 @@
     "@serverless-saas/mcp": "workspace:*",
     "@serverless-saas/permissions": "workspace:*",
     "@serverless-saas/types": "workspace:*",
+    "ai": "^6.0.276",
     "composio-core": "^0.5.39",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.45.2",
@@ -46,13 +45,16 @@
     "hono": "^4.7.5",
     "jose": "^5.10.0",
     "mammoth": "^1.12.0",
+    "opentype.js": "^2.0.0",
     "pdf-parse": "^2.4.5",
     "pg": "^8.13.3",
+    "puppeteer": "^23.11.1",
     "ws": "^8.18.1",
     "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
+    "@types/opentype.js": "^1.3.10",
     "@types/pdf-parse": "^1.1.5",
     "@types/pg": "^8.11.11",
     "@types/ws": "^8.5.14",

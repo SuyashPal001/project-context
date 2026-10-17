@@ -23,5 +23,5 @@ export interface TenantBrand {
   name: string | null; oneLiner: string | null; audience: string | null; region: string
   toneWords: string[]; emojiPolicy: string; signaturePhrases: string[]; bannedPhrases: string[]
   ctaExamples: string[]; voiceNotes: string | null; colors: Record<string, string>
-  headlineFont: string | null; logoFileId: string | null
+  headlineFont: string | null; logoFileId: string | null; fontFileId: string | null
 }

@@ -6,7 +6,7 @@ const brand: TenantBrand = {
   name: 'Mamaearth', oneLiner: 'Toxin-free skincare.', audience: 'Women 22-35 in Indian cities', region: 'IN',
   toneWords: ['warm', 'caring'], emojiPolicy: 'minimal', signaturePhrases: ['Goodness Inside'], bannedPhrases: ['cheap'],
   ctaExamples: ['Shop now'], voiceNotes: '## What we avoid\n- Discount-speak', colors: { primary: '#00A651' },
-  headlineFont: 'Poppins', logoFileId: 'f1',
+  headlineFont: 'Poppins', logoFileId: 'f1', fontFileId: null,
 }
 
 describe('brandInstructionBlock', () => {
@@ -43,7 +43,8 @@ describe('brandInstructionBlock', () => {
   it('treats a row with nothing saved as no brand', () => {
     const empty: TenantBrand = {
       name: '  ', oneLiner: null, audience: null, region: 'IN', toneWords: [], emojiPolicy: 'minimal',
-      signaturePhrases: [], bannedPhrases: [], ctaExamples: [], voiceNotes: null, colors: {}, headlineFont: null, logoFileId: null,
+      signaturePhrases: [], bannedPhrases: [], ctaExamples: [], voiceNotes: null, colors: {}, headlineFont: null,
+      logoFileId: null, fontFileId: null,
     }
     expect(brandInstructionBlock(empty)).toContain('no saved brand')
     expect(brandInstructionBlock({ ...empty, bannedPhrases: ['cheap'] })).not.toContain('no saved brand')

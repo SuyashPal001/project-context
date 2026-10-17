@@ -6,7 +6,7 @@ vi.mock('@serverless-saas/ai', () => ({ getAgentTools: vi.fn() }))
 vi.mock('./db.js', () => ({ makeAppPool: vi.fn(() => ({ query: mockPoolQuery, on: vi.fn() })) }))
 
 import { getAgentTools } from '@serverless-saas/ai'
-import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentPersonaPrompt, fetchAttachedSkills, fetchTestSkill, fetchInvokedSkills, fetchOfficialSkills, fetchOfficialDirectorSkills, toMastraSkillName, agentBelongsToTenant, recordSkillRuns, resolveInvokedSkills } from './usage.js'
+import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentPersonaPrompt, fetchAttachedSkills, fetchTestSkill, fetchInvokedSkills, fetchOfficialSkills, fetchOfficialDirectorSkills, toMastraSkillName, agentBelongsToTenant, recordSkillRuns, resolveInvokedSkills, fetchTenantBrand } from './usage.js'
 
 beforeEach(() => {
   mockPoolQuery.mockReset()
@@ -511,5 +511,55 @@ describe('resolveInvokedSkills', () => {
   it('returns null instead of throwing on a database error, distinct from "nothing resolved"', async () => {
     mockPoolQuery.mockRejectedValueOnce(new Error('db down'))
     await expect(resolveInvokedSkills([SKILL_ID], 'tenant-1')).resolves.toBeNull()
+  })
+})
+
+describe('fetchTenantBrand', () => {
+  const row = {
+    name: 'Mamaearth', one_liner: 'Toxin-free skincare.', audience: 'Women 22-35', region: 'IN',
+    tone_words: ['warm'], emoji_policy: 'minimal', signature_phrases: [], banned_phrases: [],
+    cta_examples: [], voice_notes: null, colors: { primary: '#00A651' },
+    headline_font: 'Poppins', logo_file_id: 'logo-1', font_file_id: 'font-1',
+  }
+
+  it('returns null without querying when tenantId is empty', async () => {
+    await expect(fetchTenantBrand('')).resolves.toBeNull()
+    expect(mockPoolQuery).not.toHaveBeenCalled()
+  })
+
+  it('maps a row including font_file_id into fontFileId', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [row] })
+    const result = await fetchTenantBrand('t1')
+    expect(result).toMatchObject({ name: 'Mamaearth', headlineFont: 'Poppins', logoFileId: 'logo-1', fontFileId: 'font-1' })
+    expect(mockPoolQuery).toHaveBeenCalledTimes(1)
+    expect(mockPoolQuery.mock.calls[0][0]).toContain('font_file_id')
+  })
+
+  it('returns null when there is no brand row', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    await expect(fetchTenantBrand('t1')).resolves.toBeNull()
+  })
+
+  // migration 0103 (adding font_file_id) may not be applied yet in every
+  // environment — selecting the column then throws Postgres 42703
+  // (undefined_column). fetchTenantBrand must retry once without it rather
+  // than letting every turn's brand load fail to null.
+  it('retries without font_file_id on a 42703 undefined_column error, resolving fontFileId to null', async () => {
+    const undefinedColumnError = Object.assign(new Error('column "font_file_id" does not exist'), { code: '42703' })
+    mockPoolQuery
+      .mockRejectedValueOnce(undefinedColumnError)
+      .mockResolvedValueOnce({ rows: [{ ...row, font_file_id: undefined }] })
+
+    const result = await fetchTenantBrand('t1')
+
+    expect(result).toMatchObject({ name: 'Mamaearth', fontFileId: null })
+    expect(mockPoolQuery).toHaveBeenCalledTimes(2)
+    expect(mockPoolQuery.mock.calls[1][0]).not.toContain('font_file_id')
+  })
+
+  it('rethrows a non-42703 database error instead of retrying', async () => {
+    mockPoolQuery.mockRejectedValueOnce(new Error('connection terminated'))
+    await expect(fetchTenantBrand('t1')).rejects.toThrow('connection terminated')
+    expect(mockPoolQuery).toHaveBeenCalledTimes(1)
   })
 })

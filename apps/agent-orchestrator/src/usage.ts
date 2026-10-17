@@ -486,19 +486,34 @@ export async function fetchAgentName(agentId: string): Promise<string | null> {
 
 // Not cached: the user edits the brand on the Brand page and expects the next
 // turn to follow it. One indexed lookup (creative_brand_tenant_unique) per turn.
+type TenantBrandRow = {
+  name: string | null; one_liner: string | null; audience: string | null; region: string
+  tone_words: string[]; emoji_policy: string; signature_phrases: string[]; banned_phrases: string[]
+  cta_examples: string[]; voice_notes: string | null; colors: Record<string, string> | null
+  headline_font: string | null; logo_file_id: string | null; font_file_id?: string | null
+}
+
+const PG_UNDEFINED_COLUMN = '42703'
+
 export async function fetchTenantBrand(tenantId: string): Promise<TenantBrand | null> {
   if (!tenantId) return null
-  const res = await getPool().query<{
-    name: string | null; one_liner: string | null; audience: string | null; region: string
-    tone_words: string[]; emoji_policy: string; signature_phrases: string[]; banned_phrases: string[]
-    cta_examples: string[]; voice_notes: string | null; colors: Record<string, string> | null
-    headline_font: string | null; logo_file_id: string | null
-  }>(
-    `SELECT name, one_liner, audience, region, tone_words, emoji_policy, signature_phrases, banned_phrases,
+  const withFontColumn = `SELECT name, one_liner, audience, region, tone_words, emoji_policy, signature_phrases, banned_phrases,
+            cta_examples, voice_notes, colors, headline_font, logo_file_id, font_file_id
+       FROM creative_brand WHERE tenant_id = $1 LIMIT 1`
+  // migration 0103 adds font_file_id; until it's applied in this environment,
+  // selecting it throws undefined_column (42703). Retry once without it
+  // rather than letting every turn's brand load fail to null.
+  const withoutFontColumn = `SELECT name, one_liner, audience, region, tone_words, emoji_policy, signature_phrases, banned_phrases,
             cta_examples, voice_notes, colors, headline_font, logo_file_id
-       FROM creative_brand WHERE tenant_id = $1 LIMIT 1`,
-    [tenantId],
-  )
+       FROM creative_brand WHERE tenant_id = $1 LIMIT 1`
+  let res
+  try {
+    res = await getPool().query<TenantBrandRow>(withFontColumn, [tenantId])
+  } catch (err) {
+    if ((err as { code?: string }).code !== PG_UNDEFINED_COLUMN) throw err
+    console.warn('[fetchTenantBrand] creative_brand.font_file_id missing (migration 0103 not applied yet) — retrying without it')
+    res = await getPool().query<TenantBrandRow>(withoutFontColumn, [tenantId])
+  }
   const r = res.rows[0]
   if (!r) return null
   return {
@@ -506,6 +521,7 @@ export async function fetchTenantBrand(tenantId: string): Promise<TenantBrand | 
     toneWords: r.tone_words ?? [], emojiPolicy: r.emoji_policy, signaturePhrases: r.signature_phrases ?? [],
     bannedPhrases: r.banned_phrases ?? [], ctaExamples: r.cta_examples ?? [], voiceNotes: r.voice_notes,
     colors: r.colors ?? {}, headlineFont: r.headline_font, logoFileId: r.logo_file_id,
+    fontFileId: r.font_file_id ?? null,
   }
 }
 

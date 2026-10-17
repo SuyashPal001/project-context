@@ -28,7 +28,8 @@ function editList(saved: string[], add: string[] = [], remove: string[] = [], ma
 
 const NO_BRAND: TenantBrand = {
   name: null, oneLiner: null, audience: null, region: 'IN', toneWords: [], emojiPolicy: 'minimal',
-  signaturePhrases: [], bannedPhrases: [], ctaExamples: [], voiceNotes: null, colors: {}, headlineFont: null, logoFileId: null,
+  signaturePhrases: [], bannedPhrases: [], ctaExamples: [], voiceNotes: null, colors: {}, headlineFont: null,
+  logoFileId: null, fontFileId: null,
 }
 
 const words = (max: number, items: number) => z.array(z.string().max(max)).max(items).optional()
@@ -105,7 +106,8 @@ interface BrandRecordLite {
   name: string | null; oneLiner: string | null; audience: string | null; region: string
   toneWords: string[]; emojiPolicy: string; signaturePhrases: string[]; bannedPhrases: string[]
   ctaExamples: string[]; voiceNotes: string | null; colors: Record<string, string>
-  headlineFont: string | null; logo: { fileId: string } | null; importStatus: string
+  headlineFont: string | null; logo: { fileId: string } | null; font: { fileId: string } | null
+  importStatus: string
 }
 
 /** How long import_brand waits for the fill. Mutable so tests can shorten it. */
@@ -149,7 +151,7 @@ function toTenantBrand(r: BrandRecordLite): TenantBrand {
     name: r.name, oneLiner: r.oneLiner, audience: r.audience, region: r.region, toneWords: r.toneWords ?? [],
     emojiPolicy: r.emojiPolicy, signaturePhrases: r.signaturePhrases ?? [], bannedPhrases: r.bannedPhrases ?? [],
     ctaExamples: r.ctaExamples ?? [], voiceNotes: r.voiceNotes, colors: r.colors ?? {}, headlineFont: r.headlineFont,
-    logoFileId: r.logo?.fileId ?? null,
+    logoFileId: r.logo?.fileId ?? null, fontFileId: r.font?.fileId ?? null,
   }
 }
 
