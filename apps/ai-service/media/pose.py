@@ -344,6 +344,15 @@ def _body_len(kp, sc, w: int, h: int):
     return round(float(np.linalg.norm((kp[L_SH] + kp[R_SH]) / 2 - (kp[L_AN] + kp[R_AN]) / 2)) / h, 3)
 
 
+def _body_mid(kp, sc):
+    """Midway between the shoulder midpoint and the ankle midpoint, in frame fractions; None unless all four are seen."""
+    kp, sc = np.asarray(kp), np.asarray(sc)
+    if sc[[L_SH, R_SH, L_AN, R_AN]].min() < VIS:
+        return None
+    m = ((kp[L_SH] + kp[R_SH]) / 2 + (kp[L_AN] + kp[R_AN]) / 2) / 2
+    return [round(float(m[0]), 3), round(float(m[1]), 3)]
+
+
 def read_image(path: str) -> dict:
     """The same general body reading as a look, for one still (a generated remake frame)."""
     img = cv2.imread(path)
@@ -362,7 +371,9 @@ def read_image(path: str) -> dict:
             # where the head is, so a frame's face can be hidden before an image model sees it
             "head": _head_box(main[0], main[1], w, h),
             # shoulders to ankles, in frame heights: the person's size, whatever covers the head
-            "body_len": _body_len(main[0], main[1], w, h)}
+            "body_len": _body_len(main[0], main[1], w, h),
+            # where she lies: midway between shoulders and ankles (a cape or arm spread to the edge moves the box)
+            "body_mid": _body_mid(main[0], main[1])}
 
 
 def measure_pose(path: str, looks: list[dict], exclude=None, fps: float = 5.0) -> dict:

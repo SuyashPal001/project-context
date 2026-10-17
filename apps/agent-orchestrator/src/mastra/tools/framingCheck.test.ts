@@ -35,5 +35,9 @@ describe('compareFraming', () => {
   it('body length (shoulders to ankles) decides the size when both pictures have it', () => {
     expect(compareFraming([0.03, 0.31, 1, 0.985], [0.07, 0.16, 1, 0.998], { refLen: 0.46, gotLen: 0.45 }).ok).toBe(true)
     expect(compareFraming([0.3, 0.2, 0.7, 0.8], [0.3, 0.2, 0.7, 0.8], { refLen: 0.4, gotLen: 0.6 }).why).toMatch(/the camera is closer/)
+  })  // fan run real20: an open cape to the frame edge moved the box centre; her body had not moved
+  it('the body midpoint decides where she lies when both pictures have it', () => {
+    expect(compareFraming([0.157, 0.171, 0.988, 0.966], [0.069, 0.171, 0.818, 0.99], { refMid: [0.47, 0.56], gotMid: [0.49, 0.57] }).ok).toBe(true)
+    expect(compareFraming([0.3, 0.2, 0.7, 0.8], [0.3, 0.2, 0.7, 0.8], { refMid: [0.5, 0.5], gotMid: [0.3, 0.5] }).why).toMatch(/further left/)
   })
 })

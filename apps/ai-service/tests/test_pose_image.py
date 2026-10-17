@@ -96,3 +96,10 @@ def test_reading_gives_the_body_length_shoulders_to_ankles(tmp_path, monkeypatch
     kp, sc = person(hide=(15, 16))
     monkeypatch.setattr(pose, "_load", lambda: (FakeDet([[10, 20, 90, 180]]), FakePose([(kp, sc)])))
     assert pose.read_image(str(_img(tmp_path)))["body_len"] is None
+
+# An open cape spread to the frame edge moved the box centre, and a same-place photo failed as "shifted left"
+# (fan run real20). Where she lies is read from her body: the midpoint of shoulders and ankles.
+def test_reading_gives_the_body_midpoint(tmp_path, monkeypatch):
+    kp, sc = person()  # shoulders mid (0.5, 0.2), ankles mid (0.5, 0.9)
+    monkeypatch.setattr(pose, "_load", lambda: (FakeDet([[10, 20, 90, 180]]), FakePose([(kp, sc)])))
+    assert pose.read_image(str(_img(tmp_path)))["body_mid"] == [0.5, 0.55]
