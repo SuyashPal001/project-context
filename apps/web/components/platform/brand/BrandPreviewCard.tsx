@@ -105,7 +105,7 @@ function PreviewCaption({ hardToRead, hasColors }: { hardToRead: boolean; hasCol
     }
     return (
         <p className="text-xs text-muted-foreground">
-            {hasColors ? 'Preview with your colours' : 'Olmo picks colours to suit each ad'}
+            {hasColors ? 'Preview with your colours' : 'No brand colours yet — Olmo chooses them for you'}
         </p>
     );
 }

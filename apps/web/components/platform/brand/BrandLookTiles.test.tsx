@@ -66,7 +66,7 @@ function coloursSection() {
     return screen.getByText('Pick a palette, set your own, or leave it to Olmo.').closest('div')!.parentElement!;
 }
 function typographySection() {
-    return screen.getByText('Olmo picks one to suit each ad, or choose your own.').closest('div')!.parentElement!;
+    return screen.getByText('Pick your brand font, or let Olmo choose.').closest('div')!.parentElement!;
 }
 
 describe('colour palettes', () => {

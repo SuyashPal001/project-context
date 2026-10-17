@@ -412,7 +412,7 @@ function FontCards({ brand, onSave }: SectionProps) {
                 className={cn('rounded-xl bg-muted/40 p-4 text-left hover:bg-muted/60', !headlineFont && 'ring-2 ring-primary')}>
                 <Sparkles className="h-5 w-5 text-muted-foreground" />
                 <p className="mt-2 text-sm font-medium text-foreground">Olmo picks</p>
-                <p className="text-xs text-muted-foreground">Suits the ad</p>
+                <p className="text-xs text-muted-foreground">Olmo chooses for you</p>
             </button>
             {BRAND_FONT_CARDS.map(({ name, subtitle }) => (
                 <button key={name} type="button" aria-pressed={headlineFont === name} onClick={() => onSave({ headlineFont: name })}
@@ -485,7 +485,7 @@ export function LookSection({ brand, onSave, onUploadImage }: SectionProps & {
                     <div className="space-y-3">
                         <div>
                             <p className="text-sm font-medium text-foreground">Typography</p>
-                            <p className="text-xs text-muted-foreground">Olmo picks one to suit each ad, or choose your own.</p>
+                            <p className="text-xs text-muted-foreground">Pick your brand font, or let Olmo choose.</p>
                         </div>
                         <FontCards brand={brand} onSave={onSave} />
                     </div>

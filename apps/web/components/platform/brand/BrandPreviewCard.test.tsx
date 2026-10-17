@@ -45,7 +45,7 @@ describe('BrandPreviewCard', () => {
 
     it('shows the Olmo-picks caption when no colours are set', () => {
         render(<BrandPreviewCard brand={BASE} />);
-        expect(screen.getByText('Olmo picks colours to suit each ad')).toBeTruthy();
+        expect(screen.getByText('No brand colours yet — Olmo chooses them for you')).toBeTruthy();
     });
 
     it('shows "Preview with your colours" once a colour is set and it reads fine', () => {
