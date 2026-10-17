@@ -172,7 +172,9 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     description: 'Use when the user wants to clone or recreate a reference ad\'s structure onto their own product — "clone this ad", "make a video like this template".',
     file: officialSkillFile('template-video.md'),
     showcase: {
-      imageUrl: '/creative/skills/template-video.jpg',
+      // The fan-trend reel recreated by the skill end to end (2026-10-17 showcase run, chosen by the user), 9:16.
+      imageUrl: '/creative/skills/template-video-example.jpg',
+      videoUrl: '/creative/skills/template-video-example.mp4',
       bestFor: ['Proven ad formats', 'Fast variations', 'Product demos'],
       starterPrompt: 'Make a video like this template for my product',
     },
