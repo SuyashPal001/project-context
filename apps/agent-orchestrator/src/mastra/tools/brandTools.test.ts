@@ -26,9 +26,44 @@ describe('update_brand', () => {
   it('PATCHes only the given fields with the user token', async () => {
     fetchMock.mockResolvedValue(new Response('{"data":{}}', { status: 200 }))
     const { updateBrandTool } = await import('./brandTools.js')
-    const out = await updateBrandTool.execute!({ addBannedPhrases: ['cheap'] } as never, ctx())
+    const out = await updateBrandTool.execute!({ name: 'Fitnearn' } as never, ctx())
     expect(out).toMatchObject({ success: true })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.test/api/v1/brand')
+    expect(init.method).toBe('PATCH')
+    expect(init.headers.Authorization).toBe('Bearer tok')
+    expect(JSON.parse(init.body)).toEqual({ name: 'Fitnearn' })
+  })
+
+  it('with no brand on the turn, reads the saved brand before editing a list (never wipes it)', async () => {
+    const record = { ...saved, oneLiner: null, audience: null, region: 'IN', emojiPolicy: 'minimal', voiceNotes: null,
+      headlineFont: null, logo: null, importStatus: 'done' }
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: record }), { status: 200 }))
+      .mockResolvedValueOnce(new Response('{"data":{}}', { status: 200 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    const out = await updateBrandTool.execute!({ addBannedPhrases: ['miracle'] } as never, ctx())
+    expect(out).toMatchObject({ success: true })
+    expect(fetchMock.mock.calls[0][1].method ?? 'GET').toBe('GET')
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ bannedPhrases: ['chemical-free', 'Cheap', 'miracle'] })
+  })
+
+  it('refuses a list edit when the saved brand cannot be read', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('{}', { status: 500 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    const out = await updateBrandTool.execute!({ addBannedPhrases: ['miracle'] } as never, ctx())
+    expect(out).toMatchObject({ success: false })
+    expect(fetchMock).toHaveBeenCalledTimes(1) // no PATCH sent
+  })
+
+  it('a genuinely new brand starts its lists from empty', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('{"data":null}', { status: 200 }))
+      .mockResolvedValueOnce(new Response('{"data":{}}', { status: 200 }))
+    const { updateBrandTool } = await import('./brandTools.js')
+    await updateBrandTool.execute!({ addBannedPhrases: ['cheap'] } as never, ctx())
+    const [url, init] = fetchMock.mock.calls[1]
     expect(url).toBe('https://api.test/api/v1/brand')
     expect(init.method).toBe('PATCH')
     expect(init.headers.Authorization).toBe('Bearer tok')
@@ -68,12 +103,14 @@ describe('update_brand', () => {
   })
 
   it('a first list edit with no saved brand starts from empty and is kept for the next', async () => {
-    fetchMock.mockImplementation(async () => new Response('{"data":{}}', { status: 200 }))
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => new Response(init?.method === 'PATCH' ? '{"data":{}}' : '{"data":null}', { status: 200 }))
     const { updateBrandTool } = await import('./brandTools.js')
     const c = ctx()
     await updateBrandTool.execute!({ addToneWords: ['warm'] } as never, c)
     await updateBrandTool.execute!({ addToneWords: ['bold'] } as never, c)
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ toneWords: ['warm', 'bold'] })
+    // GET (no brand yet), PATCH warm, then PATCH warm+bold from this turn's copy — no second GET
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({ toneWords: ['warm', 'bold'] })
   })
 
   it('sends only the colour roles given', async () => {

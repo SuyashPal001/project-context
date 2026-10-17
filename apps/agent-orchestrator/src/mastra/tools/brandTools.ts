@@ -61,8 +61,16 @@ export const updateBrandTool = createTool({
     const fields: Record<string, unknown> = Object.fromEntries(
       Object.entries(input).filter(([k, v]) => v !== undefined && !listInputKeys.has(k)),
     )
-    const brand = execContext?.requestContext?.get('brand') as TenantBrand | null | undefined
+    let brand = execContext?.requestContext?.get('brand') as TenantBrand | null | undefined
     const given = input as Record<string, string[] | undefined>
+    const editsLists = (Object.values(LISTS) as Array<typeof LISTS[ListKey]>).some((l) => given[l.add] || given[l.remove])
+    if (editsLists && !brand) {
+      // No brand on this turn means either there is none yet or loading it failed.
+      // Never rebuild a list from empty on a guess — that would wipe the saved list.
+      const fresh = await fetchSavedBrand(idToken)
+      if (fresh === 'failed') return { success: false, error: "Couldn't load the brand to edit it. Try again." }
+      brand = fresh
+    }
     for (const [key, l] of Object.entries(LISTS) as [ListKey, typeof LISTS[ListKey]][]) {
       if (!given[l.add] && !given[l.remove]) continue
       fields[key] = editList(brand?.[key] ?? [], given[l.add], given[l.remove], l.max)
@@ -120,11 +128,27 @@ async function waitForImport(idToken: string): Promise<BrandRecordLite | null> {
   return null
 }
 
+/** The saved brand straight from the API: null when there is none, 'failed' when it can't be read. */
+async function fetchSavedBrand(idToken: string): Promise<TenantBrand | null | 'failed'> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/v1/brand`, { headers: { Authorization: `Bearer ${idToken}` } })
+    if (!res.ok) {
+      console.error('[update_brand] brand read', res.status)
+      return 'failed'
+    }
+    const { data } = await res.json() as { data: BrandRecordLite | null }
+    return data ? toTenantBrand(data) : null
+  } catch (err) {
+    console.error('[update_brand] brand read failed', (err as Error).message)
+    return 'failed'
+  }
+}
+
 function toTenantBrand(r: BrandRecordLite): TenantBrand {
   return {
-    name: r.name, oneLiner: r.oneLiner, audience: r.audience, region: r.region, toneWords: r.toneWords,
-    emojiPolicy: r.emojiPolicy, signaturePhrases: r.signaturePhrases, bannedPhrases: r.bannedPhrases,
-    ctaExamples: r.ctaExamples, voiceNotes: r.voiceNotes, colors: r.colors ?? {}, headlineFont: r.headlineFont,
+    name: r.name, oneLiner: r.oneLiner, audience: r.audience, region: r.region, toneWords: r.toneWords ?? [],
+    emojiPolicy: r.emojiPolicy, signaturePhrases: r.signaturePhrases ?? [], bannedPhrases: r.bannedPhrases ?? [],
+    ctaExamples: r.ctaExamples ?? [], voiceNotes: r.voiceNotes, colors: r.colors ?? {}, headlineFont: r.headlineFont,
     logoFileId: r.logo?.fileId ?? null,
   }
 }

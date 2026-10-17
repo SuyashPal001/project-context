@@ -378,6 +378,23 @@ describe('logo and veg mark on the packshot (M3, M4)', () => {
     expect(await run({}, { logoFileId: 'p1' })).toMatchObject({ fileId: 'carded1' })
     expect(composite().args.filter((a) => a === '-i')).toHaveLength(2)
   })
+  it('a saved brand logo that no longer exists (deleted from Drive) makes an end card without a logo', async () => {
+    setup()
+    vi.mocked(fetchPresignedUrl).mockImplementation(async (id: string) => {
+      if (id === 'logo1') throw new Error('presign 404')
+      return `https://s3/${id}`
+    })
+    expect(await run({}, { logoFileId: 'logo1' })).toMatchObject({ fileId: 'carded1' })
+    expect(composite().args.filter((a) => a === '-i')).toHaveLength(2)
+  })
+  it('an explicit logo that no longer exists still refuses (the user asked for it)', async () => {
+    setup()
+    vi.mocked(fetchPresignedUrl).mockImplementation(async (id: string) => {
+      if (id === 'logo1') throw new Error('presign 404')
+      return `https://s3/${id}`
+    })
+    expect(await run({ logoFileId: 'logo1' })).toMatchObject({ refused: true, refusalReason: 'SOURCE_UNAVAILABLE' })
+  })
   it('an explicit logo still refuses even when the brand has one', async () => {
     setup({ logoBuf: Buffer.from('GIF89a......') })
     expect(await run({ logoFileId: 'logo1' }, { logoFileId: 'other' })).toMatchObject({ refused: true, refusalReason: expect.stringMatching(/^LOGO_NOT_IMAGE: /) })

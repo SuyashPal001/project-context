@@ -212,11 +212,19 @@ export const compositeEndCard = createTool({
     const scopeId = tenantId || sessionId
     let videoPath: string, photoPath: string
     let logoPath: string | undefined
+    // A saved brand logo that can no longer be fetched (e.g. deleted from Drive)
+    // means "no logo", not a failed end card. An explicit logoFileId still fails loudly.
+    const logoStep = <T,>(p: Promise<T>): Promise<T | undefined> => brandDefaultLogo
+      ? p.catch((err) => {
+        console.warn(`[session:${sessionId}] compositeEndCard: saved brand logo unavailable, end card without a logo:`, (err as Error).message)
+        return undefined
+      })
+      : p
     try {
       const [videoUrl, photoUrl, logoUrl] = await Promise.all([
         fetchPresignedUrl(videoFileId, idToken),
         fetchPresignedUrl(productPhotoFileId, idToken),
-        logoFileId ? fetchPresignedUrl(logoFileId, idToken) : Promise.resolve(undefined),
+        logoFileId ? logoStep(fetchPresignedUrl(logoFileId, idToken)) : Promise.resolve(undefined),
       ])
 
       // E4: overlay_text marks the key of every video it burned a disclaimer
@@ -227,7 +235,7 @@ export const compositeEndCard = createTool({
       const [video, photo, logoFile] = await Promise.all([
         downloadToSessionCache(scopeId, videoFileId, videoUrl, MAX_SOURCE_BYTES),
         downloadToSessionCache(scopeId, productPhotoFileId, photoUrl, MAX_SOURCE_BYTES),
-        logoFileId && logoUrl ? downloadToSessionCache(scopeId, logoFileId, logoUrl, MAX_SOURCE_BYTES) : Promise.resolve(undefined),
+        logoFileId && logoUrl ? logoStep(downloadToSessionCache(scopeId, logoFileId, logoUrl, MAX_SOURCE_BYTES)) : Promise.resolve(undefined),
       ])
       videoPath = video.filePath
       photoPath = photo.filePath
