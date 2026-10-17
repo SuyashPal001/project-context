@@ -1,6 +1,6 @@
 // Which model animates each look, for how long, and the prompt, all from the plan and
 // the measured readings (spec §5.4, rules 5, 6, 7.1, 7.2, 12).
-import { personWords } from '../tools/videoBreakdown/measuredLine.js'
+import { personWords, plainBody } from '../tools/videoBreakdown/measuredLine.js'
 import { personIn, refOf } from './looks.js'
 import { CAST_BY_IMAGE } from './prompts.js'
 import type { Brand, PlanLine, RemakeLook, RemakePlan, StillResult } from './types.js'
@@ -40,7 +40,8 @@ export function clipSpecs(plan: RemakePlan, stills: StillResult[]): ClipSpec[] {
     // Shared clip timing: a Veo length retimed only when the change can't be seen (the end still stays
     // the last frame), else the smallest covering length cut at real speed. No warm-up: frame 1 is the still.
     const veo = pickLength(len, VEO_SECONDS)
-    if (end && veo) return { ...base, engine: 'veo', ...veo }
+    // a person is Omni from the start photo, v12's way (Veo's in-between splayed her knees, fan run real25)
+    if (end && veo && !personIn(look)) return { ...base, engine: 'veo', ...veo }
     if (len <= 10 + 1e-9) return { ...base, engine: 'omni', end: null, ...omniTiming(look) }
     return { ...base, engine: 'none', seconds: 0, end: null, reason: 'this part is too long to animate yet, so it stays a still' }
   })
@@ -69,31 +70,50 @@ const scaleTimes = (lines: string[], factor: number, shift = 0) =>
 
 /** `plain`: the plainer wording tried once after a content block (spec rule 11) — frames, moves
  *  and camera only; no person, body or expression description. */
+/** The moves said in words ("at 1.3s: arm/hand: raises the remote (up)"); a measured motion reading ("at 3.7s:
+ *  legs moves up") of a top-down shot made Veo yank a knee up and splay her legs (fan run real25). */
+const describedMoves = (lines: string[]): string[] => lines.filter((l) => /^at [\d.]+s: [^:]+: /.test(l))
+
 export function clipPrompt(plan: RemakePlan, look: RemakeLook, _brand: Brand, engine: 'veo' | 'omni', clipSeconds?: number, plain = false, fit?: ClipFit): string {
   const len = look.endS - look.startS
   const trim = fit?.mode === 'trim' ? fit : null
   const factor = trim ? 1 : clipSeconds && len > 0 ? clipSeconds / len : 1
   const shift = trim?.startS ?? 0
   const i = refOf(look)
-  const parts: string[] = [engine === 'veo'
+  const person = personIn(look) && !plain
+  // A person is v12's way (the user: "v12 poses were so on point"): a fashion lookbook line from the start photo,
+  // the original's moves in plain words, the legs' change of side, then holding the pose. Veo's in-between and
+  // measured motion lines ("at 3.7s: legs moves up") splayed her knees (fan run real25).
+  const parts: string[] = person ? ['Fashion lookbook shot.'] : []
+  parts.push(engine === 'veo'
     ? 'The first image is the first frame and the second image is the last frame; move naturally from one to the other.'
-    : 'The image is the exact first frame; continue from it.']
-  if (personIn(look) && !plain) {
+    : 'The image is the exact first frame; continue from it.')
+  const moves = describedMoves(look.moveLines)
+  if (person) {
     parts.push('Keep the same person, face, outfit and setting the whole time.')
-    // Plain words, never the measured jargon: "knees fall to image-left, feet to image-right" made Omni twist her
-    // legs under a long dress (fan run real24). The images carry the pose; the legs' side and her gaze are said simply.
-    const legsMove = look.moveLines.some((m) => /\blegs?\b|knee|feet|foot/i.test(m))
-    const side = look.start?.legs_toward
-    if (!legsMove && side && side !== 'unknown') parts.push(`Her legs lie ${side === 'center' ? 'straight' : `to the ${side.replace('image-', '')}`} and stay still.`)
-    if (look.start?.facing === 'front') parts.push('She looks into the camera, eyes on the lens.')
     const expression = shown(plan, `looks[${i}].expression`, look.expression)
     if (expression) parts.push(`Expression: ${expression}.`)
+    if (moves.length) parts.push(`Movement (directions as the viewer sees the frame): ${scaleTimes(moves, factor, shift).join('; ')}.`)
+    const from = look.start ? legSide(look.start) : null
+    const to = look.end ? legSide(look.end) : null
+    if (to && to !== 'center' && to !== from) parts.push(`${moves.length ? 'Then' : 'Slowly'} she ${moves.length ? 'slowly ' : ''}slides both legs together to the ${to.replace('image-', '')} side of the image${look.end?.knees === 'bent' ? ', knees softly bent,' : ''} and holds the pose.`.replace(/^Slowly she slides/, 'She slowly slides').replace(/^Then she slowly/, 'then she slowly'))
+    else parts.push('She holds the pose, breathing softly.')
+    // the user (2026-10-17): "energy of the influencer, pulling towards, not blank, not too much giggling... slay"
+    if (look.start?.facing !== 'back') parts.push('Confident influencer energy: she owns the camera, eyes locked on the lens with a subtle knowing look; poised and magnetic, never blank, no big smile or giggling; she does not speak.')
+    parts.push('The camera is locked off and never moves or zooms; her whole body stays in frame. All directions are as seen in the image.')
+  } else {
+    parts.push(moves.length ? `Movement (directions as the viewer sees the frame): ${scaleTimes(moves, factor, shift).join('; ')}.` : 'Hold the pose; only small natural movement of the head and hands.')
+    parts.push(look.cameraLines.length ? `Camera: ${scaleTimes(look.cameraLines, factor, shift).join('; ')}.` : 'The camera stays still.')
   }
-  parts.push(look.moveLines.length ? `Movement (directions as the viewer sees the frame): ${scaleTimes(look.moveLines, factor, shift).join('; ')}.` : 'Hold the pose; only small natural movement of the head and hands.')
-  parts.push(look.cameraLines.length ? `Camera: ${scaleTimes(look.cameraLines, factor, shift).join('; ')}.` : 'The camera stays still.')
   if (trim && clipSeconds && clipSeconds > shift + len + 0.05) parts.push(`Finish every move by ${(shift + len).toFixed(1)}s, then hold that last pose with only small natural motion until the end.`)
   parts.push('Add nothing that is not described here: no extra people, objects, effects, text, logos or flicker; no change of lighting.')
   return parts.join(' ')
+}
+
+/** Which way the legs lie, as the viewer sees it. */
+const legSide = (b: NonNullable<RemakeLook['start']>): string | null => {
+  const s = b.legs_toward === 'image-left' || b.legs_toward === 'image-right' ? b.legs_toward : b.knees_toward
+  return s === 'image-left' || s === 'image-right' || s === 'center' ? s : null
 }
 
 /** What the prompt check reads: the same timed moves the prompt states, and no reference moments (a clip
@@ -113,7 +133,7 @@ export function clipGateInput(plan: RemakePlan, look: RemakeLook, prompt: string
       expression: shown(plan, `looks[${i}].expression`, look.expression) ?? undefined, start_pose: look.startPose, end_pose: look.endPose,
       body_at_start: look.start ? personWords(look.start, null).join(', ') : undefined,
       body_at_end: look.end ? personWords(look.end, null).join(', ') : undefined,
-      moves: scaleTimes(look.moveLines, factor, trim?.startS ?? 0),
+      moves: scaleTimes(describedMoves(look.moveLines), factor, trim?.startS ?? 0),
       timing: 'move times are clip times: the clip is retimed or trimmed to the look afterwards',
     } as Record<string, unknown> & { expression?: string },
     startFrameObjects: plan.reference.props.flatMap((p, j) => shown(plan, `props[${j}]`, p.prop) ?? []),

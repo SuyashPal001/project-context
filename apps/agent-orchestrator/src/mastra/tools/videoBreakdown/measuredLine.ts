@@ -46,3 +46,20 @@ export function measuredLine(look: PoseLookResult, moves: PoseMove[]): string {
   if (inside.length) line += `; moves: ${inside.map((m) => `${AREA[m.area] ?? m.area} ${dir(m.direction)} at ${m.t_s.toFixed(1)}s`).join(', ')}`
   return line
 }
+
+/** The body in plain fashion words for image and video models: which way the legs lie, soft knees, a raised arm,
+ *  a back or side to the camera. Never the measurement jargon ("knees fall to image-left, feet to image-right",
+ *  "upright in frame"), which made the models twist her legs (fan runs real24/25, 2026-10-17). */
+export function plainBody(b: BodyReading): string {
+  const w: string[] = []
+  if (known(b.framing)) w.push(FRAMING[b.framing] ?? b.framing)
+  if (b.facing === 'back') w.push('back to the camera')
+  else if (b.facing === 'side') w.push('side-on to the camera')
+  if (kneesInShot(b)) {
+    const side = b.legs_toward === 'image-left' || b.legs_toward === 'image-right' ? b.legs_toward : b.knees_toward
+    w.push(side === 'image-left' || side === 'image-right' ? `legs long and together, swept to the ${side.replace('image-', '')}` : 'legs long and together, straight')
+    if (b.knees === 'bent') w.push('knees softly bent')
+  }
+  for (const side of ['left', 'right'] as const) if (b.arms?.[side] === 'raised') w.push(`${side} arm raised`)
+  return w.join(', ')
+}

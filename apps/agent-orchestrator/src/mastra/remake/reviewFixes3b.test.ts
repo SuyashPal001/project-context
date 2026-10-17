@@ -21,13 +21,15 @@ const ok = (look: number, kind: 'start' | 'end'): StillResult => ({ look, kind, 
 describe('C1 a Veo clip is retimed to the look, never cut before its end frame', () => {
   it('picks the Veo length nearest the look (4.1s → 4s, not 6s) and scales the move times in the prompt', async () => {
     const plan = await writePlan(breakdown(), brand, vi.fn().mockResolvedValue({ lines: [] }))
-    plan.looks[1] = { ...plan.looks[1], startS: 4.1, endS: 8.2 } // 4.1s with an end still
+    // Veo serves looks with no person (a person is Omni from the start photo, v12's way); moves said in words reach it
+    plan.looks = plan.looks.map((l) => ({ ...l, people: 0 }))
+    plan.looks[1] = { ...plan.looks[1], startS: 4.1, endS: 8.2, moveLines: ['at 1.2s: arm/hand: lifts the can (up)'] } // 4.1s with an end still
     const [, b] = clipSpecs(plan, [ok(1, 'start'), ok(2, 'start'), ok(2, 'end')])
     expect(b).toMatchObject({ engine: 'veo', seconds: 4 })
     const p = clipPrompt(plan, plan.looks[1], brand, 'veo', 4) // look-relative 1.2s → 1.2 × 4/4.1
-    expect(p).toMatch(/at 1\.2s: upper body/)
+    expect(p).toMatch(/at 1\.2s: arm\/hand/)
     const p8 = clipPrompt(plan, plan.looks[1], brand, 'veo', 8)
-    expect(p8).toMatch(/at 2\.3s: upper body/)
+    expect(p8).toMatch(/at 2\.3s: arm\/hand/)
   })
 })
 

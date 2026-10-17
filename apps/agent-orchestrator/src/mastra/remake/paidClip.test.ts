@@ -9,6 +9,8 @@ const brand = { name: 'B', product: 'p' }
 const pass = { name: 'x', status: 'pass' as const, reason: '', evidenceTimes: [] }
 async function setup(o: Partial<RemakeDeps> = {}) {
   const plan = await writePlan(breakdown(), brand, vi.fn().mockResolvedValue({ lines: [] }))
+  // These test Veo's mechanics, which serve looks with no person (a person is Omni from the start photo, v12's way).
+  plan.looks = plan.looks.map((l) => ({ ...l, people: 0 }))
   const specs = clipSpecs(plan, [
     { look: 1, kind: 'start', fileId: 's1', status: 'passed', reasons: [] },
     { look: 2, kind: 'start', fileId: 's2', status: 'passed', reasons: [] },

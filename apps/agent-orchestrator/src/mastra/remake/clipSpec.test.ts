@@ -7,6 +7,8 @@ import { precheckPrompt } from '../scorers/video/promptCheck.js'
 
 const brand = { name: 'B', product: 'p' }
 const plan = () => writePlan(breakdown(), brand, vi.fn().mockResolvedValue({ lines: [] }))
+// Veo between two stills serves looks with no person (a person is Omni from the start photo, v12's way)
+const noPeople = async () => { const p = await plan(); p.looks = p.looks.map((l) => ({ ...l, people: 0 })); return p }
 const ok = (look: number, kind: 'start' | 'end', status: StillResult['status'] = 'passed'): StillResult => ({ look, kind, fileId: `${look}${kind}`, status, reasons: [] })
 
 describe('lookFrames', () => {
@@ -19,7 +21,7 @@ describe('lookFrames', () => {
 
 describe('clipSpecs', () => {
   it('Veo between two good stills, at the smallest length that covers the look', async () => {
-    const s = clipSpecs(await plan(), [ok(1, 'start'), ok(2, 'start'), ok(2, 'end')])
+    const s = clipSpecs(await noPeople(), [ok(1, 'start'), ok(2, 'start'), ok(2, 'end')])
     expect(s[1]).toMatchObject({ engine: 'veo', seconds: 6, start: '2start', end: '2end', frames: 177 })
   })
   it('Omni from the start still when there is no usable end still', async () => {
@@ -64,23 +66,40 @@ describe('clipPrompt', () => {
       expect(clipPrompt(p, look, brand, e)).not.toMatch(/At the start:|At the end:|upright in frame|knees fall to|feet to image|knees (bent|straight)/)
     }
   })
-  it('the legs are said plainly: lying to the left or right, and still', async () => {
+  // fan run real25 (user: "her pose are so bad"; "pink one is worst"): Veo's in-between from the start to the end
+  // photo splayed her knees; v12 (the user's "so on point" poses) was Omni from the start photo with plain lookbook
+  // wording. Measured motion lines ("at 3.7s: legs moves up") never reach the prompt.
+  it('a look with a person is Omni from its start photo, even with an end photo', async () => {
     const p = await plan()
-    const look = { ...p.looks[0], moveLines: [], start: { ...p.looks[0].start!, legs_toward: 'image-left' as const } }
-    expect(clipPrompt(p, look, brand, 'omni')).toMatch(/Her legs lie to the left and stay still\./)
-    const straight = { ...look, start: { ...look.start, legs_toward: 'center' as const } }
-    expect(clipPrompt(p, straight, brand, 'omni')).toMatch(/Her legs lie straight and stay still\./)
-    const moving = { ...look, moveLines: ['at 1.0s: legs moves right'] }
-    expect(clipPrompt(p, moving, brand, 'omni')).not.toMatch(/stay still/)
+    const specs = clipSpecs(p, [ok(1, 'start'), ok(1, 'end'), ok(2, 'start'), ok(2, 'end')])
+    expect(specs.filter((s) => s.engine !== 'none').every((s) => s.engine === 'omni')).toBe(true)
+  })
+  it('the prompt is a v12 lookbook line: plain moves, the legs\' change of side, hold, eyes on the lens, camera locked', async () => {
+    const p = await plan()
+    const look = { ...p.looks[0], moveLines: ['at 3.7s: legs moves up', 'at 1.3s: arm/hand: raises remote toward ceiling (up)'],
+      start: { ...p.looks[0].start!, legs_toward: 'center' as const, knees: 'straight' as const }, end: { ...p.looks[0].end ?? p.looks[0].start!, legs_toward: 'image-right' as const, knees: 'bent' as const } }
+    const s = clipPrompt(p, look, brand, 'omni')
+    expect(s).toMatch(/^Fashion lookbook shot\./)
+    expect(s).toMatch(/raises remote toward ceiling/)
+    expect(s).not.toMatch(/legs moves up/)
+    expect(s).toMatch(/then she slowly slides both legs together to the right side of the image, knees softly bent, and holds the pose\./)
+    // the user (2026-10-17): "energy of the influencer, pulling towards, not blank, not too much giggling... slay"
+    expect(s).toMatch(/Confident influencer energy: she owns the camera, eyes locked on the lens with a subtle knowing look; poised and magnetic, never blank, no big smile or giggling; she does not speak\./)
+    expect(s).toMatch(/The camera is locked off and never moves or zooms; her whole body stays in frame\. All directions are as seen in the image\./)
+  })
+  it('legs that stay on one side are held', async () => {
+    const p = await plan()
+    const look = { ...p.looks[0], moveLines: [], start: { ...p.looks[0].start!, legs_toward: 'image-left' as const }, end: { ...p.looks[0].start!, legs_toward: 'image-left' as const } }
+    expect(clipPrompt(p, look, brand, 'omni')).toMatch(/She holds the pose, breathing softly\./)
   })
   it('her eyes look at the camera when the original faces it', async () => {
     const p = await plan()
     const front = { ...p.looks[0], start: { ...p.looks[0].start!, facing: 'front' as const } }
     // overhead: "looking upward" in the original IS looking at the camera; the words must agree (the prompt check
     // blocked "looks straight at the camera" against "gazing upward", fan run real25)
-    expect(clipPrompt(p, front, brand, 'omni')).toMatch(/She looks into the camera, eyes on the lens\./)
+    expect(clipPrompt(p, front, brand, 'omni')).toMatch(/eyes locked on the lens/)
     const back = { ...p.looks[0], start: { ...p.looks[0].start!, facing: 'back' as const } }
-    expect(clipPrompt(p, back, brand, 'omni')).not.toMatch(/eyes on the lens/)
+    expect(clipPrompt(p, back, brand, 'omni')).not.toMatch(/eyes locked on the lens/)
   })
   it('Omni prompts say the image is the first frame and there is no last frame', async () => {
     const p = await plan()
@@ -97,17 +116,17 @@ describe('clipPrompt', () => {
 // now generated long enough and trimmed at real speed; it is retimed only when the speed-up is unnoticeable.
 describe('clips keep real speed (tools/clipTiming)', () => {
   it('a short look gets the smallest Veo length that covers it and is trimmed, not sped up', async () => {
-    const p = await plan()
+    const p = await noPeople()
     p.looks[0] = { ...p.looks[0], endS: 1.3 }; p.looks[1] = { ...p.looks[1], startS: 1.3 }
     const s = clipSpecs(p, [ok(1, 'start'), ok(1, 'end'), ok(2, 'start'), ok(2, 'end')])
     expect(s[0]).toMatchObject({ engine: 'veo', seconds: 4, fit: { mode: 'trim', startS: 0 } })
   })
   it('a Veo clip within the unnoticeable speed-up is retimed so its last frame stays the end still', async () => {
-    const s = clipSpecs(await plan(), [ok(1, 'start'), ok(2, 'start'), ok(2, 'end')])
+    const s = clipSpecs(await noPeople(), [ok(1, 'start'), ok(2, 'start'), ok(2, 'end')])
     expect(s[1]).toMatchObject({ engine: 'veo', seconds: 6, fit: { mode: 'retime' } })
   })
   it('a look of 4.8s gets a 6s Veo clip cut at real speed (4s would be 1.2x slow)', async () => {
-    const p = await plan()
+    const p = await noPeople()
     p.looks[1] = { ...p.looks[1], endS: p.looks[1].startS + 4.8 }
     const s = clipSpecs(p, [ok(1, 'start'), ok(2, 'start'), ok(2, 'end')])
     expect(s[1]).toMatchObject({ engine: 'veo', seconds: 6, fit: { mode: 'trim', startS: 0 } })

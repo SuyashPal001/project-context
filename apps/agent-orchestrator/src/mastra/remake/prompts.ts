@@ -1,6 +1,6 @@
 // Every paid prompt is BUILT here from plan lines and measured readings (spec rule 7.2),
 // never written freehand. Words are general: any reel, any number of people.
-import { personWords } from '../tools/videoBreakdown/measuredLine.js'
+import { personWords, plainBody } from '../tools/videoBreakdown/measuredLine.js'
 import { personIn, refOf } from './looks.js'
 import type { Brand, PlanLine, RemakeLook, RemakePlan } from './types.js'
 
@@ -83,8 +83,9 @@ export function stillBits(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'e
   const expression = shown(plan, `looks[${i}].expression`, look.expression)
   const person: string[] = []
   if (pose) person.push(`Pose: ${pose}.`)
-  const words = body ? personWords(body, null) : []
-  if (words.length) person.push(`Body: ${words.join(', ')}.`)
+  // plain fashion words (the measured jargon twisted her legs, fan runs real24/25)
+  const words = body ? plainBody(body) : ''
+  if (words) person.push(`Body: ${words}.`)
   if (look.people && look.people > 1) person.push(`${look.people - 1} other people are in the shot as in the guide, each a different new person.`)
   if (outfit) person.push(`Outfit: ${outfit}.`)
   if (styling) person.push(`Styling: ${styling}.`)

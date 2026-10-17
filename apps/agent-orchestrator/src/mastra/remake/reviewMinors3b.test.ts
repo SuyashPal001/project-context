@@ -23,6 +23,7 @@ const rc = (o: Record<string, string> = {}) => { const r = new RequestContext();
 
 async function clipSetup(o: Partial<RemakeDeps> = {}) {
   const plan = await writePlan(breakdown(), brand, vi.fn().mockResolvedValue({ lines: [] }))
+  plan.looks = plan.looks.map((l) => ({ ...l, people: 0 }))   // Veo's mechanics: looks with no person (a person is Omni)
   const specs = clipSpecs(plan, [ok(1, 'start'), ok(2, 'start'), ok(2, 'end')])
   let n = 0
   const deps = {
@@ -45,7 +46,7 @@ describe('M12 a Veo content block is retried once with plainer wording before sw
     const r = await makeClip(specs[1], ctx, deps)
     expect(veo).toHaveBeenCalledTimes(2)
     const [first, plain] = veo.mock.calls.map((c) => c[0].prompt as string)
-    expect(plain.length).toBeLessThan(first.length)
+    expect(plain.length).toBeLessThanOrEqual(first.length)   // a look with no person has no person lines to drop
     expect(plain).not.toMatch(/Expression:|At the start:/)
     expect(plain).toMatch(/first frame/)
     expect(deps.generateOmniClip).not.toHaveBeenCalled()
