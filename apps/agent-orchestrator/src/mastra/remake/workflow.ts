@@ -283,8 +283,10 @@ const stillsStep = createStep({
     const directions: Record<string, LookDirection> = {}
     await Promise.all(plan.looks.filter(personIn).map(async (look) => {
       try {
-        const frames = await deps.sample(source, [look.guideStartS, (look.startS + look.endS) / 2, look.guideEndS])
-        const d = await lookDirection(deps.ask(a.tenantId), frames, reelProps(plan))
+        // the look every half second (three frames missed the remote pointed up and the legs' swing, fan run real30)
+        const times = Array.from({ length: Math.max(3, Math.min(14, Math.floor((look.endS - look.startS) / 0.5) + 1)) }, (_, k) => Math.min(look.endS - 0.05, look.startS + k * 0.5))
+        const frames = await deps.sample(source, times)
+        const d = await lookDirection(deps.ask(a.tenantId), frames, reelProps(plan), times.map((t) => t - look.startS))
         if (d) directions[String(look.n)] = d
       } catch (err) {
         console.error(`[remake] look ${look.n} direction not read:`, err instanceof Error ? err.message : String(err))

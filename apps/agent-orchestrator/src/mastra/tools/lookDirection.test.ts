@@ -19,6 +19,16 @@ describe('lookDirection', () => {
     expect(await lookDirection(vi.fn().mockRejectedValue(new Error('x')), [img('a')], [])).toBeNull()
     expect(await lookDirection(vi.fn().mockResolvedValue({ moves: 'x' }), [img('a')], [])).toBeNull()
   })
+  // fan run real30: three frames missed the remote pointed up and the legs' swing; the reader saw the look every
+  // half second with times and the moves carry rough times, as v12's did ("at about one second she lifts the remote")
+  it('frames carry their times and the moves are asked with rough times', async () => {
+    const ask = vi.fn().mockResolvedValue({ start: 's', moves: 'm', objects: '' })
+    await lookDirection(ask, [img('a'), img('b')], [], [0, 0.5])
+    const texts = ask.mock.calls[0][0].filter((p: { text?: string }) => p.text).map((p: { text: string }) => p.text)
+    expect(texts[0]).toBe('Frame at 0.0s:')
+    expect(texts[1]).toBe('Frame at 0.5s:')
+    expect(LOOK_DIRECTION_QUESTION([])).toMatch(/with rough times from the start of the look \("at about 1s"\)/)
+  })
   it('the question asks for a photographer\'s direction with image-side words', () => {
     const q = LOOK_DIRECTION_QUESTION(['Remote control'])
     expect(q).toMatch(/how a photographer would direct the model/)
