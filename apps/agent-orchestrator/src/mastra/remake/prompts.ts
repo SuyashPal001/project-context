@@ -1,6 +1,7 @@
 // Every paid prompt is BUILT here from plan lines and measured readings (spec rule 7.2),
 // never written freehand. Words are general: any reel, any number of people.
 import { personWords, plainBody } from '../tools/videoBreakdown/measuredLine.js'
+import type { LookDirection } from '../tools/lookDirection.js'
 import { personIn, refOf } from './looks.js'
 import type { Brand, PlanLine, RemakeLook, RemakePlan } from './types.js'
 
@@ -74,10 +75,11 @@ export const REFERENCE_SHEET_PROMPT = "A professional CHARACTER REFERENCE SHEET 
 
 /** The words of one still, shared by a single still and a photo of a board: the person lines (pose,
  *  body, others, outfit, expression), the setting, the props in view and what not to draw. */
-export function stillBits(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', characters?: CharacterImages) {
+export function stillBits(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', characters?: CharacterImages, direction?: LookDirection | null) {
   const i = refOf(look)
   const body = kind === 'start' ? look.start : look.end
-  const pose = poseOf(look, kind)
+  // the photographer's direction from the original look (tools/lookDirection), like v12's hand-directed poses
+  const pose = (kind === 'start' && direction?.start) || poseOf(look, kind)
   const outfit = shown(plan, `looks[${i}].outfit`, look.outfit)
   const styling = stylingOf(plan, look)
   const expression = shown(plan, `looks[${i}].expression`, look.expression)
@@ -86,6 +88,7 @@ export function stillBits(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'e
   // plain fashion words (the measured jargon twisted her legs, fan runs real24/25)
   const words = body ? plainBody(body) : ''
   if (words) person.push(`Body: ${words}.`)
+  if (direction?.objects) person.push(`Where things rest: ${direction.objects}.`)
   if (look.people && look.people > 1) person.push(`${look.people - 1} other people are in the shot as in the guide, each a different new person.`)
   if (outfit) person.push(`Outfit: ${outfit}.`)
   if (styling) person.push(`Styling: ${styling}.`)
@@ -105,9 +108,9 @@ export function stillBits(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'e
   }
 }
 
-export function stillPrompt(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', brand: Brand, hasProductPhoto: boolean, characters?: CharacterImages): string {
+export function stillPrompt(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', brand: Brand, hasProductPhoto: boolean, characters?: CharacterImages, direction?: LookDirection | null): string {
   const person = personIn(look)
-  const b = stillBits(plan, look, kind, characters)
+  const b = stillBits(plan, look, kind, characters, direction)
   const parts: string[] = []
   if (person) {
     // the colour too: a styling line restyles the hair, never recolours it (fan run real18: brown, highlighted)
@@ -137,7 +140,7 @@ export const characterPortraitPrompt = (to: string): string =>
 
 export const CAST_BY_IMAGE = 'the person: a new person, given by the first reference image (not described in words)'
 
-export function stillGateInput(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', prompt: string, characters?: CharacterImages) {
+export function stillGateInput(plan: RemakePlan, look: RemakeLook, kind: 'start' | 'end', prompt: string, characters?: CharacterImages, direction?: LookDirection | null) {
   const i = refOf(look)
   // Only the props in view at this still: an off-screen prop's line read as "missing" (metro rerun v7).
   const t = stillTime(look, kind)
@@ -147,7 +150,8 @@ export function stillGateInput(plan: RemakePlan, look: RemakeLook, kind: 'start'
   // A trick object is added over the finished video, so a still that leaves it out is right (fan rerun: "missing: props[1]").
   // A character in view is given by their portrait, like the lead: never a line the prompt is checked against in words.
   const others = charactersAt(plan, stillTime(look, kind)).filter((c) => characters?.get(c.i)).map((c) => `characters[${c.i}]: swap to ${c.to} (given by image ${characters!.get(c.i)}, not described in words)`)
-  const planLine = [`${kind} still of look ${look.n}`, ...(personIn(look) ? [CAST_BY_IMAGE] : []), ...others, ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}${l.why ? ` (${l.why})` : ''}${trickRef(l.ref) ? ' (the trick: added over the finished video, never drawn in a still)' : ''}`)].join('; ')
+  const planLine = [`${kind} still of look ${look.n}`, ...(personIn(look) ? [CAST_BY_IMAGE] : []), ...others,
+    ...(direction ? [`the photographer's direction read from the original look (not invented): ${direction.start}${direction.objects ? `; ${direction.objects}` : ''}`] : []), ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}${l.why ? ` (${l.why})` : ''}${trickRef(l.ref) ? ' (the trick: added over the finished video, never drawn in a still)' : ''}`)].join('; ')
   // Only THIS still's body (start or end): the look-level "Measured:" line describes the end and
   // made a correct start-still prompt read as a contradiction (live run 08466630).
   const body = kind === 'start' ? look.start : look.end

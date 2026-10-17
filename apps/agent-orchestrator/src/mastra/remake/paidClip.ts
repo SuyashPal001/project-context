@@ -36,14 +36,14 @@ export async function makeClip(spec: ClipSpec, ctx: ClipCtx, deps: RemakeDeps, l
 
   // Length and fit per engine (tools/clipTiming): Omni taking over from Veo gets its own.
   const timing = (e: 'veo' | 'omni') => (e === spec.engine ? { seconds: spec.seconds, fit: spec.fit } : omniTiming(spec.look))
-  const promptFor = (e: 'veo' | 'omni', plain = false) => clipPrompt(ctx.plan, spec.look, ctx.brand, e, timing(e).seconds, plain, timing(e).fit)
+  const promptFor = (e: 'veo' | 'omni', plain = false) => clipPrompt(ctx.plan, spec.look, ctx.brand, e, timing(e).seconds, plain, timing(e).fit, spec.direction)
   let prompt = promptFor(engine)
   let last: { fileId: string; localPath: string; reasons: string[] } | null = null
   let triedPlain = false
   // failedChecks: true only when the clip exists but didn't pass its checks (vs never made).
   const failedResult = (reasons: string[], fileId: string | null = null) => ({ result: last ? { ...base(), fileId: last.fileId, localPath: last.localPath, status: 'failed' as const, reasons: last.reasons, failedChecks: true } : { ...base(), fileId, localPath: null, status: 'failed' as const, reasons, failedChecks: false }, ledger })
   const gate = async (p: string) => {
-    const g = await deps.promptGate({ ...clipGateInput(ctx.plan, spec.look, p, timing(engine).seconds, timing(engine).fit), tenantId: ctx.tenantId })
+    const g = await deps.promptGate({ ...clipGateInput(ctx.plan, spec.look, p, timing(engine).seconds, timing(engine).fit, spec.direction), tenantId: ctx.tenantId })
     if (g.status === 'unknown') console.error(`[remake] ${item} prompt check unavailable: ${g.reason}`)
     return g.status === 'pass' ? null : (g.status === 'unknown' ? 'the clip couldn’t be checked before making it, so it wasn’t made' : g.reason)
   }

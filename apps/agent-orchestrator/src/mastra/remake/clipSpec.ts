@@ -1,6 +1,7 @@
 // Which model animates each look, for how long, and the prompt, all from the plan and
 // the measured readings (spec §5.4, rules 5, 6, 7.1, 7.2, 12).
 import { personWords, plainBody } from '../tools/videoBreakdown/measuredLine.js'
+import type { LookDirection } from '../tools/lookDirection.js'
 import { personIn, refOf } from './looks.js'
 import { CAST_BY_IMAGE } from './prompts.js'
 import type { Brand, PlanLine, RemakeLook, RemakePlan, StillResult } from './types.js'
@@ -12,7 +13,9 @@ const VEO_SECONDS = [4, 6, 8] as const
 
 export interface ClipSpec { look: RemakeLook; engine: 'veo' | 'omni' | 'none'; seconds: number; frames: number; start: string | null; end: string | null; reason?: string
   /** How the clip becomes its look (tools/clipTiming): retimed when the speed-up can't be seen, else trimmed at real speed. */
-  fit?: ClipFit }
+  fit?: ClipFit
+  /** the photographer's direction read from the original look (tools/lookDirection) */
+  direction?: LookDirection }
 
 /** Frames per look from cumulative end edges, so the total is exactly round(total × 30)
  *  and any gap or overlap between measured spans is absorbed by the following look. */
@@ -74,7 +77,7 @@ const scaleTimes = (lines: string[], factor: number, shift = 0) =>
  *  legs moves up") of a top-down shot made Veo yank a knee up and splay her legs (fan run real25). */
 const describedMoves = (lines: string[]): string[] => lines.filter((l) => /^at [\d.]+s: [^:]+: /.test(l))
 
-export function clipPrompt(plan: RemakePlan, look: RemakeLook, _brand: Brand, engine: 'veo' | 'omni', clipSeconds?: number, plain = false, fit?: ClipFit): string {
+export function clipPrompt(plan: RemakePlan, look: RemakeLook, _brand: Brand, engine: 'veo' | 'omni', clipSeconds?: number, plain = false, fit?: ClipFit, direction?: LookDirection | null): string {
   const len = look.endS - look.startS
   const trim = fit?.mode === 'trim' ? fit : null
   const factor = trim ? 1 : clipSeconds && len > 0 ? clipSeconds / len : 1
@@ -91,10 +94,15 @@ export function clipPrompt(plan: RemakePlan, look: RemakeLook, _brand: Brand, en
   const moves = describedMoves(look.moveLines)
   if (person) {
     parts.push('Keep the same person, face, outfit and setting the whole time.')
-    if (moves.length) parts.push(`Movement (directions as the viewer sees the frame): ${scaleTimes(moves, factor, shift).join('; ')}.`)
+    // directed like v12 by hand (tools/lookDirection): her moves and where the objects rest, read from the original
+    if (direction) {
+      const sides = (t: string) => t.replace(/\bthe image-(left|right)\b/g, 'the $1 side of the image').replace(/\bimage-(left|right)\b/g, 'the $1 side of the image').replace(/[.\s]+$/, '')
+      parts.push(direction.moves ? `Then ${sides(direction.moves).replace(/^\w/, (c) => c.toLowerCase())}, and holds the pose.` : 'She holds the pose, breathing softly.')
+      if (direction.objects) parts.push(`${sides(direction.objects).replace(/^\w/, (c) => c.toUpperCase())} and stays there.`)
+    } else if (moves.length) parts.push(`Movement (directions as the viewer sees the frame): ${scaleTimes(moves, factor, shift).join('; ')}.`)
     const from = look.start ? legSide(look.start) : null
     const to = look.end ? legSide(look.end) : null
-    if (to && to !== 'center' && to !== from) parts.push(`${moves.length ? 'Then she' : 'She'} slowly slides both legs together to the ${to.replace('image-', '')} side of the image${look.end?.knees === 'bent' ? ', knees softly bent,' : ''} and holds the pose.`)
+    if (direction) { /* said above */ } else if (to && to !== 'center' && to !== from) parts.push(`${moves.length ? 'Then she' : 'She'} slowly slides both legs together to the ${to.replace('image-', '')} side of the image${look.end?.knees === 'bent' ? ', knees softly bent,' : ''} and holds the pose.`)
     else parts.push('She holds the pose, breathing softly.')
     // the user (2026-10-17): "energy of the influencer, pulling towards, not blank, not too much giggling... slay"
     if (look.start?.facing !== 'back') parts.push('Confident influencer energy: she owns the camera, eyes locked on the lens with a subtle knowing look; poised and magnetic, never blank, no big smile or giggling; she does not speak.')
@@ -116,7 +124,7 @@ const legSide = (b: NonNullable<RemakeLook['start']>): string | null => {
 
 /** What the prompt check reads: the same timed moves the prompt states, and no reference moments (a clip
  *  never describes them: dropped text and unbuilt tricks would block it, and the stills carry the rest). */
-export function clipGateInput(plan: RemakePlan, look: RemakeLook, prompt: string, clipSeconds?: number, fit?: ClipFit) {
+export function clipGateInput(plan: RemakePlan, look: RemakeLook, prompt: string, clipSeconds?: number, fit?: ClipFit, direction?: LookDirection | null) {
   const len = look.endS - look.startS
   const trim = fit?.mode === 'trim' ? fit : null
   const factor = trim ? 1 : clipSeconds && len > 0 ? clipSeconds / len : 1
@@ -128,7 +136,8 @@ export function clipGateInput(plan: RemakePlan, look: RemakeLook, prompt: string
       // the gaze line was blocked as contradicting "gazing upward" in an overhead shot (fan run real25)
       ...(personIn(look) && look.start?.facing === 'front' ? ["her eyes on the camera are the original's gaze (when the camera is above her, looking up is looking at it)"] : []),
       // the user asked for it (2026-10-17: "energy of the influencer... slay"); it replaces the plain expression line
-      ...(personIn(look) ? ['the influencer energy line is the house style for a person on camera, not invented content; it stands in for the expression'] : []), ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}${/\.(outfit|styling)$/.test(l.ref) ? ' (given by the start image, not described in words)' : ''}`)].join('; '),
+      ...(personIn(look) ? ['the influencer energy line is the house style for a person on camera, not invented content; it stands in for the expression'] : []),
+      ...(direction ? [`the photographer's direction read from the original look (not invented): start: ${direction.start}; moves: ${direction.moves || 'holds still'}; objects: ${direction.objects || 'none'}`] : []), ...mine.map((l) => `${l.ref}: ${l.action}${l.to ? ` to ${l.to}` : ''}${/\.(outfit|styling)$/.test(l.ref) ? ' (given by the start image, not described in words)' : ''}`)].join('; '),
     look: {
       expression: shown(plan, `looks[${i}].expression`, look.expression) ?? undefined, start_pose: look.startPose, end_pose: look.endPose,
       body_at_start: look.start ? personWords(look.start, null).join(', ') : undefined,

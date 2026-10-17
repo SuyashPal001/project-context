@@ -13,6 +13,7 @@ import { writePlan, applyEdits } from './plan.js'
 import { estimateCost, estimateClipsCost, ledgerSummary } from './cost.js'
 import { castSheetPrompt, stylingOf, outfitOf, propsAt, reelProps, trickProps, stillPrompt, stillGateInput, usesProduct, REFERENCE_SHEET_PROMPT, CAST_BY_IMAGE, charactersAt, characterPortraitPrompt, stillTime, type CharacterImages } from './prompts.js'
 import { hideFaceArgs } from '../tools/hideFace.js'
+import { lookDirection, type LookDirection } from '../tools/lookDirection.js'
 import { makeStill, type StillCtx, type StillJob } from './paidStill.js'
 import { looksUnder18 } from './stillChecks.js'
 import { boardUnits, boardPrompt, boardGateInput, boardAspect, BOARD_SLOT } from './board.js'
@@ -246,7 +247,7 @@ export function continueParts(looks: RemakeLook[], stills: StillResult[]): Still
   return out
 }
 
-const stilled = casted.extend({ stills: z.array(any) })
+const stilled = casted.extend({ stills: z.array(any), directions: z.record(z.string(), any).optional() })
 const stillsStep = createStep({
   id: 'stills', inputSchema: casted, outputSchema: stilled,
   execute: async ({ inputData, requestContext, runId }) => {
@@ -277,6 +278,18 @@ const stillsStep = createStep({
       }
       return { id, path: out, modelId }
     }
+    // Each look with a person is directed like v12 was by hand (tools/lookDirection): her starting pose, her moves
+    // and where objects rest, read from the original's frames ("acceptable not exceptional", fan run real27).
+    const directions: Record<string, LookDirection> = {}
+    await Promise.all(plan.looks.filter(personIn).map(async (look) => {
+      try {
+        const frames = await deps.sample(source, [look.guideStartS, (look.startS + look.endS) / 2, look.guideEndS])
+        const d = await lookDirection(deps.ask(a.tenantId), frames, reelProps(plan))
+        if (d) directions[String(look.n)] = d
+      } catch (err) {
+        console.error(`[remake] look ${look.n} direction not read:`, err instanceof Error ? err.message : String(err))
+      }
+    }))
     // Identity: the reference sheet when there is one, else the cropped portrait.
     const portraitId = (inputData.referenceSheetFileId as string | null | undefined) ?? inputData.portraitFileId
     const portrait = portraitId ? { fileId: portraitId, img: await deps.fetchImage(portraitId, a.idToken) } : null
@@ -325,16 +338,19 @@ const stillsStep = createStep({
       const chars = person ? charsIn(look, kind) : []
       if (base) {
         const { references, images } = withCharacters([base.fileId, g], chars)
-        const extra = [...images.entries()].map(([i, n]) => `the ${plan.reference.characters?.[i]?.who ?? 'other person'} is the person in image ${n}`).join('; ')
+        const d = directions[String(look.n)]
+        const directed = d ? [kind === 'start' ? `her pose as directed: ${d.start}` : '', d.objects].filter(Boolean).join('; ') : ''
+        const extra = [...[...images.entries()].map(([i, n]) => `the ${plan.reference.characters?.[i]?.who ?? 'other person'} is the person in image ${n}`), ...(directed ? [directed] : [])].join('; ')
         const change = { ...base.change, ...(extra ? { extra } : {}) }
         const prompt = editShotPrompt(change)
         return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, guide: guideFrame.id, guideRef: g, faceRef: base.fileId, editOf: { fileId: base.fileId, change: changeSummary(change) }, props: reelProps(plan), trick: trickProps(plan), gate: { prompt, planLine: editShotGateLine(change, `looks[${refOf(look)}]`), look: {}, startFrameObjects: [], keyMoments: [] }, ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}) }
       }
       const who = personFor(look)
       const { references, images } = withCharacters([...(person && who ? [who] : []), g, ...(product ? [product] : person && anchor ? [anchor] : [])], chars)
-      const prompt = stillPrompt(plan, look, kind, brand, !!product, images)
+      const direction = directions[String(look.n)]
+      const prompt = stillPrompt(plan, look, kind, brand, !!product, images, direction)
       const room = person && anchor && anchorGuide && !product ? { room: { fileId: anchor, guides: [anchorGuide, guideFrame.id] as [string, string] } } : {}
-      return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, guide: guideFrame.id, guideRef: g, props: reelProps(plan), trick: trickProps(plan), gate: stillGateInput(plan, look, kind, prompt, images), ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}), ...room }
+      return { look, kind, prompt, references, aspectRatio: plan.aspectRatio, guide: guideFrame.id, guideRef: g, props: reelProps(plan), trick: trickProps(plan), gate: stillGateInput(plan, look, kind, prompt, images, direction), ...(chars.length ? { people: Math.max(look.people ?? 1, 1 + chars.length) } : {}), ...room }
     }
     const single = async (look: RemakeLook, kind: 'start' | 'end', firstTry?: { fileId: string; creditsMicro: string }, base?: Base): Promise<Made> => {
       // Never paid: a look whose people were not measured (spec §8a).
@@ -467,7 +483,7 @@ const stillsStep = createStep({
     // Back in plan order.
     const finish = () => {
       const done = items.map((it) => byItem.get(it)!)
-      return { ...inputData, stills: continueParts(plan.looks, done.map((d) => d.result)), ledger: [...(inputData.ledger as LedgerEntry[]), ...done.flatMap((d) => d.ledger)] }
+      return { ...inputData, directions, stills: continueParts(plan.looks, done.map((d) => d.result)), ledger: [...(inputData.ledger as LedgerEntry[]), ...done.flatMap((d) => d.ledger)] }
     }
     try {
       if (!product && items.some((it) => it.person)) { await runChain(); return finish() }
@@ -610,7 +626,8 @@ const clipsStep = createStep({
         return checkClip({ clipPath, seconds: spec.frames / CLIP_FPS, look: spec.look, portrait, tenantId: a.tenantId, checkEnd: engine === 'veo', startImage, props, startPose: startPose && { ...startPose, frames: 1 }, endPose: endPose && { ...endPose, frames: 1 } }, { poseClip: deps.poseClip, sample: deps.sample, gate: runGate, ask: deps.ask(a.tenantId) })
       },
     }
-    const jobs = clipSpecs(plan, inputData.stills as StillResult[]).map((spec) => async (): Promise<{ result: ClipResult; ledger: LedgerEntry[] }> => {
+    const directions = (inputData.directions ?? {}) as Record<string, LookDirection>
+    const jobs = clipSpecs(plan, inputData.stills as StillResult[]).map((s) => ({ ...s, ...(directions[String(s.look.n)] ? { direction: directions[String(s.look.n)] } : {}) })).map((spec) => async (): Promise<{ result: ClipResult; ledger: LedgerEntry[] }> => {
       // One clip failing never ends the run, and every attempt it paid for stays in its ledger.
       const ledger: LedgerEntry[] = []
       try {
