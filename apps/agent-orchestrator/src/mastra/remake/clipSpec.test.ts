@@ -54,6 +54,32 @@ describe('clipPrompt', () => {
     expect(s.match(/Expression: smiles/g)).toHaveLength(1)
     expect(precheckPrompt(clipPrompt(p, p.looks[0], brand, 'omni'), { expression: p.looks[0].expression })).toEqual([])
   })
+  // fan run real24 (user, 2026-10-17: "legs are so weird... keep it like left or right style, and make her face to
+  // camera, like eyes"): measured words like "upright in frame, knees bent, knees fall to image-left, feet to
+  // image-right" made Omni twist her legs under a long dress. The prompt says the leg side plainly and her eyes
+  // on the camera.
+  it('no measured body jargon in a clip prompt', async () => {
+    const p = await plan()
+    for (const look of p.looks) for (const e of ['veo', 'omni'] as const) {
+      expect(clipPrompt(p, look, brand, e)).not.toMatch(/At the start:|At the end:|upright in frame|knees fall to|feet to image|knees (bent|straight)/)
+    }
+  })
+  it('the legs are said plainly: lying to the left or right, and still', async () => {
+    const p = await plan()
+    const look = { ...p.looks[0], moveLines: [], start: { ...p.looks[0].start!, legs_toward: 'image-left' as const } }
+    expect(clipPrompt(p, look, brand, 'omni')).toMatch(/Her legs lie to the left and stay still\./)
+    const straight = { ...look, start: { ...look.start, legs_toward: 'center' as const } }
+    expect(clipPrompt(p, straight, brand, 'omni')).toMatch(/Her legs lie straight and stay still\./)
+    const moving = { ...look, moveLines: ['at 1.0s: legs moves right'] }
+    expect(clipPrompt(p, moving, brand, 'omni')).not.toMatch(/stay still/)
+  })
+  it('her eyes look at the camera when the original faces it', async () => {
+    const p = await plan()
+    const front = { ...p.looks[0], start: { ...p.looks[0].start!, facing: 'front' as const } }
+    expect(clipPrompt(p, front, brand, 'omni')).toMatch(/She looks straight at the camera, eyes on the lens\./)
+    const back = { ...p.looks[0], start: { ...p.looks[0].start!, facing: 'back' as const } }
+    expect(clipPrompt(p, back, brand, 'omni')).not.toMatch(/eyes on the lens/)
+  })
   it('Omni prompts say the image is the first frame and there is no last frame', async () => {
     const p = await plan()
     expect(clipPrompt(p, p.looks[0], brand, 'omni')).toMatch(/The image is the exact first frame/)

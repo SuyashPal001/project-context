@@ -80,12 +80,16 @@ export function clipPrompt(plan: RemakePlan, look: RemakeLook, _brand: Brand, en
     : 'The image is the exact first frame; continue from it.']
   if (personIn(look) && !plain) {
     parts.push('Keep the same person, face, outfit and setting the whole time.')
-    if (look.start) parts.push(`At the start: ${personWords(look.start, null).join(', ')}.`)
-    if (look.end && engine === 'veo') parts.push(`At the end: ${personWords(look.end, null).join(', ')}.`)
+    // Plain words, never the measured jargon: "knees fall to image-left, feet to image-right" made Omni twist her
+    // legs under a long dress (fan run real24). The images carry the pose; the legs' side and her gaze are said simply.
+    const legsMove = look.moveLines.some((m) => /\blegs?\b|knee|feet|foot/i.test(m))
+    const side = look.start?.legs_toward
+    if (!legsMove && side && side !== 'unknown') parts.push(`Her legs lie ${side === 'center' ? 'straight' : `to the ${side.replace('image-', '')}`} and stay still.`)
+    if (look.start?.facing === 'front') parts.push('She looks straight at the camera, eyes on the lens.')
     const expression = shown(plan, `looks[${i}].expression`, look.expression)
     if (expression) parts.push(`Expression: ${expression}.`)
   }
-  parts.push(look.moveLines.length ? `Movement (directions as the viewer sees the frame): ${scaleTimes(look.moveLines, factor, shift).join('; ')}.` : 'Hold the pose with only small natural motion.')
+  parts.push(look.moveLines.length ? `Movement (directions as the viewer sees the frame): ${scaleTimes(look.moveLines, factor, shift).join('; ')}.` : 'Hold the pose; only small natural movement of the head and hands.')
   parts.push(look.cameraLines.length ? `Camera: ${scaleTimes(look.cameraLines, factor, shift).join('; ')}.` : 'The camera stays still.')
   if (trim && clipSeconds && clipSeconds > shift + len + 0.05) parts.push(`Finish every move by ${(shift + len).toFixed(1)}s, then hold that last pose with only small natural motion until the end.`)
   parts.push('Add nothing that is not described here: no extra people, objects, effects, text, logos or flicker; no change of lighting.')
