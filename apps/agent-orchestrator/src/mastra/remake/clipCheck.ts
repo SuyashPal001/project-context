@@ -31,7 +31,9 @@ export async function checkClip(o: { clipPath: string; seconds: number; look: Re
       { ...forClip(comparePose(o.look.start, o.look.people, asImage(m?.people ?? null, m?.main_start ?? null))), name: 'start pose' },
       ...(o.checkEnd === false ? [] : [{ ...forClip(comparePose(o.look.end, o.look.people, asImage(m?.people ?? null, m?.main_end ?? null))), name: 'end pose' }]),
     ]
-    if (personIn(o.look) && o.portrait) results.push(await d.gate(samePersonScorer, 'same-person', { tenantId: o.tenantId, reference: o.portrait, frames }, times))
+    // against the approved start photo when given (same scene and size; it passed against the person sheet), else the portrait
+    const who = o.startImage ?? o.portrait
+    if (personIn(o.look) && who) results.push(await d.gate(samePersonScorer, 'same-person', { tenantId: o.tenantId, reference: who, frames }, times))
     results.push(await d.gate(emptyHandScorer, 'empty-hand', { tenantId: o.tenantId, frames }, times))
     if (o.startImage && o.props?.length && d.ask) results.push({ name: 'objects', evidenceTimes: times, ...(await duplicatedProps(d.ask, o.startImage, frames.map((img, i) => ({ t: times[i], img })), o.props)) })
     const fails = results.filter((r) => r.status === 'fail')

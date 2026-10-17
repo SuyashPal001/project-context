@@ -51,3 +51,16 @@ describe('checkClip counts the objects', () => {
     expect(ask).not.toHaveBeenCalled()
   })
 })
+
+// fan run real23: Omni clips from photos that passed the face check scored 3/10 against the studio sheet: a
+// small face lying on a rug against a big front photo. The clip is checked against its own start photo,
+// which already passed against the sheet: that measures whether the face changes in the clip.
+describe('checkClip same person', () => {
+  it('the reference is the approved start photo when given', async () => {
+    const d = deps()
+    const start = { data: 'START', mime: 'image/png' }
+    await checkClip({ clipPath: '/c.mp4', seconds: 6, look, portrait: img, tenantId: 't', startImage: start }, d as never)
+    const call = (d.gate as ReturnType<typeof vi.fn>).mock.calls.find((c) => c[1] === 'same-person')!
+    expect(call[2].reference).toBe(start)
+  })
+})
