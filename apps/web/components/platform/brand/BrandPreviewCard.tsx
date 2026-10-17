@@ -5,7 +5,7 @@ import { AlertTriangle, Bookmark, ChevronRight, Heart, MessageCircle, Send } fro
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { COLOR_ROLES, type BrandRecord } from './brandApi';
-import { BRAND_FONT_CLASS } from './brandFonts';
+import { useBrandHeadlineFont } from './brandFonts';
 
 export type ColorRole = typeof COLOR_ROLES[number];
 
@@ -119,7 +119,7 @@ function PreviewCaption({ hardToRead, hasColors }: { hardToRead: boolean; hasCol
  */
 export function BrandPreviewCard({ brand, draftColor }: Props) {
     const c = resolveColors(brand, draftColor);
-    const fontClass = brand.headlineFont ? BRAND_FONT_CLASS[brand.headlineFont] : undefined;
+    const font = useBrandHeadlineFont(brand);
     const brandName = brand.name?.trim() || 'Your brand';
     const logoUrl = brand.logo?.url ?? null;
     const mascotUrl = brand.mascot?.url ?? null;
@@ -168,9 +168,9 @@ export function BrandPreviewCard({ brand, draftColor }: Props) {
                             className={cn(
                                 'text-xl font-semibold leading-tight transition-colors duration-300',
                                 mascotUrl && 'max-w-[65%]',
-                                fontClass,
+                                font.className,
                             )}
-                            style={{ color: c.headlineOnMedia }}
+                            style={{ color: c.headlineOnMedia, ...font.style }}
                         >
                             Your headline here
                         </p>
@@ -211,7 +211,7 @@ export function BrandPreviewCard({ brand, draftColor }: Props) {
 export function BrandPreviewMobileBar({ brand, draftColor }: Props) {
     const [open, setOpen] = useState(false);
     const c = resolveColors(brand, draftColor);
-    const fontClass = brand.headlineFont ? BRAND_FONT_CLASS[brand.headlineFont] : undefined;
+    const font = useBrandHeadlineFont(brand);
     const brandName = brand.name?.trim() || 'Your brand';
     const logoUrl = brand.logo?.url ?? null;
     const strip = [c.primary, c.secondary, c.accent, c.text, c.background];
@@ -238,7 +238,7 @@ export function BrandPreviewMobileBar({ brand, draftColor }: Props) {
                             <span key={i} className="h-2 w-4 rounded-full" style={{ backgroundColor: hex }} />
                         ))}
                     </span>
-                    <span className={cn('shrink-0 text-base text-foreground', fontClass)} style={{ color: c.text }}>Aa</span>
+                    <span className={cn('shrink-0 text-base text-foreground', font.className)} style={{ color: c.text, ...font.style }}>Aa</span>
                     <span
                         className="shrink-0 rounded-full px-2 py-1 text-[11px] font-medium"
                         style={{ backgroundColor: c.primary, color: c.buttonText }}

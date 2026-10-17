@@ -7,7 +7,7 @@ import type { BrandRecord } from './brandApi';
 const BASE: BrandRecord = {
     name: 'Fitnearn', oneLiner: null, audience: null, region: 'IN', toneWords: [],
     emojiPolicy: 'minimal', signaturePhrases: [], bannedPhrases: [], ctaExamples: [], voiceNotes: null,
-    colors: {}, headlineFont: null, logo: null, favicon: null, mascot: null,
+    colors: {}, headlineFont: null, logo: null, favicon: null, mascot: null, font: null, fontName: null,
     sourceType: null, sourceValue: null, importStatus: 'idle', importedAt: null,
     ready: false, missing: [], updatedAt: new Date().toISOString(),
 };

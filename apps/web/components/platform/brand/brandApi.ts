@@ -10,6 +10,7 @@ export interface BrandRecord {
     signaturePhrases: string[]; bannedPhrases: string[]; ctaExamples: string[]; voiceNotes: string | null;
     colors: Partial<Record<typeof COLOR_ROLES[number], string>>; headlineFont: string | null;
     logo: BrandImageRef | null; favicon: BrandImageRef | null; mascot: BrandImageRef | null;
+    font: BrandImageRef | null; fontName: string | null;
     sourceType: 'website' | 'instagram' | 'chat' | null; sourceValue: string | null;
     importStatus: 'idle' | 'importing' | 'done' | 'failed'; importedAt: string | null;
     ready: boolean; missing: Array<'name' | 'audience' | 'voice'>; updatedAt: string;
@@ -21,7 +22,7 @@ export type BrandPatch = Partial<{
     // null clears a role — the API merges this against what's saved and
     // deletes any role sent as null.
     colors: Partial<Record<typeof COLOR_ROLES[number], string | null>>; headlineFont: string | null;
-    logoFileId: string | null; faviconFileId: string | null; mascotFileId: string | null;
+    logoFileId: string | null; faviconFileId: string | null; mascotFileId: string | null; fontFileId: string | null;
 }>;
 
 export const BRAND_QUERY_KEY = ['brand'] as const;
@@ -34,7 +35,7 @@ export const BRAND_IMAGE_PREFIX = 'brand/';
 export const EMPTY_BRAND: BrandRecord = {
     name: null, oneLiner: null, audience: null, region: 'IN', toneWords: [], emojiPolicy: 'minimal',
     signaturePhrases: [], bannedPhrases: [], ctaExamples: [], voiceNotes: null, colors: {}, headlineFont: null,
-    logo: null, favicon: null, mascot: null, sourceType: null, sourceValue: null, importStatus: 'idle',
+    logo: null, favicon: null, mascot: null, font: null, fontName: null, sourceType: null, sourceValue: null, importStatus: 'idle',
     importedAt: null, ready: false, missing: ['name', 'audience', 'voice'], updatedAt: new Date(0).toISOString(),
 };
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-    Check, Copy, Image as ImageIcon, Loader2, Plus, RefreshCw, Smile, Sparkles, Type, X,
+    Check, Copy, Image as ImageIcon, Loader2, Plus, RefreshCw, Smile, Sparkles, X,
 } from 'lucide-react';
 import { HexColorPicker } from 'react-colorful';
 import { toast } from 'sonner';
@@ -13,10 +13,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 
 import { cn } from '@/lib/utils';
 import {
-    COLOR_ROLES, FONT_CHOICES, sourceLine,
+    COLOR_ROLES, sourceLine,
     type BrandPatch, type BrandRecord,
 } from './brandApi';
 import { BRAND_FONT_CARDS, BRAND_FONT_CLASS } from './brandFonts';
+import { OtherFontCard } from './OtherFontCard';
 import { BrandPreviewCard, BrandPreviewMobileBar } from './BrandPreviewCard';
 
 type ImageSlot = 'logo' | 'favicon' | 'mascot';
@@ -70,23 +71,6 @@ function TextField({ id, label, hint, value, multiline, placeholder, onSave }: {
                 ? <Textarea {...common} rows={4} onChange={(e) => setDraft(e.target.value)} />
                 : <Input {...common} onChange={(e) => setDraft(e.target.value)} />}
         </Row>
-    );
-}
-
-/** Same blur-to-save-on-change contract as TextField, with a datalist of
- * suggestions. A plain `defaultValue` Input went stale after Refresh/import
- * replaced `brand.headlineFont` out from under it — this re-syncs the draft
- * whenever the prop changes, exactly like TextField does. */
-function FontField({ id, value, onSave }: { id: string; value: string; onSave: (v: string) => void }) {
-    const [draft, setDraft] = useState(value);
-    useEffect(() => setDraft(value), [value]);
-    const blur = () => { const v = draft.trim(); if (v !== value.trim()) onSave(v); };
-    return (
-        <>
-            <Input id={id} list={`${id}-list`} value={draft} aria-label="Font"
-                onChange={(e) => setDraft(e.target.value)} onBlur={blur} />
-            <datalist id={`${id}-list`}>{FONT_CHOICES.map((f) => <option key={f} value={f} />)}</datalist>
-        </>
     );
 }
 
@@ -393,41 +377,24 @@ function PaletteGrid({ brand, onSave }: SectionProps) {
  * FontField always used, so a typed family name still saves on blur. */
 function FontCards({ brand, onSave }: SectionProps) {
     const { headlineFont } = brand;
-    const isCurated = !!headlineFont && headlineFont in BRAND_FONT_CLASS;
-    const isOtherSaved = !!headlineFont && !isCurated;
-    // "Other font" reveals an input on click even before anything is typed —
-    // that open state is local, synced from the saved record (a custom font
-    // from import/Refresh should open it too), not written back until blur.
-    const [otherOpen, setOtherOpen] = useState(isOtherSaved);
-    useEffect(() => setOtherOpen(isOtherSaved), [isOtherSaved]);
-
     return (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <button type="button" aria-pressed={!headlineFont} onClick={() => onSave({ headlineFont: null })}
-                className={cn('rounded-xl bg-muted/40 p-4 text-left hover:bg-muted/60', !headlineFont && 'ring-2 ring-primary')}>
+            <button type="button" aria-pressed={!headlineFont && !brand.font} onClick={() => onSave({ headlineFont: null, fontFileId: null })}
+                className={cn('rounded-xl bg-muted/40 p-4 text-left hover:bg-muted/60', !headlineFont && !brand.font && 'ring-2 ring-primary')}>
                 <Sparkles className="h-5 w-5 text-muted-foreground" />
                 <p className="mt-2 text-sm font-medium text-foreground">Olmo picks</p>
                 <p className="text-xs text-muted-foreground">Olmo chooses for you</p>
             </button>
             {BRAND_FONT_CARDS.map(({ name, subtitle }) => (
-                <button key={name} type="button" aria-pressed={headlineFont === name} onClick={() => onSave({ headlineFont: name })}
-                    className={cn('rounded-xl bg-muted/40 p-4 text-left hover:bg-muted/60', headlineFont === name && 'ring-2 ring-primary')}>
+                <button key={name} type="button" aria-pressed={headlineFont === name && !brand.font}
+                    onClick={() => onSave({ headlineFont: name, fontFileId: null })}
+                    className={cn('rounded-xl bg-muted/40 p-4 text-left hover:bg-muted/60', headlineFont === name && !brand.font && 'ring-2 ring-primary')}>
                     <p className={cn('text-3xl text-foreground', BRAND_FONT_CLASS[name])}>Aa</p>
                     <p className="mt-2 text-sm font-medium text-foreground">{name}</p>
                     <p className="text-xs text-muted-foreground">{subtitle}</p>
                 </button>
             ))}
-            <button type="button" aria-pressed={isOtherSaved || otherOpen} onClick={() => setOtherOpen(true)}
-                className={cn('rounded-xl bg-muted/40 p-4 text-left hover:bg-muted/60', (isOtherSaved || otherOpen) && 'ring-2 ring-primary')}>
-                <Type className="h-5 w-5 text-muted-foreground" />
-                <p className="mt-2 text-sm font-medium text-foreground">Other font</p>
-                <p className="text-xs text-muted-foreground">Any font you like</p>
-            </button>
-            {otherOpen && (
-                <div className="col-span-2 sm:col-span-4">
-                    <FontField id="brand-font-other" value={headlineFont ?? ''} onSave={(v) => onSave({ headlineFont: v || null })} />
-                </div>
-            )}
+            <OtherFontCard brand={brand} onSave={onSave} />
         </div>
     );
 }

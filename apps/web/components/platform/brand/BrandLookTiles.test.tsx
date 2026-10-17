@@ -13,7 +13,7 @@ vi.stubGlobal('ResizeObserver', class ResizeObserver {
 const brand: BrandRecord = {
     name: 'Mamaearth', oneLiner: 'Toxin-free skincare.', audience: 'Women in Indian cities', region: 'IN', toneWords: ['warm'],
     emojiPolicy: 'minimal', signaturePhrases: [], bannedPhrases: [], ctaExamples: ['Shop now'], voiceNotes: null,
-    colors: {}, headlineFont: null, logo: null, favicon: null, mascot: null,
+    colors: {}, headlineFont: null, logo: null, favicon: null, mascot: null, font: null, fontName: null,
     sourceType: null, sourceValue: null, importStatus: 'idle', importedAt: null,
     ready: true, missing: [], updatedAt: new Date().toISOString(),
 };
@@ -107,15 +107,16 @@ describe('font cards', () => {
         expect(within(typographySection()).getByRole('button', { name: /Olmo picks/ }).getAttribute('aria-pressed')).toBe('true');
     });
 
-    it('clicking Poppins saves headlineFont', () => {
+    it('clicking Poppins saves headlineFont and clears any upload', () => {
         const { onSave } = renderVisuals();
         fireEvent.click(within(typographySection()).getByRole('button', { name: /Poppins/ }));
-        expect(onSave).toHaveBeenCalledWith({ headlineFont: 'Poppins' });
+        expect(onSave).toHaveBeenCalledWith({ headlineFont: 'Poppins', fontFileId: null });
     });
 
-    it('a custom font selects "Other font" and shows the input', () => {
+    it('a custom font selects "Other font" and shows it in the card subtitle', () => {
         renderVisuals(vi.fn(), { ...brand, headlineFont: 'Comic Sans MS' });
-        expect(screen.getByRole('button', { name: /Other font/ }).getAttribute('aria-pressed')).toBe('true');
-        expect((screen.getByLabelText('Font') as HTMLInputElement).value).toBe('Comic Sans MS');
+        const other = screen.getByRole('button', { name: /Other font/ });
+        expect(other.getAttribute('aria-pressed')).toBe('true');
+        expect(within(other).getByText('Comic Sans MS')).toBeTruthy();
     });
 });
