@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { storageService } from '@serverless-saas/storage';
 import { creativeBrand, type BrandColors, type CreativeBrand, type NewCreativeBrand } from '@serverless-saas/agent-schema/creativeBrand';
 import { db } from '../db';
+import { getFileName } from './brandFiles';
 import type { BrandFill, BrandPatch, BrandRecord, BrandRegion, ColorRole, EmojiPolicy } from './brandSchema';
 
 /** A run older than this is reported failed: the workflow died without reporting. */
@@ -29,8 +30,9 @@ export function effectiveImportStatus(row: CreativeBrand, now: Date = new Date()
 
 export function toBrandRecord(
   row: CreativeBrand,
-  urls: Partial<Record<'logo' | 'favicon' | 'mascot', string | null>>,
+  urls: Partial<Record<'logo' | 'favicon' | 'mascot' | 'font', string | null>>,
   now: Date = new Date(),
+  fontName: string | null = null,
 ): BrandRecord {
   const image = (fileId: string | null, url: string | null | undefined) => (fileId ? { fileId, url: url ?? null } : null);
   const missing: BrandRecord['missing'] = [];
@@ -43,6 +45,7 @@ export function toBrandRecord(
     signaturePhrases: row.signaturePhrases, bannedPhrases: row.bannedPhrases, ctaExamples: row.ctaExamples,
     voiceNotes: row.voiceNotes, colors: row.colors ?? {}, headlineFont: row.headlineFont,
     logo: image(row.logoFileId, urls.logo), favicon: image(row.faviconFileId, urls.favicon), mascot: image(row.mascotFileId, urls.mascot),
+    font: image(row.fontFileId, urls.font), fontName: row.fontFileId ? fontName : null,
     sourceType: row.sourceType as BrandRecord['sourceType'], sourceValue: row.sourceValue,
     importStatus: effectiveImportStatus(row, now).status,
     importedAt: row.importedAt ? row.importedAt.toISOString() : null,
@@ -84,8 +87,11 @@ export async function getBrand(tenantId: string): Promise<BrandRecord | null> {
       return null;
     }
   };
-  const [logo, favicon, mascot] = await Promise.all([url(row.logoFileId), url(row.faviconFileId), url(row.mascotFileId)]);
-  return toBrandRecord(row, { logo, favicon, mascot });
+  const [logo, favicon, mascot, font, fontName] = await Promise.all([
+    url(row.logoFileId), url(row.faviconFileId), url(row.mascotFileId), url(row.fontFileId),
+    row.fontFileId ? getFileName(tenantId, row.fontFileId) : Promise.resolve(null),
+  ]);
+  return toBrandRecord(row, { logo, favicon, mascot, font }, new Date(), fontName);
 }
 
 export async function startImport(tenantId: string, userId: string, source: { type: 'website' | 'instagram'; value: string }): Promise<void> {

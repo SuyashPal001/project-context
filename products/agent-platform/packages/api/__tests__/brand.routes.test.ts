@@ -11,7 +11,12 @@ vi.mock('../lib/brandRecords', async (orig) => ({
 const runBrandImport = vi.fn();
 vi.mock('../lib/brandImport', () => ({ runBrandImport: (...a: unknown[]) => runBrandImport(...a) }));
 const fileOwned = vi.fn();
-vi.mock('../lib/brandFiles', () => ({ filesBelongToTenant: (...a: unknown[]) => fileOwned(...a) }));
+const fileName = vi.fn();
+vi.mock('../lib/brandFiles', async (orig) => ({
+  ...(await orig<typeof import('../lib/brandFiles')>()),
+  filesBelongToTenant: (...a: unknown[]) => fileOwned(...a),
+  getFileName: (...a: unknown[]) => fileName(...a),
+}));
 vi.mock('../db', () => ({ db: {} }));
 
 const F1 = '11111111-1111-4111-8111-111111111111';
@@ -30,7 +35,7 @@ async function app(permissions = [{ resource: 'files', action: 'read' }, { resou
 }
 const send = (method: string, body: unknown) => ({ method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
-beforeEach(() => { vi.clearAllMocks(); lib.getBrand.mockResolvedValue(record); lib.getBrandRow.mockResolvedValue(null); fileOwned.mockResolvedValue(true); });
+beforeEach(() => { vi.clearAllMocks(); lib.getBrand.mockResolvedValue(record); lib.getBrandRow.mockResolvedValue(null); fileOwned.mockResolvedValue(true); fileName.mockResolvedValue('BrandSans.ttf'); });
 
 describe('/brand routes', () => {
   it('GET returns null data when there is no brand', async () => {
@@ -49,6 +54,27 @@ describe('/brand routes', () => {
   it('PATCH rejects a logo file from another workspace', async () => {
     fileOwned.mockResolvedValue(false);
     const res = await (await app()).request('/brand', send('PATCH', { logoFileId: F1 }));
+    expect(res.status).toBe(400);
+    expect(lib.patchBrand).not.toHaveBeenCalled();
+  });
+
+  it('PATCH accepts a .ttf font file', async () => {
+    const res = await (await app()).request('/brand', send('PATCH', { fontFileId: F1 }));
+    expect(res.status).toBe(200);
+    expect(lib.patchBrand).toHaveBeenCalledWith('tenant-1', 'user-1', { fontFileId: F1 });
+  });
+
+  it('PATCH rejects a non-font file for fontFileId', async () => {
+    fileName.mockResolvedValue('logo.woff2');
+    const res = await (await app()).request('/brand', send('PATCH', { fontFileId: F1 }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ message: 'Upload a .ttf or .otf font file' });
+    expect(lib.patchBrand).not.toHaveBeenCalled();
+  });
+
+  it('PATCH rejects a fontFileId from another workspace', async () => {
+    fileOwned.mockResolvedValue(false);
+    const res = await (await app()).request('/brand', send('PATCH', { fontFileId: F1 }));
     expect(res.status).toBe(400);
     expect(lib.patchBrand).not.toHaveBeenCalled();
   });

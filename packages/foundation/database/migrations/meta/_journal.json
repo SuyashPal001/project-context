@@ -722,6 +722,13 @@
       "when": 1792151897934,
       "tag": "0102_unique_molten_man",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1792233052492,
+      "tag": "0103_powerful_junta",
+      "breakpoints": true
     }
   ]
 }

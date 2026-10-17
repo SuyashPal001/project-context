@@ -7,7 +7,7 @@ import { brandPatchSchema } from '../lib/brandSchema';
 import { effectiveImportStatus, getBrand, getBrandRow, patchBrand } from '../lib/brandRecords';
 import { parseBrandSource } from '../lib/brandSource';
 import { runBrandImport } from '../lib/brandImport';
-import { filesBelongToTenant } from '../lib/brandFiles';
+import { filesBelongToTenant, getFileName, isFontFileName } from '../lib/brandFiles';
 
 export const brandRoutes = new Hono<AppEnv>();
 
@@ -34,9 +34,15 @@ brandRoutes.patch('/', zValidator('json', brandPatchSchema), async (c) => {
   const g = guard(c, 'create');
   if (g instanceof Response) return g;
   const patch = c.req.valid('json');
-  const fileIds = [patch.logoFileId, patch.faviconFileId, patch.mascotFileId].filter((v): v is string => typeof v === 'string');
+  const fileIds = [patch.logoFileId, patch.faviconFileId, patch.mascotFileId, patch.fontFileId].filter((v): v is string => typeof v === 'string');
   if (!(await filesBelongToTenant(g.tenantId, fileIds))) {
     return c.json({ error: 'Invalid file', message: 'That image is not in this workspace' }, 400);
+  }
+  if (typeof patch.fontFileId === 'string') {
+    const name = await getFileName(g.tenantId, patch.fontFileId);
+    if (!name || !isFontFileName(name)) {
+      return c.json({ error: 'Invalid file', message: 'Upload a .ttf or .otf font file' }, 400);
+    }
   }
   await patchBrand(g.tenantId, g.userId, patch);
   return c.json({ data: await getBrand(g.tenantId) });

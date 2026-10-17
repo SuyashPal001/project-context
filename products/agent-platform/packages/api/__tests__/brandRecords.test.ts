@@ -12,7 +12,7 @@ const NOW = new Date('2026-10-16T12:00:00.000Z');
 const row = (over: Partial<CreativeBrand> = {}): CreativeBrand => ({
   id: 'b1', tenantId: 't1', name: null, oneLiner: null, audience: null, region: 'IN', toneWords: [],
   emojiPolicy: 'minimal', signaturePhrases: [], bannedPhrases: [], ctaExamples: [], voiceNotes: null,
-  colors: {}, headlineFont: null, logoFileId: null, faviconFileId: null, mascotFileId: null,
+  colors: {}, headlineFont: null, logoFileId: null, faviconFileId: null, mascotFileId: null, fontFileId: null,
   sourceType: null, sourceValue: null, importStatus: 'idle', importError: null, importStartedAt: null,
   importedAt: null, editedByUser: [], createdBy: null, createdAt: NOW, updatedAt: NOW, ...over,
 });
@@ -35,6 +35,13 @@ describe('toBrandRecord', () => {
     const r = toBrandRecord(row({ logoFileId: 'f1' }), { logo: 'https://s3/logo' }, NOW);
     expect(r.logo).toEqual({ fileId: 'f1', url: 'https://s3/logo' });
     expect(r.favicon).toBeNull();
+  });
+
+  it('carries font url and name, and leaves fontName null when there is no uploaded font', () => {
+    const r = toBrandRecord(row({ fontFileId: 'f2' }), { font: 'https://s3/font' }, NOW, 'BrandSans-Bold.otf');
+    expect(r.font).toEqual({ fileId: 'f2', url: 'https://s3/font' });
+    expect(r.fontName).toBe('BrandSans-Bold.otf');
+    expect(toBrandRecord(row(), {}, NOW).fontName).toBeNull();
   });
 });
 
@@ -76,6 +83,11 @@ describe('brandPatchSchema', () => {
   it('rejects unknown keys and clears with null', () => {
     expect(brandPatchSchema.safeParse({ nope: 1 }).success).toBe(false);
     expect(brandPatchSchema.parse({ oneLiner: '' })).toEqual({ oneLiner: null });
+  });
+
+  it('accepts a fontFileId uuid or null', () => {
+    expect(brandPatchSchema.safeParse({ fontFileId: 'not-a-uuid' }).success).toBe(false);
+    expect(brandPatchSchema.parse({ fontFileId: null })).toEqual({ fontFileId: null });
   });
 });
 

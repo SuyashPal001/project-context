@@ -48,6 +48,7 @@ export const brandPatchSchema = z.object({
   logoFileId: z.string().uuid().nullable().optional(),
   faviconFileId: z.string().uuid().nullable().optional(),
   mascotFileId: z.string().uuid().nullable().optional(),
+  fontFileId: z.string().uuid().nullable().optional(),
 }).strict();
 export type BrandPatch = z.infer<typeof brandPatchSchema>;
 
@@ -85,6 +86,8 @@ export interface BrandRecord {
   logo: BrandImageRef | null;
   favicon: BrandImageRef | null;
   mascot: BrandImageRef | null;
+  font: BrandImageRef | null;
+  fontName: string | null;
   sourceType: 'website' | 'instagram' | 'chat' | null;
   sourceValue: string | null;
   importStatus: 'idle' | 'importing' | 'done' | 'failed';

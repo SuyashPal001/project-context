@@ -29,6 +29,7 @@ export const creativeBrand = pgTable('creative_brand', {
   logoFileId: uuid('logo_file_id').references(() => files.id, { onDelete: 'set null' }),
   faviconFileId: uuid('favicon_file_id').references(() => files.id, { onDelete: 'set null' }),
   mascotFileId: uuid('mascot_file_id').references(() => files.id, { onDelete: 'set null' }),
+  fontFileId: uuid('font_file_id').references(() => files.id, { onDelete: 'set null' }),
   sourceType: text('source_type'), // 'website' | 'instagram' | 'chat'
   sourceValue: text('source_value'),
   importStatus: text('import_status').notNull().default('idle'), // 'idle' | 'importing' | 'done' | 'failed'

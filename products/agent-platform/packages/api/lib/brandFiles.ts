@@ -8,3 +8,14 @@ export async function filesBelongToTenant(tenantId: string, ids: string[]): Prom
   const rows = await db.select({ id: files.id }).from(files).where(and(eq(files.tenantId, tenantId), inArray(files.id, ids)));
   return rows.length === new Set(ids).size;
 }
+
+/** Captions render through libass, which needs TTF/OTF — nothing else. */
+export function isFontFileName(name: string): boolean {
+  return /\.(ttf|otf)$/i.test(name.trim());
+}
+
+/** Tenant-scoped file name lookup, for display (e.g. the uploaded font's original filename). */
+export async function getFileName(tenantId: string, fileId: string): Promise<string | null> {
+  const [row] = await db.select({ name: files.name }).from(files).where(and(eq(files.tenantId, tenantId), eq(files.id, fileId))).limit(1);
+  return row?.name ?? null;
+}
