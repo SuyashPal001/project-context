@@ -69,3 +69,23 @@ describe('an object the original frame shows is in the photo', () => {
     expect(r.result.status).toBe('passed')
   })
 })
+
+// Fan run real14: look 2's photo copied the original frame at 6.3s (arm behind her head) and was warned
+// "right arm raised, not in the reference": the check compared it with the look's first second, before she
+// raised it. A photo is checked against the frame it was drawn from, when that frame shows her well.
+describe('the pose is checked against the frame the photo copies', () => {
+  const armUp = { ...look.start!, arms: { left: 'down', right: 'raised' } }
+  const armsDown = { ...look, start: { ...look.start!, arms: { left: 'down', right: 'down' } } }
+  it('the frame\'s own pose is the reference when she is well seen in it', async () => {
+    const d = deps({ 'guide-1': [0.3, 0.2, 0.7, 0.8], 'still-1': [0.3, 0.2, 0.7, 0.8] })
+    ;(d as { poseImage: unknown }).poseImage = vi.fn(async (p: string) => ({ model: 'm', people: 1, no_person: false, main: armUp, box: [0.3, 0.2, 0.7, 0.8], head_seen: true, p }))
+    const r = await makeStill({ ...job, look: armsDown as never }, ctx, d)
+    expect(r.result.reasons.join(' ')).not.toMatch(/arm/)
+  })
+  it('a frame where she is covered falls back to the look\'s measured pose', async () => {
+    const d = deps({ 'guide-1': [0.3, 0.2, 0.7, 0.8], 'still-1': [0.3, 0.2, 0.7, 0.8] })
+    ;(d as { poseImage: unknown }).poseImage = vi.fn(async (p: string) => ({ model: 'm', people: 1, no_person: false, main: armUp, box: [0.3, 0.2, 0.7, 0.8], head_seen: p !== 'guide-1' }))
+    const r = await makeStill({ ...job, look: armsDown as never }, ctx, d)
+    expect(r.result.reasons.join(' ')).toMatch(/right arm/)
+  })
+})

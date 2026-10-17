@@ -91,12 +91,13 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
     ])
     const room = job.room ? await roomCheck(still, job.room, ctx, deps) : null
     const missing = job.guide && job.props?.length ? await missingProps(deps.ask(ctx.tenantId), await deps.fetchImage(job.guide, ctx.idToken), still, job.props).catch(() => null) : null
-    const body = job.kind === 'start' ? job.look.start : job.look.end
+    // The original's frame this photo copies: its framing, and its pose when she is well seen in it (the
+    // look's window average can predate a move the frame shows, fan run real14 look 2's arm).
+    const gp = job.guide && personIn(job.look) ? await deps.localFile(job.guide, ctx.idToken, ctx.scopeId).then((g) => deps.poseImage(g)).catch(() => null) : null
+    const body = (gp?.main && gp.head_seen === true ? { ...gp.main, frames: 1 } : null) ?? (job.kind === 'start' ? job.look.start : job.look.end)
     // Same camera as the original: where the person sits in the frame, against the original's frame.
     let framing: { ok: boolean | null; why: string } | null = null
-    if (job.guide && personIn(job.look)) {
-      try { const gp = await deps.poseImage(await deps.localFile(job.guide, ctx.idToken, ctx.scopeId)); framing = compareFraming(gp.box, pose.box, { refHead: gp.head_seen, gotHead: pose.head_seen }) } catch { framing = { ok: null, why: '' } }
-    }
+    if (job.guide && personIn(job.look)) framing = gp ? compareFraming(gp.box, pose.box, { refHead: gp.head_seen, gotHead: pose.head_seen }) : { ok: null, why: '' }
     let p = comparePose(body, job.people ?? job.look.people, pose)
     // A tighter original (selfie, close-up): crop the still around the face, free, and keep the crop
     // when it matches. A crop that can't be made keeps the still with its framing warning.
