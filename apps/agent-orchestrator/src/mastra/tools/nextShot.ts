@@ -30,7 +30,7 @@ export function editShotPrompt(c: ShotChange): string {
   const list = changes(c).map((x, i) => `(${i + 1}) ${x}`).join('; ')
   // No "exactly as in the first image" and no "size and position": that pinned the body and the pose never
   // changed (fan run real13 A/B); the camera is kept by naming its framing.
-  const keep = ['the same person and face', ...(c.styling ? [] : ['the hair']), ...(c.outfit ? [] : ['the outfit']), 'the room, floor, furniture and light', 'the camera height, angle and framing']
+  const keep = ['the same person and face', ...(c.styling ? ['the hair colour'] : ['the hair']), ...(c.outfit ? [] : ['the outfit']), 'the room, floor, furniture and light', 'the camera height, angle and framing']
   return `Edit the first image. Change only: ${list}. Keep ${keep.join(', ')}. Real photo, no text.`
 }
 

@@ -3,7 +3,7 @@
 // repeated its start pose; a still whose original faces away was never face-checked, so the original
 // person's face passed; and a drawn (cartoon) still passed every check.
 import { describe, it, expect, vi } from 'vitest'
-import { stillPrompt, stillGateInput, propsAt } from './prompts.js'
+import { stillPrompt, stillGateInput, propsAt, reelProps } from './prompts.js'
 import { writePlan } from './plan.js'
 import { remakeStillChecks } from './stillChecks.js'
 import { makeStill, type StillCtx, type StillJob } from './paidStill.js'
@@ -24,6 +24,12 @@ describe('a still lists only the props in view at its time', () => {
     const p = { reference: { props: props.map(({ prop, where, when }) => ({ prop, where, when })) }, lines: [] } as never
     expect(propsAt(p, 1)).toEqual(['Flower bouquet', 'Smartphone'])
     expect(propsAt(p, 8)).toEqual(['Flower bouquet', 'Wired EarPods'])
+  })
+  // fan run real18: the watch model put the TV remote at 0-5s only, though it lies by her hand in every look;
+  // the missing-object check counts every object of the reel in the original frame instead (measured, not guessed)
+  it('reelProps lists every object of the reel whatever its guessed time, never the trick', () => {
+    const p = { reference: { props: [...props.map(({ prop, where, when }) => ({ prop, where, when })), { prop: 'Ceiling fan blade', where: 'lens', when: '', trick: true }] }, lines: [] } as never
+    expect(reelProps(p)).toEqual(['Flower bouquet', 'Smartphone', 'Wired EarPods'])
   })
   it('the still prompt and its check input use the same props', async () => {
     const p = await writePlan(b(), brand, vi.fn().mockResolvedValue({ lines: [] }))

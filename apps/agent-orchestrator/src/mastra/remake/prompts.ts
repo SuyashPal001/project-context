@@ -29,6 +29,12 @@ const SLACK_S = 0.25
 export function propsAt(plan: RemakePlan, t: number): string[] {
   return plan.reference.props.flatMap((p, i) => (p.trick || !inView(p.when, t) ? [] : shown(plan, `props[${i}]`, p.prop) ?? []))
 }
+/** Every object of the reel whatever its guessed time (never the trick): the missing-object check counts them in
+ *  the original's frame, so what the frame really shows decides (the watch model put the fan reel's remote at
+ *  0-5s only; it lies by her hand in every look). */
+export function reelProps(plan: RemakePlan): string[] {
+  return plan.reference.props.flatMap((p, i) => (p.trick ? [] : shown(plan, `props[${i}]`, p.prop) ?? []))
+}
 function inView(when: string | undefined, t: number): boolean {
   const r = whenRange(when ?? '')
   return !r || (t >= r[0] - SLACK_S && t <= r[1] + SLACK_S)
@@ -103,7 +109,8 @@ export function stillPrompt(plan: RemakePlan, look: RemakeLook, kind: 'start' | 
   const b = stillBits(plan, look, kind, characters)
   const parts: string[] = []
   if (person) {
-    parts.push('The person is the person in the first image: same face, hair and body.')
+    // the colour too: a styling line restyles the hair, never recolours it (fan run real18: brown, highlighted)
+    parts.push('The person is the person in the first image: same face, hair colour and body.')
     parts.push(b.settingKept
       ? 'Copy ONLY the body pose, camera framing, setting and where objects sit from the second image; not its person, face, outfit, accessories or any text.'
       : 'Copy ONLY the body pose, camera framing and where objects sit from the second image; not its person, face, outfit, accessories, setting or any text.')

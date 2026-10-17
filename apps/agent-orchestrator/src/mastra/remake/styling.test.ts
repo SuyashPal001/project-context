@@ -113,3 +113,15 @@ describe('casting looks like an ad casting', () => {
     expect(castSheetPrompt('a woman', 'more glamorous, fuller face')).toMatch(/The user asked for: more glamorous, fuller face\./)
   })
 })
+
+// fan run real18: the photos came out with brown, highlighted hair; the approved sheet's is black. The styling
+// (open, wavy) changes the hairdo, never the colour.
+describe('the hair colour is the person\'s', () => {
+  it('the still says the same hair colour as the first image', async () => {
+    const { stillPrompt } = await import('./prompts.js')
+    const { writePlan } = await import('./plan.js')
+    const { breakdown } = await import('./fixtures.testing.js')
+    const plan = await writePlan(breakdown(), { name: 'B', product: 'p' }, (async () => ({ lines: [] })) as never)
+    expect(stillPrompt(plan, plan.looks[0], 'start', { name: 'B', product: 'p' }, false)).toMatch(/same face, hair colour and body/)
+  })
+})
