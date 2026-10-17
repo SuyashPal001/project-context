@@ -130,3 +130,20 @@ describe('a start photo follows its direction', () => {
     expect(r.result.status).toBe('passed')
   })
 })
+
+// fan run real29: look 4's pose fix said "make it as directed" while the keep list said "keep the pose", so the
+// prompt check stopped the retry and the look was dropped; and a framing or direction miss that one fix cannot
+// mend now keeps the photo with a warning (dropping the look was worse than the miss).
+describe('soft misses never drop a look', () => {
+  it('a pose fix never also says keep the pose', async () => {
+    const { editPrompt } = await import('./paidStill.js')
+    expect(editPrompt('the remote is in her hand is wrong; make it as directed: one hand on her waist')).not.toMatch(/Keep everything else exactly: the pose/)
+  })
+  it('framing or direction still off after the fix: kept, warned, usable', async () => {
+    const d = deps({ 'guide-1': [0.3, 0.2, 0.7, 0.8], 'still-1': [0.1, 0.02, 0.9, 0.98], 'still-2': [0.1, 0.02, 0.9, 0.98] })
+    const r = await makeStill(job, ctx, d)
+    expect(r.result.status).toBe('warned')
+    expect(r.result.fileId).toBe('still-2')
+    expect(r.result.reasons.join(' ')).toMatch(/camera framing differs/)
+  })
+})

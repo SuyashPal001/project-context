@@ -39,5 +39,9 @@ describe('compareFraming', () => {
   it('the body midpoint decides where she lies when both pictures have it', () => {
     expect(compareFraming([0.157, 0.171, 0.988, 0.966], [0.069, 0.171, 0.818, 0.99], { refMid: [0.47, 0.56], gotMid: [0.49, 0.57] }).ok).toBe(true)
     expect(compareFraming([0.3, 0.2, 0.7, 0.8], [0.3, 0.2, 0.7, 0.8], { refMid: [0.5, 0.5], gotMid: [0.3, 0.5] }).why).toMatch(/further left/)
+  })  // fan run real29: crossed legs shortened shoulders-to-ankles; the torso decides when both have it
+  it('the torso length decides the size over the body length', () => {
+    expect(compareFraming([0.3, 0.2, 0.7, 0.8], [0.3, 0.2, 0.7, 0.8], { refLen: 0.41, gotLen: 0.48, refTorso: 0.2, gotTorso: 0.205 }).ok).toBe(true)
+    expect(compareFraming([0.3, 0.2, 0.7, 0.8], [0.3, 0.2, 0.7, 0.8], { refTorso: 0.2, gotTorso: 0.3 }).why).toMatch(/the camera is closer/)
   })
 })

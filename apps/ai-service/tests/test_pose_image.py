@@ -103,3 +103,10 @@ def test_reading_gives_the_body_midpoint(tmp_path, monkeypatch):
     kp, sc = person()  # shoulders mid (0.5, 0.2), ankles mid (0.5, 0.9)
     monkeypatch.setattr(pose, "_load", lambda: (FakeDet([[10, 20, 90, 180]]), FakePose([(kp, sc)])))
     assert pose.read_image(str(_img(tmp_path)))["body_mid"] == [0.5, 0.55]
+
+# Crossed legs shorten shoulders-to-ankles, and a same-camera photo with straight legs failed as "closer" (fan run
+# real29). Her size for the framing check is the torso, shoulders to hips, which the legs never change.
+def test_reading_gives_the_torso_length(tmp_path, monkeypatch):
+    kp, sc = person()  # shoulders at y 0.20, hips at y 0.50
+    monkeypatch.setattr(pose, "_load", lambda: (FakeDet([[10, 20, 90, 180]]), FakePose([(kp, sc)])))
+    assert abs(pose.read_image(str(_img(tmp_path)))["torso_len"] - 0.30) < 0.01

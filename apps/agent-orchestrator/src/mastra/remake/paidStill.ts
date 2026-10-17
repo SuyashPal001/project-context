@@ -71,8 +71,9 @@ const FIXES: Array<[RegExp, string | ((reason: string) => string)]> = [
 const NEEDS_FRESH = /back to the camera|facing the camera|side-on|no person found|appears where the reference has none/i
 // A fix that changes the framing never also says to keep it (the prompt check stopped every such retry as a
 // contradiction, fan run real7).
+// Nor does a pose fix say keep the pose (look 4's retry was stopped as a contradiction, fan run real29).
 export const editPrompt = (fix: string, keepSetting = true): string =>
-  `Edit the first image. Change only this: ${fix}. Keep everything else exactly: the pose, ${/framing/i.test(fix) ? '' : 'framing, '}${keepSetting ? 'setting, ' : ''}outfit, objects${keepSetting ? ' and light' : ''}. No text or logos.`
+  `Edit the first image. Change only this: ${fix}. Keep everything else exactly: ${/as directed|pose|\blegs?\b|\barms?\b|hand/i.test(fix) ? '' : 'the pose, '}${/framing/i.test(fix) ? '' : 'framing, '}${keepSetting ? 'setting, ' : ''}outfit, objects${keepSetting ? ' and light' : ''}. No text or logos.`
 
 export function fixLine(reasons: string[]): string {
   return [...new Set(reasons.map((r) => { const f = FIXES.find(([re]) => re.test(r))?.[1]; return typeof f === 'function' ? f(r) : f ?? r }))].join('; ')
@@ -115,7 +116,7 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
     const body = (gp?.main && gp.head_seen === true ? { ...gp.main, frames: 1 } : null) ?? (job.kind === 'start' ? job.look.start : job.look.end)
     // Same camera as the original: where the person sits in the frame, against the original's frame.
     let framing: { ok: boolean | null; why: string } | null = null
-    if (job.guide && personIn(job.look)) framing = gp ? compareFraming(gp.box, pose.box, { refHead: gp.head_seen, gotHead: pose.head_seen, refLen: gp.body_len, gotLen: pose.body_len, refMid: gp.body_mid, gotMid: pose.body_mid }) : { ok: null, why: '' }
+    if (job.guide && personIn(job.look)) framing = gp ? compareFraming(gp.box, pose.box, { refHead: gp.head_seen, gotHead: pose.head_seen, refLen: gp.body_len, gotLen: pose.body_len, refMid: gp.body_mid, gotMid: pose.body_mid, refTorso: gp.torso_len, gotTorso: pose.torso_len }) : { ok: null, why: '' }
     let p = comparePose(body, job.people ?? job.look.people, pose)
     // A tighter original (selfie, close-up): crop the still around the face, free, and keep the crop
     // when it matches. A crop that can't be made keeps the still with its framing warning.
@@ -220,6 +221,15 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps, 
       references = [g.fileId, ...identity, ...roomRef, ...guideRef]
       editGate = `edit of a still that was already checked against the approved plan (the first image); the only change asked for: ${fix}; everything else is kept from the first image${identity.length ? '; the second image is the chosen person (not described in words)' : ''}${roomRef.length ? `; image ${2 + identity.length} is the first look's still, given only for its room` : ''}`
     }
+  }
+  // Framing or direction still off after the one fix: the photo is kept with a warning (fan run real29: dropping
+  // the look was worse than the miss). Anything else (a wrong face, an extra person) still fails.
+  const soft = (r: string) => /camera framing differs|^not as directed: /i.test(r)
+  const lastHard = tries.at(-1)?.why ?? []
+  if (last && lastHard.length && lastHard.every(soft)) {
+    ledger[ledger.length - 1].outcome = 'kept'
+    tries[tries.length - 1].kept = true
+    return withTries({ result: { ...base, fileId: last.fileId, status: 'warned', reasons: lastHard.map((r) => r.replace(/ \(directed: .*\)$/, '')) }, ledger })
   }
   return withTries({ result: { ...base, fileId: last!.fileId, status: 'failed', reasons: last!.reasons }, ledger })
 }

@@ -14,14 +14,15 @@ export const SHIFT_TOLERANCE = 0.1
 /** refLen/gotLen: shoulders to ankles in frame heights (the pose reader's body_len). When both are known they
  *  decide the size, and the up-down place is read at the feet: a blade over the head cut the box top while
  *  the head still read as seen (fan run real17). */
-export function compareFraming(ref: number[] | undefined | null, got: number[] | undefined | null, heads: { refHead?: boolean; gotHead?: boolean; refLen?: number | null; gotLen?: number | null; refMid?: number[] | null; gotMid?: number[] | null } = {}): { ok: boolean | null; why: string } {
+export function compareFraming(ref: number[] | undefined | null, got: number[] | undefined | null, heads: { refHead?: boolean; gotHead?: boolean; refLen?: number | null; gotLen?: number | null; refMid?: number[] | null; gotMid?: number[] | null; refTorso?: number | null; gotTorso?: number | null } = {}): { ok: boolean | null; why: string } {
   if (!ref || !got || ref.length !== 4 || got.length !== 4) return { ok: null, why: 'the person could not be placed in the frame' }
   const h = (b: number[]) => b[3] - b[1]
   const cx = (b: number[]) => (b[0] + b[2]) / 2
   const cy = (b: number[]) => (b[1] + b[3]) / 2
   const pct = (x: number) => `${Math.round(x * 100)}%`
   const why: string[] = []
-  const lens = heads.refLen && heads.gotLen ? { ref: heads.refLen, got: heads.gotLen } : null
+  // the torso (shoulders to hips) first: crossed or bent legs shorten shoulders-to-ankles (fan run real29)
+  const lens = heads.refTorso && heads.gotTorso ? { ref: heads.refTorso, got: heads.gotTorso } : heads.refLen && heads.gotLen ? { ref: heads.refLen, got: heads.gotLen } : null
   const hidden = !lens && (heads.refHead === false || heads.gotHead === false)
   if (lens) {
     const size = lens.got / lens.ref

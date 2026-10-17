@@ -344,6 +344,14 @@ def _body_len(kp, sc, w: int, h: int):
     return round(float(np.linalg.norm((kp[L_SH] + kp[R_SH]) / 2 - (kp[L_AN] + kp[R_AN]) / 2)) / h, 3)
 
 
+def _torso_len(kp, sc, w: int, h: int):
+    """Shoulder midpoint to hip midpoint, as a fraction of the frame height; None unless all four are seen."""
+    kp, sc = np.asarray(kp) * np.array([w, h]), np.asarray(sc)
+    if sc[[L_SH, R_SH, L_HIP, R_HIP]].min() < VIS:
+        return None
+    return round(float(np.linalg.norm((kp[L_SH] + kp[R_SH]) / 2 - (kp[L_HIP] + kp[R_HIP]) / 2)) / h, 3)
+
+
 def _body_mid(kp, sc):
     """Midway between the shoulder midpoint and the ankle midpoint, in frame fractions; None unless all four are seen."""
     kp, sc = np.asarray(kp), np.asarray(sc)
@@ -372,6 +380,8 @@ def read_image(path: str) -> dict:
             "head": _head_box(main[0], main[1], w, h),
             # shoulders to ankles, in frame heights: the person's size, whatever covers the head
             "body_len": _body_len(main[0], main[1], w, h),
+            # her size for framing: shoulders to hips, which crossed or bent legs never change (fan run real29)
+            "torso_len": _torso_len(main[0], main[1], w, h),
             # where she lies: midway between shoulders and ankles (a cape or arm spread to the edge moves the box)
             "body_mid": _body_mid(main[0], main[1])}
 
