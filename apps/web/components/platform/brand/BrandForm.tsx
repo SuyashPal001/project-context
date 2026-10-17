@@ -17,7 +17,6 @@ import {
     type BrandPatch, type BrandRecord,
 } from './brandApi';
 import { BRAND_FONT_CARDS, BRAND_FONT_CLASS } from './brandFonts';
-import { BrandFillRow } from './BrandFillRow';
 import { BrandPreviewCard, BrandPreviewMobileBar } from './BrandPreviewCard';
 
 type ImageSlot = 'logo' | 'favicon' | 'mascot';
@@ -28,10 +27,6 @@ interface Props {
     onRefresh: () => void;
     onUploadImage: (slot: ImageSlot, file: File | null) => void;
     refreshing: boolean;
-    chatHref: string;
-    onImport: (value: string) => void;
-    importing: boolean;
-    importFailed: boolean;
 }
 
 const toLines = (v: string) => v.split('\n').map((s) => s.trim()).filter(Boolean);
@@ -509,12 +504,11 @@ const FORM_TABS: ReadonlyArray<{ key: TabKey; label: string; done: (b: BrandReco
     { key: 'look', label: 'Visuals', done: (b) => !!b.logo || Object.keys(b.colors).length > 0 },
 ];
 
-export function BrandForm({ brand, onSave, onRefresh, onUploadImage, refreshing, chatHref, onImport, importing, importFailed }: Props) {
+export function BrandForm({ brand, onSave, onRefresh, onUploadImage, refreshing }: Props) {
     const source = sourceLine(brand);
     const [tab, setTab] = useState<TabKey>('basics');
     return (
         <div className="space-y-6 pb-16">
-            <BrandFillRow brand={brand} chatHref={chatHref} onSubmit={onImport} busy={importing} failed={importFailed} />
 
             {/* Same pill switcher as the Skills page (Mine / Explore). */}
             <div role="tablist" className="flex w-fit gap-1 rounded-full bg-muted p-1">

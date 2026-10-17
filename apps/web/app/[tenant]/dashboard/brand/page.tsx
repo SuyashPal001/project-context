@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { PermissionGate } from '@/components/platform/PermissionGate';
+import { BrandFillButton } from '@/components/platform/brand/BrandFillButton';
 import { BrandForm } from '@/components/platform/brand/BrandForm';
 import {
     BRAND_IMAGE_PREFIX, BRAND_QUERY_KEY, EMPTY_BRAND, getBrand, importBrand, importErrorMessage, patchBrand, type BrandPatch, type BrandRecord,
@@ -32,7 +33,7 @@ export default function BrandPage() {
     const startImport = useMutation({
         mutationFn: (value: string) => importBrand(value),
         onSuccess: setBrand,
-        onError: (err) => toast.error(importErrorMessage(err, FAILED_COPY)),
+        // Errors are shown inside the Fill in card; Refresh (bottom line) still gets a toast.
     });
 
     const uploadImage = async (slot: 'logo' | 'favicon' | 'mascot', file: File | null) => {
@@ -52,13 +53,19 @@ export default function BrandPage() {
     return (
         <PermissionGate resource="files" action="read">
             <div className="space-y-6">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight text-foreground">Brand</h1>
-                    <p className="mt-2 text-muted-foreground">
-                        {importing && brand?.sourceValue
-                            ? `Reading ${brand.sourceValue.replace(/^https:\/\//, '').replace(/\/$/, '')}… fields fill in as they're found.`
-                            : `How ${brand?.name || 'your brand'} sounds and looks. Every ad Olmo makes follows it.`}
-                    </p>
+                <div className="flex items-start justify-between gap-4">
+                    <div>
+                        <h1 className="text-3xl font-bold tracking-tight text-foreground">Brand</h1>
+                        <p className="mt-2 text-muted-foreground">
+                            {importing && brand?.sourceValue
+                                ? `Reading ${brand.sourceValue.replace(/^https:\/\//, '').replace(/\/$/, '')}… fields fill in as they're found.`
+                                : `How ${brand?.name || 'your brand'} sounds and looks. Every ad Olmo makes follows it.`}
+                        </p>
+                    </div>
+                    {!isLoading && !isError && (
+                        <BrandFillButton brand={brand ?? EMPTY_BRAND} chatHref={chatHref} onSubmit={(v) => startImport.mutateAsync(v)}
+                            busy={importing || startImport.isPending} failed={brand?.importStatus === 'failed'} />
+                    )}
                 </div>
                 {isLoading ? null
                     : isError ? (
@@ -68,11 +75,8 @@ export default function BrandPage() {
                         </div>
                     ) : (
                         <BrandForm brand={brand ?? EMPTY_BRAND} onSave={(p) => save.mutate(p)} onUploadImage={uploadImage}
-                            onRefresh={() => brand?.sourceValue && startImport.mutate(brand.sourceValue)}
-                            refreshing={importing || startImport.isPending}
-                            chatHref={chatHref} onImport={(v) => startImport.mutate(v)}
-                            importing={importing || startImport.isPending}
-                            importFailed={brand?.importStatus === 'failed'} />
+                            onRefresh={() => brand?.sourceValue && startImport.mutate(brand.sourceValue, { onError: (err) => toast.error(importErrorMessage(err, FAILED_COPY)) })}
+                            refreshing={importing || startImport.isPending} />
                     )}
             </div>
         </PermissionGate>

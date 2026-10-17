@@ -22,7 +22,6 @@ const OCEAN = { primary: '#2F6F8F', secondary: '#23495A', accent: '#E8A33D', tex
 
 const baseProps = {
     onSave: vi.fn(), onRefresh: vi.fn(), onUploadImage: vi.fn(), refreshing: false,
-    chatHref: '/t/dashboard/chat?prefill=Set%20up%20my%20brand', onImport: vi.fn(), importing: false, importFailed: false,
 };
 
 function renderVisuals(onSave = vi.fn(), brandRecord: BrandRecord = brand, onUploadImage = vi.fn()) {

@@ -23,7 +23,6 @@ const brand: BrandRecord = {
 
 const baseProps = {
     onSave: vi.fn(), onRefresh: vi.fn(), onUploadImage: vi.fn(), refreshing: false,
-    chatHref: '/t/dashboard/chat?prefill=Set%20up%20my%20brand', onImport: vi.fn(), importing: false, importFailed: false,
 };
 
 function renderLook(onSave = vi.fn(), brandRecord = brand) {
