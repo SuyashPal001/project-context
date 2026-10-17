@@ -96,9 +96,10 @@ export function clipPrompt(plan: RemakePlan, look: RemakeLook, _brand: Brand, en
     parts.push('Keep the same person, face, outfit and setting the whole time.')
     // directed like v12 by hand (tools/lookDirection): her moves and where the objects rest, read from the original
     if (direction) {
-      const sides = (t: string) => t.replace(/\bthe image-(left|right)\b/g, 'the $1 side of the image').replace(/\bimage-(left|right)\b/g, 'the $1 side of the image').replace(/[.\s]+$/, '')
-      parts.push(direction.moves ? `Then ${sides(direction.moves).replace(/^\w/, (c) => c.toLowerCase())}, and holds the pose.` : 'She holds the pose, breathing softly.')
-      if (direction.objects) parts.push(`${sides(direction.objects).replace(/^\w/, (c) => c.toUpperCase())} and stays there.`)
+      // the direction as written: rewording its sides mangled the grammar ("your the left side of the image hand")
+      const clean = (t: string) => t.trim().replace(/[.\s]+$/, '')
+      parts.push(direction.moves ? `Her direction (image-left and image-right are the viewer's left and right): ${clean(direction.moves).replace(/^\w/, (c) => c.toLowerCase())}. Then she holds the pose.` : 'She holds the pose, breathing softly.')
+      if (direction.objects) parts.push(`Objects: ${clean(direction.objects).replace(/^\w/, (c) => c.toLowerCase())}; it stays there.`)
     } else if (moves.length) parts.push(`Movement (directions as the viewer sees the frame): ${scaleTimes(moves, factor, shift).join('; ')}.`)
     const from = look.start ? legSide(look.start) : null
     const to = look.end ? legSide(look.end) : null

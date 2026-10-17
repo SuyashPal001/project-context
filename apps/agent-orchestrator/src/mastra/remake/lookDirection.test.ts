@@ -49,8 +49,10 @@ describe('the clips are directed from the original', () => {
   it('a person\'s clip says the direction\'s moves and where the objects rest, and the check knows them', async () => {
     const p = await writePlan(breakdown(), brand, vi.fn().mockResolvedValue({ lines: [] }))
     const s = clipPrompt(p, p.looks[0], brand, 'omni', undefined, false, undefined, direction)
-    expect(s).toMatch(/Then she slowly slides both legs to the right side of the image, and holds the pose\./)
-    expect(s).toMatch(/The black remote lies on the rug beside her left hand and stays there\./)
+    // the direction as written (rewording sides mangled it: "your the left side of the image hand", fan run real31)
+    expect(s).toMatch(/Her direction \(image-left and image-right are the viewer's left and right\): she slowly slides both legs to the image-right\. Then she holds the pose\./)
+    expect(s).toMatch(/Objects: the black remote lies on the rug beside her left hand; it stays there\./)
+    expect(s).not.toMatch(/the (left|right) side of the image hand|your the/)
     expect(clipGateInput(p, p.looks[0], s, undefined, undefined, direction).planLine).toMatch(/the photographer's direction read from the original look/)
   })
 })
