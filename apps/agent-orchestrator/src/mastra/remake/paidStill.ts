@@ -96,7 +96,7 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
       deps.localFile(fileId, ctx.idToken, ctx.scopeId).then((p) => deps.poseImage(p)),
     ])
     const room = job.room ? await roomCheck(still, job.room, ctx, deps) : null
-    const added = job.editOf ? await addedByEdit(deps.ask(ctx.tenantId), await deps.fetchImage(job.editOf.fileId, ctx.idToken), still, job.editOf.change) : null
+    const added = job.editOf ? await addedByEdit(deps.ask(ctx.tenantId), await deps.fetchImage(job.editOf.fileId, ctx.idToken), still, job.editOf.change, job.props ?? []) : null
     const missing = job.guide && job.props?.length ? await missingProps(deps.ask(ctx.tenantId), await deps.fetchImage(job.guide, ctx.idToken), still, job.props).catch(() => null) : null
     // The original's frame this photo copies: its framing, and its pose when she is well seen in it (the
     // look's window average can predate a move the frame shows, fan run real14 look 2's arm).

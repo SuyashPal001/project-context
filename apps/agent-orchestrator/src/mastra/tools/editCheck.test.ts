@@ -19,5 +19,13 @@ describe('addedByEdit', () => {
   it('the question names what counts: objects, things in front of the camera, a covered face, text', () => {
     expect(ADDED_BY_EDIT_QUESTION('x')).toMatch(/in front of the camera/)
     expect(ADDED_BY_EDIT_QUESTION('x')).toMatch(/covering the face/)
+  })  // fan run real19: look 4's edit was failed for "shoes and a small object in her hand": the shoes came with the
+  // new outfit and the object was the remote the original has, so its fix removed the remote
+  it('objects that belong in the shot and parts of a new outfit do not count', async () => {
+    const ask = vi.fn().mockResolvedValue({ added: false, what: '' })
+    await addedByEdit(ask, img('a'), img('b'), 'the outfit to a red brocade set', ['Remote control'])
+    const q = ask.mock.calls[0][0].at(-1).text
+    expect(q).toMatch(/These belong in the shot and do not count: Remote control\./)
+    expect(q).toMatch(/Shoes, jewellery and anything worn with a new outfit are part of an outfit change/)
   })
 })
