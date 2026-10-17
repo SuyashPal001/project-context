@@ -26,3 +26,13 @@ export async function duplicatedProps(ask: AskFn, start: Img, frames: Array<{ t:
   if (extra.length) return { status: 'fail', reason: `an object appears more often than in the start photo: ${extra.join('; ')}` }
   return known ? { status: 'pass', reason: 'each object appears as often as in the start photo' } : { status: 'unknown', reason: 'the objects could not be counted' }
 }
+
+/** An object the original's frame shows that a made photo lacks (look 3's remote, fan run real14). More than
+ *  the original is duplicatedProps' job; a count that could not be made is unknown, never a pass. */
+export async function missingProps(ask: AskFn, original: Img, made: Img, props: string[]): Promise<{ status: 'pass' | 'fail' | 'unknown'; reason: string }> {
+  if (!props.length) return { status: 'pass', reason: 'no objects to count' }
+  const [o, m] = await Promise.all([countProps(ask, original, props), countProps(ask, made, props)])
+  const missing = props.filter((p) => o[p] !== null && m[p] !== null && m[p]! < o[p]!)
+  if (missing.length) return { status: 'fail', reason: `missing from the photo: ${missing.map((p) => `${p} (the original frame shows ${o[p]})`).join('; ')}` }
+  return props.some((p) => o[p] !== null && m[p] !== null) ? { status: 'pass', reason: 'every object the original frame shows is there' } : { status: 'unknown', reason: 'the objects could not be counted' }
+}

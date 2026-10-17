@@ -55,3 +55,17 @@ describe('a still keeps the original camera framing', () => {
     expect(d.generateStill).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('an object the original frame shows is in the photo', () => {
+  it('a missing remote fails and is fixed by an edit that adds it where the original frame has it', async () => {
+    const d = deps({ 'guide-1': [0.3, 0.2, 0.7, 0.8], 'still-1': [0.3, 0.2, 0.7, 0.8], 'still-2': [0.3, 0.2, 0.7, 0.8] })
+    let n = 0
+    ;(d as { ask: unknown }).ask = () => vi.fn(async (parts: Array<{ image?: { data: string } }>) => ({ counts: { 'TV remote': parts[0].image!.data === 'guide-1' ? 1 : parts[0].image!.data === 'still-1' ? 0 : 1 }, n: n++ }))
+    const r = await makeStill({ ...job, props: ['TV remote'] }, ctx, d)
+    expect(r.result.tries?.[0].why.join(' ')).toMatch(/missing from the photo: TV remote/)
+    const edit = (d.generateStill as ReturnType<typeof vi.fn>).mock.calls[1][0]
+    expect(edit.prompt).toMatch(/add the missing objects where they lie in the original frame \(image \d\); take nothing else from it/)
+    expect(edit.referenceFileIds).toContain('guide-1')
+    expect(r.result.status).toBe('passed')
+  })
+})

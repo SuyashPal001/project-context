@@ -9,6 +9,7 @@ import { comparePose } from './poseCompare.js'
 import { cropFramingFor } from './tightShots.js'
 import { personIn } from './looks.js'
 import { compareFraming } from '../tools/framingCheck.js'
+import { missingProps } from '../tools/propCount.js'
 import type { stillGateInput } from './prompts.js'
 import type { LedgerEntry, RemakeLook, StillResult, StillTry } from './types.js'
 
@@ -29,7 +30,9 @@ export interface StillJob { look: RemakeLook; kind: 'start' | 'end'; prompt: str
    *  on the floor against the big sheet photo read as "a different person" on every try (fan run real6). */
   faceRef?: string
   /** first paid slot for a still outside the plan's own slots (a fix the user asks for at the preview) */
-  slot?: number }
+  slot?: number
+  /** the plan's objects at this still's time: each one the original frame (guide) shows must be in the photo */
+  props?: string[] }
 
 export const slotFor = (n: number, kind: 'start' | 'end', attempt: number): number => n * 4 + (kind === 'end' ? 2 : 0) + attempt
 
@@ -43,6 +46,7 @@ const FIXES: Array<[RegExp, string]> = [
   [/face differs/i, 'the face must be exactly the person in the first image'],
   [/appears twice/i, 'show each object only once'],
   [/caption text over the photo/i, 'remove the caption text printed over the photo'],
+  [/missing from the photo/i, 'add the missing objects where they lie in the original frame (GUIDE_IMAGE); take nothing else from it'],
   [/extra person|only \d+ person/i, 'exactly as many people as the second image shows'],
   [/no person found/i, 'the person is in the shot as in the second image'],
   [/appears where the reference has none/i, 'no person in this image'],
@@ -86,6 +90,7 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
       deps.localFile(fileId, ctx.idToken, ctx.scopeId).then((p) => deps.poseImage(p)),
     ])
     const room = job.room ? await roomCheck(still, job.room, ctx, deps) : null
+    const missing = job.guide && job.props?.length ? await missingProps(deps.ask(ctx.tenantId), await deps.fetchImage(job.guide, ctx.idToken), still, job.props).catch(() => null) : null
     const body = job.kind === 'start' ? job.look.start : job.look.end
     // Same camera as the original: where the person sits in the frame, against the original's frame.
     let framing: { ok: boolean | null; why: string } | null = null
@@ -106,7 +111,7 @@ async function checkStill(fileId: string, job: StillJob, ctx: StillCtx, deps: Re
         console.error('[remake] crop to the original framing failed:', err instanceof Error ? err.message : String(err))
       }
     }
-    const hard = [...looks.reasons, ...(p.status === 'fail' && p.hard ? [p.reason] : []), ...(room?.hard ? [room.hard] : []), ...(framing?.ok === false && !cropped ? [`the camera framing differs from the original: ${framing.why}`] : [])]
+    const hard = [...looks.reasons, ...(p.status === 'fail' && p.hard ? [p.reason] : []), ...(room?.hard ? [room.hard] : []), ...(framing?.ok === false && !cropped ? [`the camera framing differs from the original: ${framing.why}`] : []), ...(missing?.status === 'fail' ? [missing.reason] : [])]
     const warnings = [...(looks.warnings ?? []), ...(p.status === 'fail' && !p.hard ? [p.reason] : []), ...(room?.warning ? [room.warning] : []), ...(framing?.ok === null ? [/partly hidden/.test(framing.why) ? `the framing was only partly compared with the original: ${framing.why}` : 'the framing could not be compared with the original'] : [])]
     if (hard.length) return { status: 'fail', hard, warnings, reason: hard.join('; ') }
     if (p.status === 'unknown' && !warnings.length) return { status: 'unknown', hard, warnings, reason: p.reason, fileId: cropped }
@@ -190,7 +195,7 @@ export async function makeStill(job: StillJob, ctx: StillCtx, deps: RemakeDeps, 
       const identity = personIn(job.look) && ctx.portrait ? [job.references[0]] : []
       // A different room: the first kept still goes in as the room to copy, after the person.
       const roomRef = job.room && c.hard.some((r) => /room differs/i.test(r)) ? [job.room.fileId] : []
-      const guideRef = job.guide && c.hard.some((r) => /camera framing differs/i.test(r)) ? [job.guide] : []
+      const guideRef = job.guide && c.hard.some((r) => /camera framing differs|missing from the photo/i.test(r)) ? [job.guide] : []
       const fix = fixLine(c.hard).replace(/the first image/g, 'the second image').replace(/ROOM_IMAGE/g, `image ${2 + identity.length}`).replace(/GUIDE_IMAGE/g, `image ${2 + identity.length + roomRef.length}`)
       prompt = editPrompt(fix, !roomRef.length)
       references = [g.fileId, ...identity, ...roomRef, ...guideRef]
